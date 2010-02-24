@@ -21,8 +21,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "fiemap.h"
-
-#include <sys/vfs.h>
+#include <linux/fs.h>
 
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
@@ -81,6 +80,7 @@ static size_t num_extents, max_extents;
 static size_t num_sorted_inodes;
 static dev_t underlying_dev;
 static char *underlying_dev_path;
+static int force_fibmap = 0;
 
 int int_log2(int arg)
 {
@@ -129,6 +129,80 @@ int add_extent(ino_t inode, struct fiemap_extent *fm_extent)
 	return 0;
 }
 
+int filefrag_fibmap(ino_t inode, const char *path)
+{
+	int fd, block_size, last_phys_block;
+	int phys_block, i, num_blocks;
+	int ret = 0;
+	struct stat fileinfo;
+	struct fiemap_extent fake_extent;
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		perror(path);
+		return -errno;
+	}
+
+#if 0
+	/* get filesystem block size */
+	ret = ioctl(fd, FIGETBSZ, &block_size); /* FIGETBSZ takes pointer to int */
+	if (ret < 0) {
+		perror(path);
+		goto out;
+	}
+#endif
+
+	/* get file stat info */
+	ret = fstat(fd, &fileinfo);
+	if (ret) {
+		perror(path);
+		goto out;
+	}
+
+	/* now loop through all blocks */
+	block_size = fileinfo.st_blksize;
+	fake_extent.fe_flags = 0;
+	num_blocks = (fileinfo.st_size + (block_size - 1)) / block_size;
+	fake_extent.fe_length = fake_extent.fe_physical = 0;
+	last_phys_block = -1;
+	for (i = 0; i < num_blocks; i++) {
+		phys_block = i;
+		ret = ioctl(fd, FIBMAP, &phys_block); /* FIBMAP takes pointer to integer */
+		if (ret < 0) {
+			/* inappropriate ioctl shouldn't kill the whole process */
+			if (errno == ENOTTY) {
+				ret = 0;
+				goto out;
+			}
+			perror(path);
+			goto out;
+		}
+
+		/* try to merge adjacent physical blocks */
+		if (last_phys_block < 0) {
+			fake_extent.fe_length = 0;
+			fake_extent.fe_physical = (uint64_t)phys_block * block_size;
+		} else if (phys_block != last_phys_block + 1) {
+			ret = add_extent(inode, &fake_extent);
+			if (ret)
+				goto out;
+			fake_extent.fe_length = 0;
+			fake_extent.fe_physical = (uint64_t)phys_block * block_size;
+		}
+		last_phys_block = phys_block;
+		fake_extent.fe_length += block_size;
+
+	}
+
+	/* don't forget the last extent! */
+	if (last_phys_block >= 0)
+		ret = add_extent(inode, &fake_extent);
+
+out:
+	close(fd);
+	return ret;
+}
+
 int filefrag_fiemap(ino_t inode, const char *path)
 {
 	int fd;
@@ -140,7 +214,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 	unsigned long flags;
 	unsigned int i;
 	int last = 0;
-	int rc = 0;
+	int ret = 0;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -156,11 +230,11 @@ int filefrag_fiemap(ino_t inode, const char *path)
 		fiemap->fm_length = ~0ULL;
 		fiemap->fm_flags = flags;
 		fiemap->fm_extent_count = count;
-		rc = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
-		if (rc < 0) {
-			/* pretend that we got mappings */
-			if (errno == EOPNOTSUPP)
-				rc = 0;
+		ret = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
+		if (ret < 0) {
+			/* don't fail the whole operation if the fs won't cooperate */
+			if (errno == EOPNOTSUPP || errno == ENOTTY)
+				ret = 0;
 			else
 				perror(path);
 			goto out;
@@ -171,8 +245,8 @@ int filefrag_fiemap(ino_t inode, const char *path)
 			break;
 
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
-			rc = add_extent(inode, &fm_ext[i]);
-			if (rc)
+			ret = add_extent(inode, &fm_ext[i]);
+			if (ret)
 				goto out;
 
 			if (fm_ext[i].fe_flags & FIEMAP_EXTENT_LAST)
@@ -185,7 +259,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 
 out:
 	close(fd);
-	return rc;
+	return ret;
 }
 
 int process_file(const char *path, const struct stat *sb, int typeflag, struct FTW *ftwbuf)
@@ -231,7 +305,9 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	}
 
 	/* now figure out the extent mappings */
-	ret = filefrag_fiemap(inode->inode, inode->path);
+	ret = (force_fibmap ? 1 : filefrag_fiemap(inode->inode, inode->path));
+	if (ret)
+		ret = filefrag_fibmap(inode->inode, inode->path);
 	return ret;
 }
 
@@ -702,6 +778,7 @@ void print_cmdline_help(const char *progname)
 	printf("Usage: %s [-q] [-w width] path [paths...]\n", progname);
 	printf("-q: Print overview and exit.\n");
 	printf("-w: Print the map to be /width/ letters long.\n");
+	printf("-f: Force the use of FIBMAP instead of FIEMAP (slow!).\n");
 }
 
 int main(int argc, char *argv[])
@@ -719,8 +796,11 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	while ((opt = getopt(argc, argv, "qw:")) != -1) {
+	while ((opt = getopt(argc, argv, "fqw:")) != -1) {
 		switch (opt) {
+		case 'f':
+			force_fibmap = 1;
+			break;
 		case 'q':
 			shell = 0;
 			break;
