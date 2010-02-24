@@ -4,7 +4,7 @@
  * (some parts shamelessly stolen from filefrag.c in e2fsprogs)
  * This program is licensed under the GNU General Public License, version 2.
  */
-#define _XOPEN_SOURCE 500
+#define _XOPEN_SOURCE 600
 #include <ftw.h>
 #include <errno.h>
 #include <stdio.h>
@@ -22,7 +22,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.12\n"
+#define PROGNAME	"filemapper v0.2\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -61,9 +61,19 @@ struct inode_context_t {
 	unsigned int num_inodes;
 };
 
+struct block_pair_t {
+	uint64_t start, end;
+};
+
+struct block_context_t {
+	struct block_pair_t *blocks;
+	unsigned int num_blocks;
+	int verbose;
+};
+
 #define ALLOC_SIZE		4096
 #define BUF_SIZE		4096
-#define PROMPT			"fiemapper> "
+#define PROMPT			"filemapper> "
 #define MAX_UNSORTED_INODES	2048
 
 static int save_argc;
@@ -620,6 +630,138 @@ err:
 	return ret;
 }
 
+int find_blocks(struct map_context_t *ctxt, void *data)
+{
+	struct block_context_t *ictxt = data;
+	struct extent_t *extent = extents;
+	struct extent_t *end = extents + num_extents;
+	struct inode_t key, *inode;
+	uint64_t block;
+	int i, j;
+
+	if (!ictxt->num_blocks)
+		return -ENOENT;
+
+	while (extent != end) {
+		for (i = 0; i < extent->length; i++) {
+			block = extent->start + i;
+			for (j = 0; j < ictxt->num_blocks; j++) {
+				/* try the next range if block is not in this one */
+				if (block < ictxt->blocks[j].start ||
+				    block > ictxt->blocks[j].end)
+					continue;
+
+				/* if we find the block, we can skip to the next one... */
+				mark_block_in_map(ctxt, extent->inode, block);
+				if (!ictxt->verbose)
+					break;
+
+				/* ...unless the user wants the filename */
+				key.inode = extent->inode;
+				inode = bsearch(&key, inodes, num_inodes, sizeof(*inodes), compare_inodes);
+				if (inode)
+					printf("Block %llu maps to %s.\n", block, inode->path);
+				break;
+			}
+		}
+
+		extent++;
+	}
+
+	return 0;
+}
+
+int generic_block_command(const char *args, const char *name, int (*block_fn)(struct map_context_t *ctxt, void *data))
+{
+	struct block_context_t ctxt;
+	int ret = 0;
+	char *map, *tok, *tok_str = (char *)args;
+
+	ctxt.blocks = NULL;
+	ctxt.num_blocks = 0;
+	ctxt.verbose = 1;
+
+	while ((tok = strtok(tok_str, " "))) {
+		char *endptr;
+		uint64_t x, y;
+
+		if (!strcmp("verbose", tok)) {
+			ctxt.verbose = 1;
+			continue;
+		} else if (!strcmp("quiet", tok)) {
+			ctxt.verbose = 0;
+			continue;
+		}
+
+		errno = 0;
+		x = strtoull(tok, &endptr, 0);
+		if (tok[0] == '-' || errno) {
+			fprintf(stderr, "%s: Invalid start %s.\n", tok, name);
+			goto loop_end;
+		}
+		y = x;
+
+		if (*endptr == '-' && *(++endptr) != 0) {
+			errno = 0;
+			y = strtoull(endptr, NULL, 0);
+			if (errno) {
+				fprintf(stderr, "%s: Invalid end %s.\n", endptr, name);
+				goto loop_end;
+			}
+		}
+
+		ctxt.blocks = realloc(ctxt.blocks, (ctxt.num_blocks + 1) * sizeof(*ctxt.blocks));
+		if (!ctxt.blocks) {
+			ret = -ENOMEM;
+			goto err;
+		}
+		ctxt.blocks[ctxt.num_blocks].start = x;
+		ctxt.blocks[ctxt.num_blocks].end = y;
+		ctxt.num_blocks++;
+
+loop_end:
+		tok_str = NULL;
+	}
+
+	/* print pretty block map */
+	ret = generate_blockmap(map_width, &map, block_fn, &ctxt);
+	if (ret)
+		goto err;
+
+	printf("%s\n", map);
+	free(map);
+
+err:
+	free(ctxt.blocks);
+	return ret;
+}
+
+int blocks_cmd(const char *args)
+{
+	return generic_block_command(args, "block", find_blocks);
+}
+
+int find_map_blocks(struct map_context_t *ctxt, void *data)
+{
+	struct block_context_t *ictxt = data;
+	uint64_t y;
+	int j;
+
+	/* transform map blocks into disk blocks */
+	for (j = 0; j < ictxt->num_blocks; j++) {
+		ictxt->blocks[j].start *= ctxt->blocks_per_char;
+		y = ictxt->blocks[j].end;
+		ictxt->blocks[j].end = ((y + 1) * ctxt->blocks_per_char) - 1;
+	}
+
+	return find_blocks(ctxt, data);
+}
+
+int map_blocks_cmd(const char *args)
+{
+	return generic_block_command(args, "map block", find_map_blocks);
+}
+
 int file_cmd(const char *args)
 {
 	struct inode_context_t ctxt;
@@ -760,9 +902,11 @@ int help_cmd(const char *args)
 {
 	printf(PROGNAME);
 	printf("Command Reference (you only need the first letter of the command):\n");
+	printf("blocks		Find file corresponding to a disk block.\n");
 	printf("file		Print block usage of specific files.\n");
 	printf("help		Displays this help screen.\n");
 	printf("inode		Print block usage of specific inodes or ranges of inodes.\n");
+	printf("map_blocks	Find files corresponding to a map block.\n");
 	printf("overview	Prints an overview of the filesystem.\n");
 	printf("quit		Terminates this program.\n");
 	printf("recursive	Print block usage of specific filesystem subtrees.\n");
@@ -783,6 +927,8 @@ static struct command_t commands[] = {
 	{"inode", inode_cmd},
 	{"file", file_cmd},
 	{"recursive", recursive_file_cmd},
+	{"blocks", blocks_cmd},
+	{"map_blocks", map_blocks_cmd},
 
 	/* short command format */
 	{"o", overview_cmd},
@@ -794,6 +940,8 @@ static struct command_t commands[] = {
 	{"de", dump_extents_cmd},
 	{"f", file_cmd},
 	{"r", recursive_file_cmd},
+	{"b", blocks_cmd},
+	{"m", map_blocks_cmd},
 
 	{NULL, NULL},
 };
