@@ -22,7 +22,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.11\n"
+#define PROGNAME	"filemapper v0.12\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -759,7 +759,7 @@ void print_summary(void)
 int help_cmd(const char *args)
 {
 	printf(PROGNAME);
-	printf("Command Reference:\n");
+	printf("Command Reference (you only need the first letter of the command):\n");
 	printf("file		Print block usage of specific files.\n");
 	printf("help		Displays this help screen.\n");
 	printf("inode		Print block usage of specific inodes or ranges of inodes.\n");
