@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <search.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -58,9 +59,10 @@ struct inode_context_t {
 	unsigned int num_inodes;
 };
 
-#define ALLOC_SIZE	4096
-#define BUF_SIZE	4096
-#define PROMPT		"fiemapper> "
+#define ALLOC_SIZE		4096
+#define BUF_SIZE		4096
+#define PROMPT			"fiemapper> "
+#define MAX_UNSORTED_INODES	2000
 
 static int save_argc;
 static char **save_argv;
@@ -73,10 +75,11 @@ static struct extent_t *extents;
 static struct inode_t *inodes;
 static size_t num_inodes, max_inodes;
 static size_t num_extents, max_extents;
+static size_t num_sorted_inodes;
 
 int int_log2(int arg)
 {
-	int     l = 0;
+	int l = 0;
 
 	arg >>= 1;
 	while (arg) {
@@ -150,7 +153,11 @@ int filefrag_fiemap(ino_t inode, const char *path)
 		fiemap->fm_extent_count = count;
 		rc = ioctl(fd, FS_IOC_FIEMAP, (unsigned long) fiemap);
 		if (rc < 0) {
-			perror(path);
+			/* pretend that we got mappings */
+			if (errno == EOPNOTSUPP)
+				rc = 0;
+			else
+				perror(path);
 			goto out;
 		}
 
@@ -178,6 +185,8 @@ out:
 
 int process_file(const char *path, const struct stat *sb, int typeflag, struct FTW *ftwbuf)
 {
+	int ret;
+	size_t tmp;
 	struct inode_t key, *inode;
 
 	/* ignore objects that aren't directories or files */
@@ -186,7 +195,11 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 
 	/* have we already examined this inode? */
 	key.inode = sb->st_ino;
-	inode = lfind(&key, inodes, &num_inodes, sizeof(*inodes), compare_inodes);
+	inode = bsearch(&key, inodes, num_sorted_inodes, sizeof(*inodes), compare_inodes);
+	if (inode)
+		return 0;
+	tmp = num_inodes - num_sorted_inodes;
+	inode = lfind(&key, inodes + num_sorted_inodes, &tmp, sizeof(*inodes), compare_inodes);
 	if (inode)
 		return 0;
 
@@ -207,8 +220,14 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	else if (S_ISDIR(sb->st_mode))
 		inode->type = BLOCK_DIR;
 
+	if (num_inodes - num_sorted_inodes > MAX_UNSORTED_INODES) {
+		qsort(inodes, num_inodes, sizeof(*inodes), compare_inodes);
+		num_sorted_inodes = num_inodes;
+	}
+
 	/* now figure out the extent mappings */
-	return filefrag_fiemap(inode->inode, inode->path);
+	ret = filefrag_fiemap(inode->inode, inode->path);
+	return ret;
 }
 
 int walk_tree(const char *path)
@@ -228,6 +247,7 @@ int init_data(void)
 
 	max_inodes = max_extents = ALLOC_SIZE;
 	num_inodes = num_extents = 0;
+	num_sorted_inodes = 0;
 
 	return 0;
 }
@@ -244,6 +264,17 @@ int dump_inodes_cmd(const char *args)
 
 	for (i = 0; i < num_inodes; i++)
 		dump_inode(inode++);
+
+	return 0;
+}
+
+int check_duplicate_inodes(void)
+{
+	unsigned int i;
+
+	for (i = 1; i < num_inodes; i++)
+		if (inodes[i].inode == inodes[i-1].inode)
+			return -EMFILE;
 
 	return 0;
 }
@@ -560,10 +591,19 @@ int width_cmd(const char *args)
 	return 0;
 }
 
-int help_cmd(const char *args)
+void print_summary(void)
 {
 	int i;
 
+	printf("Current view:");
+	for (i = optind; i < save_argc; i++)
+		printf(" %s", save_argv[i]);
+	printf("\n");
+	printf("inodes: %llu, extents: %llu\n", (uint64_t)num_inodes, (uint64_t)num_extents);
+}
+
+int help_cmd(const char *args)
+{
 	printf("Command Reference:\n");
 	printf("file		Print block usage of specific files.\n");
 	printf("help		Displays this help screen.\n");
@@ -574,10 +614,7 @@ int help_cmd(const char *args)
 	printf("width		Changes the width of the overview bar (currently %d).\n", map_width);
 	printf("\n");
 	printf("In the overview, D=directory, F=file, U=unknown, X=multiple, and .=empty\n");
-	printf("Current view:");
-	for (i = optind; i < save_argc; i++)
-		printf(" %s", save_argv[i]);
-	printf("\n");
+	print_summary();
 
 	return 0;
 }
@@ -608,12 +645,14 @@ static struct command_t commands[] = {
 
 void print_cmdline_help(const char *progname)
 {
-	printf("Usage: %s [-w width] path [paths...]\n", progname);
+	printf("Usage: %s [-q] [-w width] path [paths...]\n", progname);
+	printf("-q: Print overview and exit.\n");
+	printf("-w: Print the map to be /width/ letters long.\n");
 }
 
 int main(int argc, char *argv[])
 {
-	int opt, i, ret = 0;
+	int opt, i, ret = 0, shell = 1;
 	struct statvfs arg_fs_stat;
 	char cmd[BUF_SIZE];
 
@@ -626,8 +665,11 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	while ((opt = getopt(argc, argv, "w:")) != -1) {
+	while ((opt = getopt(argc, argv, "qw:")) != -1) {
 		switch (opt) {
+		case 'q':
+			shell = 0;
+			break;
 		case 'w':
 			map_width = atoi(optarg);
 			break;
@@ -677,6 +719,7 @@ int main(int argc, char *argv[])
 
 	/* sort file data for better performance */
 	qsort(inodes, num_inodes, sizeof(*inodes), compare_inodes);
+	assert(!check_duplicate_inodes());
 	qsort(extents, num_extents, sizeof(*extents), compare_extents);
 
 	save_argc = argc;
@@ -684,6 +727,12 @@ int main(int argc, char *argv[])
 	overview_cmd(NULL);
 
 	/* enter shell mode */
+	if (!shell) {
+		print_summary();
+		ret = 0;
+		goto err;
+	}
+
 	fprintf(stdout, PROMPT);
 	fflush(stdout);
 	while (fgets(cmd, BUF_SIZE - 1, stdin)) {
