@@ -12,6 +12,7 @@
 #include <search.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <inttypes.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -22,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.2\n"
+#define PROGNAME	"filemapper v0.21\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -369,7 +370,7 @@ int init_data(void)
 
 void dump_inode(struct inode_t *i)
 {
-	printf("%llu: %s\n", (uint64_t)i->inode, i->path);
+	printf("%"PRIu64": %s\n", (uint64_t)i->inode, i->path);
 }
 
 int dump_inodes_cmd(const char *args)
@@ -396,7 +397,7 @@ int check_duplicate_inodes(void)
 
 void dump_extent(struct extent_t *i)
 {
-	printf("%llu: %llu -> %llu (%llu)\n", (uint64_t)i->inode, i->start, i->start + i->length - 1, i->length);
+	printf("%"PRIu64": %"PRIu64" -> %"PRIu64" (%"PRIu64")\n", (uint64_t)i->inode, i->start, i->start + i->length - 1, i->length);
 }
 
 int dump_extents_cmd(const char *args)
@@ -660,7 +661,7 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 				key.inode = extent->inode;
 				inode = bsearch(&key, inodes, num_inodes, sizeof(*inodes), compare_inodes);
 				if (inode)
-					printf("Block %llu maps to %s.\n", block, inode->path);
+					printf("Block %"PRIu64" maps to %s.\n", block, inode->path);
 				break;
 			}
 		}
@@ -895,7 +896,7 @@ void print_summary(void)
 	for (i = optind; i < save_argc; i++)
 		printf(" %s", save_argv[i]);
 	printf("\n");
-	printf("inodes: %llu, extents: %llu\n", (uint64_t)num_inodes, (uint64_t)num_extents);
+	printf("inodes: %"PRIu64", extents: %"PRIu64"\n", (uint64_t)num_inodes, (uint64_t)num_extents);
 }
 
 int help_cmd(const char *args)
