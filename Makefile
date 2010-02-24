@@ -1,6 +1,6 @@
 CFLAGS=-Wall -O3 -g
 
-all: fiemapper
+all: filemapper
 
 clean:;
-	rm -rf fiemapper
+	rm -rf filemapper

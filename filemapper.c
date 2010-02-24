@@ -1,7 +1,6 @@
 /*
  * Crappy program to render a visual file block map.
- * Copyright (C) 2010 IBM.  All rights reserved.
- * Author: Darrick J. Wong
+ * Copyright (C) 2010 Darrick J. Wong.  All rights reserved.
  * (some parts shamelessly stolen from filefrag.c in e2fsprogs)
  * This program is licensed under the GNU General Public License, version 2.
  */
@@ -23,6 +22,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
+#define PROGNAME	"filemapper v0.1\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -734,6 +734,7 @@ void print_summary(void)
 
 int help_cmd(const char *args)
 {
+	printf(PROGNAME);
 	printf("Command Reference:\n");
 	printf("file		Print block usage of specific files.\n");
 	printf("help		Displays this help screen.\n");
@@ -775,6 +776,7 @@ static struct command_t commands[] = {
 
 void print_cmdline_help(const char *progname)
 {
+	printf(PROGNAME);
 	printf("Usage: %s [-q] [-w width] path [paths...]\n", progname);
 	printf("-q: Print overview and exit.\n");
 	printf("-w: Print the map to be /width/ letters long.\n");
