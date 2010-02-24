@@ -22,7 +22,10 @@
 #include <fcntl.h>
 #include "fiemap.h"
 
+#include <sys/vfs.h>
+
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
+#define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
 #define BLOCK_UNKNOWN	0x1
 #define BLOCK_FILE	0x2
@@ -62,12 +65,12 @@ struct inode_context_t {
 #define ALLOC_SIZE		4096
 #define BUF_SIZE		4096
 #define PROMPT			"fiemapper> "
-#define MAX_UNSORTED_INODES	2000
+#define MAX_UNSORTED_INODES	2048
 
 static int save_argc;
 static char **save_argv;
 static struct inode_context_t recursive_file_ctxt;
-static unsigned int map_width = 2000;
+static unsigned int map_width = 2048;
 static struct statvfs fs_stat;
 static struct stat fs_root_stat;
 static unsigned int blk_shift;
@@ -76,6 +79,8 @@ static struct inode_t *inodes;
 static size_t num_inodes, max_inodes;
 static size_t num_extents, max_extents;
 static size_t num_sorted_inodes;
+static dev_t underlying_dev;
+static char *underlying_dev_path;
 
 int int_log2(int arg)
 {
@@ -308,10 +313,55 @@ void mark_block_in_map(struct map_context_t *ctxt, ino_t inode, uint64_t block)
 		ctxt->map[map_num] |= val->type;
 }
 
+int find_underlying_block_count_helper(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftw)
+{
+	if (sb->st_rdev != underlying_dev)
+		return 0;
+
+	/* found it! */
+	underlying_dev_path = strdup(fpath);
+
+	return 1;
+}
+
+int find_underlying_block_count(uint64_t *count)
+{
+	int fd, res = 0;
+	uint64_t sz;
+
+	underlying_dev = fs_root_stat.st_dev;
+	underlying_dev_path = NULL;
+	res = nftw("/dev", find_underlying_block_count_helper, 128, FTW_MOUNT | FTW_PHYS);
+	if (res < 0)
+		return res;
+	else if (!res || !underlying_dev_path) {
+		fprintf(stderr, "%s: Could not find underlying block device.\n", save_argv[optind]);
+		return -ENOENT;
+	}
+
+	fd = open(underlying_dev_path, O_RDONLY);
+	if (fd < 0) {
+		perror(underlying_dev_path);
+		return -errno;
+	}
+
+	res = ioctl(fd, BLKGETSIZE64, &sz);
+	if (res) {
+		perror(underlying_dev_path);
+		goto out;
+	}
+
+	*count = sz / fs_stat.f_bsize;
+out:
+	close(fd);
+	return res;
+}
+
 int generate_blockmap(unsigned int nr_chars, char **map, int (*block_fn)(struct map_context_t *ctxt, void *data), void *data)
 {
+	uint64_t blocks;
 	struct map_context_t ctxt;
-	int i, ret;
+	int i, ret = 0;
 
 	/* go find the blocks to highlight */
 	ctxt.map = malloc(nr_chars + 1);
@@ -319,8 +369,12 @@ int generate_blockmap(unsigned int nr_chars, char **map, int (*block_fn)(struct 
 		return -ENOMEM;
 	memset(ctxt.map, 0, nr_chars + 1);
 
-	ctxt.blocks_per_char = fs_stat.f_blocks / nr_chars;
-	if (fs_stat.f_blocks % nr_chars)
+	ret = find_underlying_block_count(&blocks);
+	if (ret)
+		return ret;
+
+	ctxt.blocks_per_char = blocks / nr_chars;
+	if (blocks % nr_chars)
 		ctxt.blocks_per_char++;
 
 	ret = block_fn(&ctxt, data);
