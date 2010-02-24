@@ -134,6 +134,7 @@ int filefrag_fibmap(ino_t inode, const char *path)
 	int fd, block_size, last_phys_block;
 	int phys_block, i, num_blocks;
 	int ret = 0;
+	int added = 0;
 	struct stat fileinfo;
 	struct fiemap_extent fake_extent;
 
@@ -183,6 +184,7 @@ int filefrag_fibmap(ino_t inode, const char *path)
 			fake_extent.fe_length = 0;
 			fake_extent.fe_physical = (uint64_t)phys_block * block_size;
 		} else if (phys_block != last_phys_block + 1) {
+			added++;
 			ret = add_extent(inode, &fake_extent);
 			if (ret)
 				goto out;
@@ -195,8 +197,13 @@ int filefrag_fibmap(ino_t inode, const char *path)
 	}
 
 	/* don't forget the last extent! */
-	if (last_phys_block >= 0)
+	if (last_phys_block >= 0) {
+		added++;
 		ret = add_extent(inode, &fake_extent);
+	}
+
+	if (!added)
+		ret = ENOENT;
 
 out:
 	close(fd);
@@ -215,6 +222,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 	unsigned int i;
 	int last = 0;
 	int ret = 0;
+	int added = 0;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -245,6 +253,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 			break;
 
 		for (i = 0; i < fiemap->fm_mapped_extents; i++) {
+			added++;
 			ret = add_extent(inode, &fm_ext[i]);
 			if (ret)
 				goto out;
@@ -256,6 +265,9 @@ int filefrag_fiemap(ino_t inode, const char *path)
 		fiemap->fm_start = (fm_ext[i-1].fe_logical +
 				    fm_ext[i-1].fe_length);
 	} while (last == 0);
+
+	if (!added)
+		ret = ENOENT;
 
 out:
 	close(fd);
@@ -299,11 +311,6 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	else if (S_ISDIR(sb->st_mode))
 		inode->type = BLOCK_DIR;
 
-	if (num_inodes - num_sorted_inodes > MAX_UNSORTED_INODES) {
-		qsort(inodes, num_inodes, sizeof(*inodes), compare_inodes);
-		num_sorted_inodes = num_inodes;
-	}
-
 	/* now figure out the extent mappings */
 	/*
 	 * negative return values will kill the whole process;
@@ -312,8 +319,19 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	ret = (force_fibmap ? 1 : filefrag_fiemap(inode->inode, inode->path));
 	if (ret)
 		ret = filefrag_fibmap(inode->inode, inode->path);
+	/* forget inodes with no extent data */
+	if (ret)
+		num_inodes--;
+	/* forget but don't kill the search if we get a positive error */
 	if (ret > 0)
 		ret = 0;
+
+	/* sort inodes if needed */
+	if (num_inodes - num_sorted_inodes > MAX_UNSORTED_INODES) {
+		qsort(inodes, num_inodes, sizeof(*inodes), compare_inodes);
+		num_sorted_inodes = num_inodes;
+	}
+
 	return ret;
 }
 
