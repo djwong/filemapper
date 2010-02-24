@@ -921,6 +921,7 @@ int help_cmd(const char *args)
 static struct command_t commands[] = {
 	/* long command format */
 	{"overview", overview_cmd},
+	{"print", overview_cmd},
 	{"quit", quit_cmd},
 	{"help", help_cmd},
 	{"width", width_cmd},
@@ -932,6 +933,7 @@ static struct command_t commands[] = {
 
 	/* short command format */
 	{"o", overview_cmd},
+	{"p", overview_cmd},
 	{"q", quit_cmd},
 	{"h", help_cmd},
 	{"w", width_cmd},
