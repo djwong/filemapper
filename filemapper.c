@@ -171,7 +171,7 @@ int filefrag_fibmap(ino_t inode, const char *path)
 		if (ret < 0) {
 			/* inappropriate ioctl shouldn't kill the whole process */
 			if (errno == ENOTTY) {
-				ret = 0;
+				ret = -ret;
 				goto out;
 			}
 			perror(path);
@@ -234,7 +234,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 		if (ret < 0) {
 			/* don't fail the whole operation if the fs won't cooperate */
 			if (errno == EOPNOTSUPP || errno == ENOTTY)
-				ret = 0;
+				ret = -ret;
 			else
 				perror(path);
 			goto out;
@@ -305,9 +305,15 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	}
 
 	/* now figure out the extent mappings */
+	/*
+	 * negative return values will kill the whole process;
+	 * positive return values simply skip this file
+	 */
 	ret = (force_fibmap ? 1 : filefrag_fiemap(inode->inode, inode->path));
 	if (ret)
 		ret = filefrag_fibmap(inode->inode, inode->path);
+	if (ret > 0)
+		ret = 0;
 	return ret;
 }
 
