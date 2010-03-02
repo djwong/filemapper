@@ -23,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.22\n"
+#define PROGNAME	"filemapper v0.23\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -595,6 +595,53 @@ loop_end:
 	return 0;
 }
 
+
+int parse_range(char *str, unsigned long *start, unsigned long *end, const char *label)
+{
+	char *endptr;
+	unsigned long x, y;
+
+	errno = 0;
+	x = strtoul(str, &endptr, 0);
+	if (str[0] == '-' || errno) {
+		fprintf(stderr, "%s: Invalid start %s.\n", str, label);
+		return -EINVAL;
+	}
+	y = x;
+
+	if (*endptr == '-' && *(++endptr) != 0 && *endptr != '-') {
+		errno = 0;
+		y = strtoul(endptr, NULL, 0);
+		if (errno) {
+			fprintf(stderr, "%s: Invalid end %s.\n", endptr, label);
+			return -EINVAL;
+		}
+	}
+
+	if (y < x) {
+		unsigned long t = x;
+		x = y;
+		y = t;
+	}
+
+	*start = x;
+	*end = y;
+	return 0;
+}
+
+int parse_verbosity(char *str, int *flag)
+{
+	if (!strcmp("-v", str)) {
+		*flag = 1;
+		return 0;
+	} else if (!strcmp("-q", str)) {
+		*flag = 0;
+		return 0;
+	}
+
+	return -ENOENT;
+}
+
 int inode_cmd(const char *args)
 {
 	struct inode_context_t ctxt;
@@ -607,33 +654,13 @@ int inode_cmd(const char *args)
 	ctxt.print_path = 0;
 
 	while ((tok = strtok(tok_str, " "))) {
-		char *endptr;
 		unsigned long x, y;
 
-		if (!strcmp("verbose", tok)) {
-			ctxt.verbose = 1;
+		if (!parse_verbosity(tok, &ctxt.verbose))
 			goto loop_end;
-		} else if (!strcmp("quiet", tok)) {
-			ctxt.verbose = 0;
-			goto loop_end;
-		}
 
-		errno = 0;
-		x = strtoul(tok, &endptr, 0);
-		if (tok[0] == '-' || errno) {
-			fprintf(stderr, "%s: Invalid start inode.\n", tok);
+		if (parse_range(tok, &x, &y, "inode"))
 			goto loop_end;
-		}
-		y = x;
-
-		if (*endptr == '-' && *(++endptr) != 0) {
-			errno = 0;
-			y = strtoul(endptr, NULL, 0);
-			if (errno) {
-				fprintf(stderr, "%s: Invalid end inode.\n", endptr);
-				goto loop_end;
-			}
-		}
 
 		ctxt.inodes = realloc(ctxt.inodes, (ctxt.num_inodes + 1) * sizeof(*ctxt.inodes));
 		if (!ctxt.inodes) {
@@ -713,33 +740,13 @@ int generic_block_command(const char *args, const char *name, int (*block_fn)(st
 	ctxt.verbose = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
-		char *endptr;
 		uint64_t x, y;
 
-		if (!strcmp("verbose", tok)) {
-			ctxt.verbose = 1;
+		if (!parse_verbosity(tok, &ctxt.verbose))
 			goto loop_end;
-		} else if (!strcmp("quiet", tok)) {
-			ctxt.verbose = 0;
-			goto loop_end;
-		}
 
-		errno = 0;
-		x = strtoull(tok, &endptr, 0);
-		if (tok[0] == '-' || errno) {
-			fprintf(stderr, "%s: Invalid start %s.\n", tok, name);
+		if (parse_range(tok, &x, &y, name))
 			goto loop_end;
-		}
-		y = x;
-
-		if (*endptr == '-' && *(++endptr) != 0) {
-			errno = 0;
-			y = strtoull(endptr, NULL, 0);
-			if (errno) {
-				fprintf(stderr, "%s: Invalid end %s.\n", endptr, name);
-				goto loop_end;
-			}
-		}
 
 		ctxt.blocks = realloc(ctxt.blocks, (ctxt.num_blocks + 1) * sizeof(*ctxt.blocks));
 		if (!ctxt.blocks) {
@@ -796,7 +803,7 @@ int map_blocks_cmd(const char *args)
 int file_cmd(const char *args)
 {
 	struct inode_context_t ctxt;
-	int ret = 0;
+	int ret = 0, read_args = 1;
 	char *map, *tok, *tok_str = (char *)args;
 
 	ctxt.inodes = NULL;
@@ -806,6 +813,14 @@ int file_cmd(const char *args)
 
 	while ((tok = strtok(tok_str, " "))) {
 		struct stat buf;
+
+		if (!strcmp(tok, "--")) {
+			read_args = 0;
+			goto loop_end;
+		}
+
+		if (read_args && !parse_verbosity(tok, &ctxt.verbose))
+			goto loop_end;
 
 		ret = lstat(tok, &buf);
 		if (ret) {
@@ -860,7 +875,7 @@ int recursive_file_cmd_helper(const char *fpath, const struct stat *sb, int type
 
 int recursive_file_cmd(const char *args)
 {
-	int ret = 0;
+	int ret = 0, read_args = 1;
 	char *map, *tok, *tok_str = (char *)args;
 
 	recursive_file_ctxt.inodes = NULL;
@@ -870,6 +885,14 @@ int recursive_file_cmd(const char *args)
 
 	while ((tok = strtok(tok_str, " "))) {
 		struct stat buf;
+
+		if (!strcmp(tok, "--")) {
+			read_args = 0;
+			goto loop_end;
+		}
+
+		if (read_args && !parse_verbosity(tok, &recursive_file_ctxt.verbose))
+			goto loop_end;
 
 		ret = lstat(tok, &buf);
 		if (ret) {
