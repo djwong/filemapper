@@ -23,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.21\n"
+#define PROGNAME	"filemapper v0.22\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -60,6 +60,8 @@ struct inode_pair_t {
 struct inode_context_t {
 	struct inode_pair_t *inodes;
 	unsigned int num_inodes;
+	int verbose;
+	int print_path;
 };
 
 struct block_pair_t {
@@ -535,7 +537,7 @@ int overview_cmd(const char *args)
 	ret = generate_blockmap(map_width, &map, find_all_blocks, NULL);
 	if (ret)
 		return ret;
-	printf("%s\n", map);
+	printf("Map:\n%s\n", map);
 	free(map);
 
 	return 0;
@@ -543,6 +545,7 @@ int overview_cmd(const char *args)
 
 int find_inode_blocks(struct map_context_t *ctxt, void *data)
 {
+	struct inode_t key, *inode;
 	struct inode_context_t *ictxt = data;
 	struct extent_t *extent = extents;
 	struct extent_t *end = extents + num_extents;
@@ -564,6 +567,23 @@ int find_inode_blocks(struct map_context_t *ctxt, void *data)
 		if (!found)
 			goto loop_end;
 
+		if (ictxt->verbose) {
+			switch (ictxt->print_path) {
+			case 1:
+				key.inode = extent->inode;
+				inode = bsearch(&key, inodes, num_inodes, sizeof(*inodes), compare_inodes);
+				if (inode) {
+					printf("File %s ", inode->path);
+					break;
+				}
+				/* not found?  fall through */
+			default:
+				printf("Inode %"PRIu64" ", extent->inode);
+			}
+
+			printf("maps to blocks %"PRIu64"-%"PRIu64".\n", extent->start, extent->start + extent->length);
+		}
+
 		for (i = 0; i < extent->length; i++) {
 			mark_block_in_map(ctxt, extent->inode, extent->start + i);
 		}
@@ -583,10 +603,20 @@ int inode_cmd(const char *args)
 
 	ctxt.inodes = NULL;
 	ctxt.num_inodes = 0;
+	ctxt.verbose = 1;
+	ctxt.print_path = 0;
 
 	while ((tok = strtok(tok_str, " "))) {
 		char *endptr;
 		unsigned long x, y;
+
+		if (!strcmp("verbose", tok)) {
+			ctxt.verbose = 1;
+			goto loop_end;
+		} else if (!strcmp("quiet", tok)) {
+			ctxt.verbose = 0;
+			goto loop_end;
+		}
 
 		errno = 0;
 		x = strtoul(tok, &endptr, 0);
@@ -623,7 +653,7 @@ loop_end:
 	if (ret)
 		goto err;
 
-	printf("%s\n", map);
+	printf("Map:\n%s\n", map);
 	free(map);
 
 err:
@@ -688,10 +718,10 @@ int generic_block_command(const char *args, const char *name, int (*block_fn)(st
 
 		if (!strcmp("verbose", tok)) {
 			ctxt.verbose = 1;
-			continue;
+			goto loop_end;
 		} else if (!strcmp("quiet", tok)) {
 			ctxt.verbose = 0;
-			continue;
+			goto loop_end;
 		}
 
 		errno = 0;
@@ -729,7 +759,7 @@ loop_end:
 	if (ret)
 		goto err;
 
-	printf("%s\n", map);
+	printf("Map:\n%s\n", map);
 	free(map);
 
 err:
@@ -771,6 +801,8 @@ int file_cmd(const char *args)
 
 	ctxt.inodes = NULL;
 	ctxt.num_inodes = 0;
+	ctxt.verbose = 1;
+	ctxt.print_path = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
 		struct stat buf;
@@ -805,7 +837,7 @@ loop_end:
 	if (ret)
 		goto err;
 
-	printf("%s\n", map);
+	printf("Map:\n%s\n", map);
 	free(map);
 
 err:
@@ -833,6 +865,8 @@ int recursive_file_cmd(const char *args)
 
 	recursive_file_ctxt.inodes = NULL;
 	recursive_file_ctxt.num_inodes = 0;
+	recursive_file_ctxt.verbose = 1;
+	recursive_file_ctxt.print_path = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
 		struct stat buf;
@@ -859,7 +893,7 @@ loop_end:
 	if (ret)
 		goto err;
 
-	printf("%s\n", map);
+	printf("Map:\n%s\n", map);
 	free(map);
 
 err:
