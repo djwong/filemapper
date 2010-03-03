@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.36"
+VERSION = "gfilemapper v0.37"
 PROMPT_STRING = "filemapper> "
 
 class gfilemapper_window(object):
@@ -68,6 +68,7 @@ class gfilemapper_window(object):
 		self.old_restriction = default_restriction
 
 		self.driver = driver
+		self.read_until_prompt()
 		self.read_map()
 
 		self.window.show_all()
@@ -170,8 +171,6 @@ class gfilemapper_window(object):
 		gtk.main_quit()
 
 	def read_map(self):
-		self.read_until_prompt()
-		str = self.driver.read_error_line()
 		str = self.driver.read_output_line()
 		if len(str) and str != "Map:":
 			return 1
@@ -215,6 +214,7 @@ class gfilemapper_window(object):
 
 	def overview_filter(self, args):
 		self.driver.writeln("o")
+		self.read_until_prompt()
 		self.set_detail_columns(None, [])
 		self.read_map()
 		self.filter_descr = "Overview"
@@ -482,6 +482,9 @@ class process_driver:
 					self.errorstr = ""
 				else:
 					self.errorstr = last
+			self.output_waiter.acquire()
+			self.output_waiter.notify()
+			self.output_waiter.release()
 
 if __name__ == "__main__":
 	print VERSION

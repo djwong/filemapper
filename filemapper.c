@@ -26,7 +26,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.36\n"
+#define PROGNAME	"filemapper v0.37\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -168,6 +168,11 @@ int filefrag_fibmap(ino_t inode, const char *path)
 	unsigned int block_size_num, block_size_den;
 	struct stat fileinfo;
 	struct fiemap_extent fake_extent;
+	/* -1=not initialized, 0=warn if weirdness 1=already warned */
+	static int fib_weirdness_warning = -1;
+
+	if (fib_weirdness_warning < 0)
+		fib_weirdness_warning = ignore_buggy_filesystems;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
@@ -206,11 +211,17 @@ int filefrag_fibmap(ino_t inode, const char *path)
 		block_size_den = 1;
 		break;
 	case EXT3_SUPER_MAGIC:
+	case ISOFS_SUPER_MAGIC:
 		block_size_num = block_size;
 		block_size_den = 1;
 		break;
 	default:
-		block_size_num = block_size_den = 1;
+		if (!fib_weirdness_warning)
+			fprintf(stderr, "WARNING: Unknown filesystem %lx.  FIBMAP data may be incorrect.\n", fs_stat.f_type);
+		fib_weirdness_warning = 1;
+		block_size_num = block_size;
+		block_size_den = 1;
+		break;
 	}
 
 	fake_extent.fe_flags = 0;
