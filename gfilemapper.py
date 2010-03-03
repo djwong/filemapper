@@ -1,5 +1,8 @@
 #!/usr/bin/python
-# coding=utf-8
+
+# Crappy program to drive filemapper via GUI.
+# Copyright (C) 2010 Darrick J. Wong.  All rights reserved.
+# This program is licensed under the GNU General Public License, version 2.
 
 try:
  	import pygtk
@@ -20,11 +23,6 @@ try:
 	import select
 	import threading
 	import time
-	#import locale
-	#import gettext
-	#import cPickle
-	#import helper
-	#import todo
 except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
@@ -39,19 +37,20 @@ class gfilemapper_window(object):
 		events = {
 			"on_main_window_destroy": self.close_app,
 			"on_filter_btn_clicked": self.set_filter,
-			"on_restriction_list_changed": self.set_filter_type}
+			"on_restriction_list_changed": self.set_filter_type,
+			"on_pull_selection_btn_clicked": self.pull_selection_btn,
+			"on_addfile_btn_clicked": self.add_file_btn}
 		self.window_tree.signal_autoconnect(events)
 		self.window.connect("destroy", self.close_app)
 
 		self.map = self.window_tree.get_widget("map_text")
-		self.map.modify_font(pango.FontDescription("DejaVu Sans Mono 10"))
-		self.map.modify_font(pango.FontDescription("Fixed 10"))
-		self.map.modify_font(pango.FontDescription("Anonymous Pro 8"))
+		self.map.modify_font(pango.FontDescription("Anonymous Pro,DejaVu Sans Mono,Consolas,Lucida Console,monospace 8"))
 		self.map_buffer = self.map.get_buffer()
 
 		self.restriction_list = self.window_tree.get_widget("restriction_list")
 		self.restriction_text = self.window_tree.get_widget("restriction_text")
 		self.addfile_btn = self.window_tree.get_widget("addfile_btn")
+		self.pull_selection_btn = self.window_tree.get_widget("pull_selection_btn")
 		self.detail_list = self.window_tree.get_widget("detail_list")
 		self.detail_list.set_headers_clickable(True)
 
@@ -59,22 +58,63 @@ class gfilemapper_window(object):
 		self.read_map()
 
 		self.window.show_all()
-		self.restriction_list.set_active(0)
+		self.restriction_list.set_active(4)
 		self.set_filter_type(None)
 		self.filter_descr = "Overview"
 		self.set_window_title()
 
 	def set_filter_type(self, widget):
-		ui_elements = [[False, False], [True, False], [True, True], [True, False], [True, False], [True, True]]
+		ui_elements = [[False, False, False], [True, False, False], [True, False, True], [True, False, False], [True, True, False], [True, False, True]]
 		idx = self.restriction_list.get_active()
 		self.set_filter_ui(ui_elements[idx])
+
+	def pull_selection_btn(self, widget):
+		iter = self.map.get_buffer().get_selection_bounds()
+		if len(iter) == 0:
+			x = self.map.get_buffer().get_property("cursor-position")
+			y = x
+		else:
+			x = iter[0].get_offset()
+			y = iter[1].get_offset() - 1
+		text = "%d" % x
+		if y != x:
+			text = text + "-%d" % y
+		x = self.restriction_text.get_text()
+		if len(x):
+			x = x + " "
+		self.restriction_text.set_text(x + text)
+
+	def add_file_btn(self, widget):
+		fcd = gtk.FileChooserDialog("View File Blocks")
+		fcd.add_button("OK", 0)
+		fcd.add_button("Cancel", 1)
+		fcd.set_default_response(0)
+		fcd.set_local_only(True)
+		fcd.set_select_multiple(True)
+		result = fcd.run()
+		fcd.hide()
+		if result != 0:
+			return
+
+		x = self.restriction_text.get_text()
+		for fname in fcd.get_filenames():
+			if len(x):
+				x = x + " "
+			x = x + fname
+		self.restriction_text.set_text(x)
 
 	def set_filter_ui(self, flags):
 		if flags[0]:
 			self.restriction_text.show()
 		else:
 			self.restriction_text.hide()
+
 		if flags[1]:
+			self.pull_selection_btn.show()
+		else:
+			self.pull_selection_btn.hide()
+
+		if flags[2]:
 			self.addfile_btn.show()
 		else:
 			self.addfile_btn.hide()
@@ -128,13 +168,11 @@ class gfilemapper_window(object):
 		self.set_detail_columns(model, ["File", "Start", "End"])
 
 		str = self.driver.read_output_line()
-		print [0, str]
 		while len(str) and str != "Map:":
 			cols = str.split()
 			blocks = cols[5].split("-")
 			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
 			str = self.driver.read_output_line()
-			print [1, str]
 
 		self.read_map_to_display()
 
