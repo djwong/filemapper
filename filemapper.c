@@ -891,7 +891,7 @@ int generic_block_command(const char *args, const char *name, int (*block_fn)(st
 	ctxt.verbose = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
-		uint64_t x, y;
+		unsigned long long x, y;
 
 		if (!parse_verbosity(tok, &ctxt.verbose))
 			goto loop_end;
