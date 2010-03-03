@@ -24,6 +24,7 @@
                 <property name="can_focus">True</property>
                 <property name="hscrollbar_policy">automatic</property>
                 <property name="vscrollbar_policy">automatic</property>
+                <property name="shadow_type">etched-in</property>
                 <child>
                   <widget class="GtkTextView" id="map_text">
                     <property name="visible">True</property>
@@ -45,6 +46,7 @@
                 <property name="can_focus">True</property>
                 <property name="hscrollbar_policy">automatic</property>
                 <property name="vscrollbar_policy">automatic</property>
+                <property name="shadow_type">etched-in</property>
                 <child>
                   <widget class="GtkTreeView" id="detail_list">
                     <property name="visible">True</property>
@@ -201,6 +203,16 @@ Set Font</property>
           <packing>
             <property name="expand">False</property>
             <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <widget class="GtkStatusbar" id="status_bar">
+            <property name="visible">True</property>
+            <property name="spacing">2</property>
+          </widget>
+          <packing>
+            <property name="expand">False</property>
+            <property name="position">2</property>
           </packing>
         </child>
       </widget>

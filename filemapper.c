@@ -23,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.27\n"
+#define PROGNAME	"filemapper v0.28\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -50,6 +50,7 @@ struct command_t {
 
 struct map_context_t {
 	char *map;
+	uint64_t blocks;
 	unsigned int blocks_per_char;
 };
 
@@ -470,46 +471,67 @@ out:
 	return res;
 }
 
-int generate_blockmap(unsigned int nr_chars, char **map, int (*block_fn)(struct map_context_t *ctxt, void *data), void *data)
+void free_blockmap(struct map_context_t *ctxt)
 {
-	uint64_t blocks;
-	struct map_context_t ctxt;
+	if (ctxt->map)
+		free(ctxt->map);
+	free(ctxt);
+}
+
+void print_blockmap(struct map_context_t *ctxt)
+{
+	printf("Map:\n%s\nBlocks per map character: %'u; Blocks: %'"PRIu64"\n", ctxt->map, ctxt->blocks_per_char, ctxt->blocks);
+}
+
+int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*block_fn)(struct map_context_t *ctxt, void *data), void *data)
+{
+	struct map_context_t *c;
 	int i, ret = 0;
 
-	/* go find the blocks to highlight */
-	ctxt.map = malloc(nr_chars + 1);
-	if (!ctxt.map)
+	c = malloc(sizeof (*c));
+	if (!c)
 		return -ENOMEM;
-	memset(ctxt.map, 0, nr_chars + 1);
+	memset(c, 0, sizeof (*c));
 
-	ret = find_underlying_block_count(&blocks);
+	/* go find the blocks to highlight */
+	c->map = malloc(nr_chars + 1);
+	if (!c->map) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	memset(c->map, 0, nr_chars + 1);
+
+	ret = find_underlying_block_count(&c->blocks);
 	if (ret)
-		return ret;
+		goto err;
 
-	ctxt.blocks_per_char = blocks / nr_chars;
-	if (blocks % nr_chars)
-		ctxt.blocks_per_char++;
+	c->blocks_per_char = c->blocks / nr_chars;
+	if (c->blocks % nr_chars)
+		c->blocks_per_char++;
 
-	ret = block_fn(&ctxt, data);
+	ret = block_fn(c, data);
 	if (ret)
-		return ret;
+		goto err;
 
 	/* convert flags to printable characters */
 	for (i = 0; i < nr_chars; i++) {
-		if (ctxt.map[i] == BLOCK_DIR)
-			ctxt.map[i] = 'D';
-		else if (ctxt.map[i] == BLOCK_FILE)
-			ctxt.map[i] = 'F';
-		else if (ctxt.map[i] == BLOCK_UNKNOWN)
-			ctxt.map[i] = 'U';
-		else if (!ctxt.map[i])
-			ctxt.map[i] = '.';
+		if (c->map[i] == BLOCK_DIR)
+			c->map[i] = 'D';
+		else if (c->map[i] == BLOCK_FILE)
+			c->map[i] = 'F';
+		else if (c->map[i] == BLOCK_UNKNOWN)
+			c->map[i] = 'U';
+		else if (!c->map[i])
+			c->map[i] = '.';
 		else
-			ctxt.map[i] = 'X';
+			c->map[i] = 'X';
 	}
 
-	*map = ctxt.map;
+	*ctxt = c;
 	return 0;
+err:
+	free_blockmap(c);
+	return ret;
 }
 
 int find_all_blocks(struct map_context_t *ctxt, void *data)
@@ -531,14 +553,14 @@ int find_all_blocks(struct map_context_t *ctxt, void *data)
 int overview_cmd(const char *args)
 {
 	int ret;
-	char *map;
+	struct map_context_t *ctxt;
 
 	/* print pretty block map */
-	ret = generate_blockmap(map_width, &map, find_all_blocks, NULL);
+	ret = generate_blockmap(map_width, &ctxt, find_all_blocks, NULL);
 	if (ret)
 		return ret;
-	printf("Map:\n%s\n", map);
-	free(map);
+	print_blockmap(ctxt);
+	free_blockmap(ctxt);
 
 	return 0;
 }
@@ -644,9 +666,10 @@ int parse_verbosity(char *str, int *flag)
 
 int inode_cmd(const char *args)
 {
+	struct map_context_t *mctxt;
 	struct inode_context_t ctxt;
 	int ret = 0;
-	char *map, *tok, *tok_str = (char *)args;
+	char *tok, *tok_str = (char *)args;
 
 	ctxt.inodes = NULL;
 	ctxt.num_inodes = 0;
@@ -676,12 +699,11 @@ loop_end:
 	}
 
 	/* print pretty block map */
-	ret = generate_blockmap(map_width, &map, find_inode_blocks, &ctxt);
+	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &ctxt);
 	if (ret)
 		goto err;
-
-	printf("Map:\n%s\n", map);
-	free(map);
+	print_blockmap(mctxt);
+	free(mctxt);
 
 err:
 	free(ctxt.inodes);
@@ -731,9 +753,10 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 
 int generic_block_command(const char *args, const char *name, int (*block_fn)(struct map_context_t *ctxt, void *data))
 {
+	struct map_context_t *mctxt;
 	struct block_context_t ctxt;
 	int ret = 0;
-	char *map, *tok, *tok_str = (char *)args;
+	char *tok, *tok_str = (char *)args;
 
 	ctxt.blocks = NULL;
 	ctxt.num_blocks = 0;
@@ -762,12 +785,11 @@ loop_end:
 	}
 
 	/* print pretty block map */
-	ret = generate_blockmap(map_width, &map, block_fn, &ctxt);
+	ret = generate_blockmap(map_width, &mctxt, block_fn, &ctxt);
 	if (ret)
 		goto err;
-
-	printf("Map:\n%s\n", map);
-	free(map);
+	print_blockmap(mctxt);
+	free(mctxt);
 
 err:
 	free(ctxt.blocks);
@@ -802,9 +824,10 @@ int map_blocks_cmd(const char *args)
 
 int file_cmd(const char *args)
 {
+	struct map_context_t *mctxt;
 	struct inode_context_t ctxt;
 	int ret = 0, read_args = 1;
-	char *map, *tok, *tok_str = (char *)args;
+	char *tok, *tok_str = (char *)args;
 
 	ctxt.inodes = NULL;
 	ctxt.num_inodes = 0;
@@ -848,12 +871,11 @@ loop_end:
 	}
 
 	/* print pretty block map */
-	ret = generate_blockmap(map_width, &map, find_inode_blocks, &ctxt);
+	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &ctxt);
 	if (ret)
 		goto err;
-
-	printf("Map:\n%s\n", map);
-	free(map);
+	print_blockmap(mctxt);
+	free(mctxt);
 
 err:
 	free(ctxt.inodes);
@@ -875,8 +897,9 @@ int recursive_file_cmd_helper(const char *fpath, const struct stat *sb, int type
 
 int recursive_file_cmd(const char *args)
 {
+	struct map_context_t *mctxt;
 	int ret = 0, read_args = 1;
-	char *map, *tok, *tok_str = (char *)args;
+	char *tok, *tok_str = (char *)args;
 
 	recursive_file_ctxt.inodes = NULL;
 	recursive_file_ctxt.num_inodes = 0;
@@ -912,12 +935,11 @@ loop_end:
 	}
 
 	/* print pretty block map */
-	ret = generate_blockmap(map_width, &map, find_inode_blocks, &recursive_file_ctxt);
+	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &recursive_file_ctxt);
 	if (ret)
 		goto err;
-
-	printf("Map:\n%s\n", map);
-	free(map);
+	print_blockmap(mctxt);
+	free(mctxt);
 
 err:
 	free(recursive_file_ctxt.inodes);

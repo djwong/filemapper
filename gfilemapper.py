@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.27"
+VERSION = "gfilemapper v0.28"
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -60,6 +60,8 @@ class gfilemapper_window(object):
 		self.pull_selection_btn = self.window_tree.get_widget("pull_selection_btn")
 		self.set_font_btn = self.window_tree.get_widget("set_font_btn")
 		self.detail_list = self.window_tree.get_widget("detail_list")
+		self.status_bar = self.window_tree.get_widget("status_bar")
+		self.status_bar.push(0, "Working...")
 		self.detail_list.set_headers_clickable(True)
 		self.old_restrictions = ["", "", "", "", "", "", "2048", default_font]
 		self.old_restriction = default_restriction
@@ -163,6 +165,7 @@ class gfilemapper_window(object):
 			self.filter_btn.hide()
 
 	def close_app(self, widget):
+		self.driver.terminate()
 		gtk.main_quit()
 
 	def read_map(self):
@@ -177,6 +180,9 @@ class gfilemapper_window(object):
 		str = self.driver.read_output_line()
 		str = str.replace('.', '-')
 		self.map_buffer.set_text(str)
+		str = self.driver.read_output_line()
+		self.status_bar.pop(0)
+		self.status_bar.push(0, str)
 
 	def read_until_prompt(self):
 		self.driver.wait_for_prompt("filemapper> ")
@@ -310,6 +316,7 @@ class process_driver:
 		self.outeof = False
 		self.erreof = False
 		self.output_waiter = threading.Condition()
+		self.killer = threading.Condition()
 
 		fd = self.process.stdout.fileno()
 		flags = fcntl.fcntl(fd, fcntl.F_GETFL)
@@ -319,7 +326,16 @@ class process_driver:
 		flags = fcntl.fcntl(fd, fcntl.F_GETFL)
 		fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
+	def terminate(self):
+		if self.process.poll() != None:
+			return
+		self.should_kill = True
+		self.killer.acquire()
+		self.killer.wait()
+		self.killer.release()
+
 	def start(self):
+		self.should_kill = False
 		thread.start_new_thread(self.loop, ())
 
 	def read_output_line(self):
@@ -356,7 +372,7 @@ class process_driver:
 		return False
 
 	def wait_for_prompt(self, prompt):
-		while not self.prompt_seen(prompt):
+		while self.process.poll() == None and not self.prompt_seen(prompt):
 			self.output_waiter.acquire()
 			self.output_waiter.wait()
 			self.output_waiter.release()
@@ -366,6 +382,11 @@ class process_driver:
 			self.loop_once()
 			if self.outeof and self.erreof:
 				break
+			if self.should_kill:
+				self.process.terminate()
+		self.killer.acquire()
+		self.killer.notify()
+		self.killer.release()
 
 	def loop_once(self):
 		tocheck = [self.process.stdout, self.process.stderr]
@@ -374,7 +395,7 @@ class process_driver:
 			return
 
 		if self.process.stdout in ready[0]:
-			x = self.process.stdout.read(10)
+			x = self.process.stdout.read()
 			if x == "":
 				self.outeof = True
 				if len(self.outputstr) > 0:
