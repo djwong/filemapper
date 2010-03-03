@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.29"
+VERSION = "gfilemapper v0.30"
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -208,6 +208,7 @@ class gfilemapper_window(object):
 			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
 			str = self.driver.read_output_line()
 
+		self.detail_list.set_model(model)
 		self.read_map_to_display()
 
 	def file_trees_filter(self, args):
@@ -224,18 +225,18 @@ class gfilemapper_window(object):
 			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
 			str = self.driver.read_output_line()
 
+		self.detail_list.set_model(model)
 		self.read_map_to_display()
 
 	def set_detail_columns(self, model, columns):
 		for column in self.detail_list.get_columns():
 			self.detail_list.remove_column(column)
+		self.detail_list.set_model(None)
 
 		renderer = gtk.CellRendererText()
 		for i in range(0, len(columns)):
 			column = gtk.TreeViewColumn(columns[i], renderer, text = i)
 			self.detail_list.append_column(column)
-
-		self.detail_list.set_model(model)
 
 	def map_blocks_filter(self, args):
 		self.driver.writeln("m " + args)
@@ -251,6 +252,7 @@ class gfilemapper_window(object):
 			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
 			str = self.driver.read_output_line()
 
+		self.detail_list.set_model(model)
 		self.read_map_to_display()
 
 	def blocks_filter(self, args):
@@ -267,6 +269,7 @@ class gfilemapper_window(object):
 			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
 			str = self.driver.read_output_line()
 
+		self.detail_list.set_model(model)
 		self.read_map_to_display()
 
 	def inodes_filter(self, args):
@@ -283,6 +286,7 @@ class gfilemapper_window(object):
 			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
 			str = self.driver.read_output_line()
 
+		self.detail_list.set_model(model)
 		self.read_map_to_display()
 
 	def set_map_width(self, args):
