@@ -24,7 +24,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.31\n"
+#define PROGNAME	"filemapper v0.33\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -52,7 +52,7 @@ struct command_t {
 struct map_context_t {
 	char *map;
 	uint64_t *block_usage;
-
+	uint64_t blocks_found;
 	uint64_t blocks;
 	unsigned int blocks_per_char;
 };
@@ -88,6 +88,7 @@ struct block_context_t {
 #define BUF_SIZE		4096
 #define PROMPT			"filemapper> "
 #define MAX_UNSORTED_INODES	2048
+#define out_str(a, b)		( machine_mode ? (b) : (a) )
 
 static int save_argc;
 static char **save_argv;
@@ -104,6 +105,7 @@ static size_t num_sorted_inodes;
 static dev_t underlying_dev;
 static char *underlying_dev_path;
 static int force_fibmap = 0;
+static int machine_mode = 0;
 
 int int_log2(int arg)
 {
@@ -382,7 +384,7 @@ int init_data(void)
 
 void dump_inode(struct inode_t *i)
 {
-	printf("%"PRIu64": %s\n", (uint64_t)i->inode, i->path);
+	printf(out_str("%"PRIu64": %s\n", "%"PRIu64"|%s\n"), (uint64_t)i->inode, i->path);
 }
 
 int dump_inodes_cmd(const char *args)
@@ -409,7 +411,7 @@ int check_duplicate_inodes(void)
 
 void dump_extent(struct extent_t *i)
 {
-	printf("%"PRIu64": %"PRIu64" -> %"PRIu64" (%"PRIu64")\n", (uint64_t)i->inode, i->start, i->start + i->length - 1, i->length);
+	printf(out_str("%"PRIu64": %"PRIu64" -> %"PRIu64" (%"PRIu64")\n", "%"PRIu64"|%"PRIu64"|%"PRIu64"|%"PRIu64"\n"), (uint64_t)i->inode, i->start, i->start + i->length - 1, i->length);
 }
 
 int dump_extents_cmd(const char *args)
@@ -493,7 +495,8 @@ void free_blockmap(struct map_context_t *ctxt)
 
 void print_blockmap(struct map_context_t *ctxt)
 {
-	printf("Map:\n%s\nBlocks per map character: %'u; Blocks: %'"PRIu64"\n", ctxt->map, ctxt->blocks_per_char, ctxt->blocks);
+	float fragmentation = (((float)num_extents - num_inodes) / num_extents) * 100.0;
+	printf("Map:\n%s\nblocks per map character: %u; blocks: %"PRIu64"; inodes: %"PRIu64"; extents: %"PRIu64"; fragmentation: %.2f%%\n", ctxt->map, ctxt->blocks_per_char, ctxt->blocks, (uint64_t)num_inodes, (uint64_t)num_extents, fragmentation);
 }
 
 int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*block_fn)(struct map_context_t *ctxt, void *data), void *data)
@@ -542,6 +545,12 @@ int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*
 		if (c->block_usage[i] != c->blocks_per_char)
 			c->map[i] = tolower(c->map[i]);
 	}
+
+	/* sum blocks found */
+	c->blocks_found = 0;
+	for (i = 0; i < nr_chars; i++)
+		if (c->map[i] != '-')
+			c->blocks_found++;
 
 	*ctxt = c;
 	return 0;
@@ -611,15 +620,15 @@ int find_inode_blocks(struct map_context_t *ctxt, void *data)
 				key.inode = extent->inode;
 				inode = bsearch(&key, inodes, num_inodes, sizeof(*inodes), compare_inodes);
 				if (inode) {
-					printf("File %s ", inode->path);
+					printf(out_str("File %s ", "%s|"), inode->path);
 					break;
 				}
 				/* not found?  fall through */
 			default:
-				printf("Inode %"PRIu64" ", extent->inode);
+				printf(out_str("Inode %"PRIu64" ", "%"PRIu64"|"), extent->inode);
 			}
 
-			printf("maps to blocks %"PRIu64"-%"PRIu64".\n", extent->start, extent->start + extent->length);
+			printf(out_str("maps to blocks %"PRIu64"-%"PRIu64".\n", "%"PRIu64"|%"PRIu64"\n"), extent->start, extent->start + extent->length);
 		}
 
 		for (i = 0; i < extent->length; i++) {
@@ -718,7 +727,10 @@ loop_end:
 	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &ctxt);
 	if (ret)
 		goto err;
-	print_blockmap(mctxt);
+	if (mctxt->blocks_found)
+		print_blockmap(mctxt);
+	else
+		fprintf(stderr, "%s: No inodes found.\n", args);
 	free(mctxt);
 
 err:
@@ -762,14 +774,13 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 				if (!ictxt->run_valid || ictxt->run_inode != key.inode) {
 					/* inode changed, print run */
 					if (ictxt->run_valid)
-						printf("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", ictxt->run_first_block, ictxt->run_last_block, ictxt->run_file_path);
+						printf(out_str("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", "%"PRIu64"|%"PRIu64"|%s\n"), ictxt->run_first_block, ictxt->run_last_block, ictxt->run_file_path);
 					ictxt->run_inode = key.inode;
 					ictxt->run_first_block = block;
 					ictxt->run_file_path = inode->path;
 					ictxt->run_valid = 1;
 				}
 				ictxt->run_last_block = block;
-				//printf("Block %"PRIu64" maps to %s.\n", block, inode->path);
 				break;
 			}
 		}
@@ -819,8 +830,11 @@ loop_end:
 	if (ret)
 		goto err;
 	if (ctxt.run_valid)
-		printf("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", ctxt.run_first_block, ctxt.run_last_block, ctxt.run_file_path);
-	print_blockmap(mctxt);
+		printf(out_str("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", "%"PRIu64"|%"PRIu64"|%s\n"), ctxt.run_first_block, ctxt.run_last_block, ctxt.run_file_path);
+	if (mctxt->blocks_found)
+		print_blockmap(mctxt);
+	else
+		fprintf(stderr, "%s: No blocks found.\n", args);
 	free(mctxt);
 
 err:
@@ -906,7 +920,8 @@ loop_end:
 	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &ctxt);
 	if (ret)
 		goto err;
-	print_blockmap(mctxt);
+	if (mctxt->blocks_found)
+		print_blockmap(mctxt);
 	free(mctxt);
 
 err:
@@ -970,7 +985,8 @@ loop_end:
 	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &recursive_file_ctxt);
 	if (ret)
 		goto err;
-	print_blockmap(mctxt);
+	if (mctxt->blocks_found)
+		print_blockmap(mctxt);
 	free(mctxt);
 
 err:
@@ -1068,6 +1084,7 @@ void print_cmdline_help(const char *progname)
 	printf("-q: Print overview and exit.\n");
 	printf("-w: Print the map to be /width/ letters long.\n");
 	printf("-f: Force the use of FIBMAP instead of FIEMAP (slow!).\n");
+	printf("-m: Print output in machine readable format.\n");
 }
 
 int main(int argc, char *argv[])
@@ -1085,8 +1102,11 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	while ((opt = getopt(argc, argv, "fqw:")) != -1) {
+	while ((opt = getopt(argc, argv, "mfqw:")) != -1) {
 		switch (opt) {
+		case 'm':
+			machine_mode = 1;
+			break;
 		case 'f':
 			force_fibmap = 1;
 			break;

@@ -27,7 +27,8 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.31"
+VERSION = "gfilemapper v0.33"
+PROMPT_STRING = "filemapper> "
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -183,9 +184,34 @@ class gfilemapper_window(object):
 		self.status_bar.pop(0)
 		self.status_bar.push(0, str)
 
+	def report_errors(self, willdie):
+		msg = ""
+		x = self.driver.read_error_line()
+		while x != "":
+			msg = msg + x + "\n"
+			x = self.driver.read_error_line()
+		msg = msg + "\n"
+		if willdie:
+			msg = msg + "FileMapper will now exit."
+		else:
+			msg = msg + "FileMapper will try to continue."
+		md = gtk.MessageDialog(type = gtk.MESSAGE_ERROR, buttons = gtk.BUTTONS_CLOSE, message_format = msg)
+		md.set_title("FileMapper Errors")
+		md.run()
+		md.hide()
+
+	def is_prompt(self, str):
+		if str == PROMPT_STRING:
+			return True
+		return False
+
 	def read_until_prompt(self):
-		self.driver.wait_for_prompt("filemapper> ")
-		print "prompt!"
+		res = self.driver.wait_for_prompt(PROMPT_STRING)
+		if res == False:
+			self.report_errors(True)
+			sys.exit(1)
+		if self.driver.has_errors():
+			self.report_errors(False)
 
 	def overview_filter(self, args):
 		self.driver.writeln("o")
@@ -196,15 +222,16 @@ class gfilemapper_window(object):
 	def files_filter(self, args):
 		self.driver.writeln("f " + args)
 		self.read_until_prompt()
-		str = self.driver.read_output_line()
 
 		model = gtk.TreeStore(gobject.TYPE_STRING, gobject.TYPE_UINT64, gobject.TYPE_UINT64)
 		self.set_detail_columns(model, ["File", "Start", "End"])
 
+		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
 		while len(str) and str != "Map:":
-			cols = str.split()
-			blocks = cols[5].split("-")
-			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
+			cols = str.split("|")
+			model.append(None, [cols[0], int(cols[1]), int(cols[2])])
 			str = self.driver.read_output_line()
 
 		self.detail_list.set_model(model)
@@ -218,10 +245,11 @@ class gfilemapper_window(object):
 		self.set_detail_columns(model, ["File", "Start", "End"])
 
 		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
 		while len(str) and str != "Map:":
-			cols = str.split()
-			blocks = cols[5].split("-")
-			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
+			cols = str.split("|")
+			model.append(None, [cols[0], int(cols[1]), int(cols[2])])
 			str = self.driver.read_output_line()
 
 		self.detail_list.set_model(model)
@@ -245,10 +273,11 @@ class gfilemapper_window(object):
 		self.set_detail_columns(model, ["Start", "End", "File"])
 
 		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
 		while len(str) and str != "Map:":
-			cols = str.split()
-			blocks = cols[1].split("-")
-			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
+			cols = str.split("|")
+			model.append(None, [int(cols[0]), int(cols[1]), cols[2]])
 			str = self.driver.read_output_line()
 
 		self.detail_list.set_model(model)
@@ -262,10 +291,11 @@ class gfilemapper_window(object):
 		self.set_detail_columns(model, ["Start", "End", "File"])
 
 		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
 		while len(str) and str != "Map:":
-			cols = str.split()
-			blocks = cols[1].split("-")
-			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
+			cols = str.split("|")
+			model.append(None, [int(cols[0]), int(cols[1]), cols[2]])
 			str = self.driver.read_output_line()
 
 		self.detail_list.set_model(model)
@@ -279,10 +309,11 @@ class gfilemapper_window(object):
 		self.set_detail_columns(model, ["Inode", "Start", "End"])
 
 		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
 		while len(str) and str != "Map:":
-			cols = str.split()
-			blocks = cols[5].split("-")
-			model.append(None, [cols[1], int(blocks[0]), int(blocks[1].strip("."))])
+			cols = str.split("|")
+			model.append(None, [cols[0], int(cols[1]), int(cols[2])])
 			str = self.driver.read_output_line()
 
 		self.detail_list.set_model(model)
@@ -366,18 +397,33 @@ class process_driver:
 		self.outputstr = ""
 		self.errorstr = ""
 
+	def has_errors(self):
+		if len(self.errorstr) > 0 or len(self.errors) > 0:
+			return True
+		return False
+
 	def prompt_seen(self, prompt):
 		if len(self.outputstr) > 0:
 			if self.outputstr == prompt:
 				return True
 			return False
+
 		if len(self.outputs) > 0:
 			if self.outputs[-1] == prompt:
 				return True
+
+		if self.has_errors():
+			return None
+
 		return False
 
 	def wait_for_prompt(self, prompt):
-		while self.process.poll() == None and not self.prompt_seen(prompt):
+		while True:
+			res = self.prompt_seen(prompt)
+			if self.process.poll() != None or res == None:
+				return False
+			if res == True:
+				return True
 			self.output_waiter.acquire()
 			self.output_waiter.wait()
 			self.output_waiter.release()
@@ -439,8 +485,7 @@ class process_driver:
 
 if __name__ == "__main__":
 	print VERSION
-	cmd = ["gksudo", "./filemapper"]
-	cmd = ["./filemapper"]
+	cmd = ["./filemapper", "-m"]
 	title = "FileMapper -"
 	if len(sys.argv) > 1:
 		cmd = cmd + sys.argv[1:]
