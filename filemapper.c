@@ -19,12 +19,14 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/statvfs.h>
+#include <sys/vfs.h>
+#include <linux/magic.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.35\n"
+#define PROGNAME	"filemapper v0.36\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -95,7 +97,8 @@ static int save_argc;
 static char **save_argv;
 static struct inode_context_t recursive_file_ctxt;
 static unsigned int map_width = 2048;
-static struct statvfs fs_stat;
+static struct statvfs vfs_stat;
+static struct statfs fs_stat;
 static struct stat fs_root_stat;
 static unsigned int blk_shift;
 static struct extent_t *extents;
@@ -162,6 +165,7 @@ int filefrag_fibmap(ino_t inode, const char *path)
 	int phys_block, i, num_blocks;
 	int ret = 0;
 	int added = 0;
+	unsigned int block_size_num, block_size_den;
 	struct stat fileinfo;
 	struct fiemap_extent fake_extent;
 
@@ -189,6 +193,26 @@ int filefrag_fibmap(ino_t inode, const char *path)
 
 	/* now loop through all blocks */
 	block_size = fileinfo.st_blksize;
+
+	/*
+	 * QUIRK: Various fs drivers return FIBMAP numbers in various units:
+	 * - vfat: hw sectors
+	 * - ext3/4: fs blocks
+	 * (since we're faking FIEMAPs, we have to convert to byte ranges)
+	 */
+	switch (fs_stat.f_type) {
+	case MSDOS_SUPER_MAGIC:
+		block_size_num = 512;
+		block_size_den = 1;
+		break;
+	case EXT3_SUPER_MAGIC:
+		block_size_num = block_size;
+		block_size_den = 1;
+		break;
+	default:
+		block_size_num = block_size_den = 1;
+	}
+
 	fake_extent.fe_flags = 0;
 	num_blocks = (fileinfo.st_size + (block_size - 1)) / block_size;
 	fake_extent.fe_length = fake_extent.fe_physical = 0;
@@ -209,14 +233,14 @@ int filefrag_fibmap(ino_t inode, const char *path)
 		/* try to merge adjacent physical blocks */
 		if (last_phys_block < 0) {
 			fake_extent.fe_length = 0;
-			fake_extent.fe_physical = (uint64_t)phys_block * block_size;
+			fake_extent.fe_physical = (uint64_t)phys_block * block_size_num / block_size_den;
 		} else if (phys_block != last_phys_block + 1) {
 			added++;
 			ret = add_extent(inode, &fake_extent);
 			if (ret)
 				goto out;
 			fake_extent.fe_length = 0;
-			fake_extent.fe_physical = (uint64_t)phys_block * block_size;
+			fake_extent.fe_physical = (uint64_t)phys_block * block_size_num / block_size_den;
 		}
 		last_phys_block = phys_block;
 		fake_extent.fe_length += block_size;
@@ -275,7 +299,7 @@ int filefrag_fiemap(ino_t inode, const char *path)
 			goto out;
 		}
 
-		/* If 0 extents are returned, then more ioctls are not needed */
+		/* If 0 extents are returned, no more ioctls are needed */
 		if (fiemap->fm_mapped_extents == 0)
 			break;
 
@@ -489,7 +513,7 @@ int find_underlying_block_count(uint64_t *count)
 		goto out;
 	}
 
-	*count = sz / fs_stat.f_bsize;
+	*count = sz / vfs_stat.f_bsize;
 out:
 	close(fd);
 	return res;
@@ -1111,7 +1135,7 @@ void print_cmdline_help(const char *progname)
 int main(int argc, char *argv[])
 {
 	int opt, i, ret = 0, shell = 1;
-	struct statvfs arg_fs_stat;
+	struct statvfs arg_vfs_stat;
 	char cmd[BUF_SIZE];
 
 	ret = init_data();
@@ -1147,24 +1171,29 @@ int main(int argc, char *argv[])
 	}
 
 	/* collect fs data to ensure we don't go outside one fs */
-	ret = statvfs(argv[optind], &fs_stat);
+	ret = statfs(argv[optind], &fs_stat);
 	if (ret) {
 		perror(argv[optind]);
 		goto err;
 	}
-	blk_shift = int_log2(fs_stat.f_frsize);
-	if (fs_stat.f_frsize != fs_stat.f_bsize) {
+	ret = statvfs(argv[optind], &vfs_stat);
+	if (ret) {
+		perror(argv[optind]);
+		goto err;
+	}
+	blk_shift = int_log2(vfs_stat.f_frsize);
+	if (vfs_stat.f_frsize != vfs_stat.f_bsize) {
 		fprintf(stderr, "Fragment size != block size.  Hrm...\n");
 	}
 
 	for (i = optind + 1; i < argc; i++) {
-		ret = statvfs(argv[i], &arg_fs_stat);
+		ret = statvfs(argv[i], &arg_vfs_stat);
 		if (ret) {
 			perror(argv[i]);
 			goto err;
 		}
 
-		if (memcmp(&arg_fs_stat, &fs_stat, sizeof(fs_stat))) {
+		if (memcmp(&arg_vfs_stat, &vfs_stat, sizeof(vfs_stat))) {
 			fprintf(stderr, "Error: One filesystem at a time!\n");
 			ret = -ENOENT;
 			goto err;
