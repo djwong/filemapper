@@ -24,7 +24,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.33\n"
+#define PROGNAME	"filemapper v0.34\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -650,16 +650,17 @@ int parse_range(char *str, unsigned long *start, unsigned long *end, const char 
 
 	errno = 0;
 	x = strtoul(str, &endptr, 0);
-	if (str[0] == '-' || errno) {
+	if (str[0] == '-' || errno || endptr == str) {
 		fprintf(stderr, "%s: Invalid start %s.\n", str, label);
 		return -EINVAL;
 	}
 	y = x;
 
 	if (*endptr == '-' && *(++endptr) != 0 && *endptr != '-') {
+		str = endptr;
 		errno = 0;
-		y = strtoul(endptr, NULL, 0);
-		if (errno) {
+		y = strtoul(str, &endptr, 0);
+		if (errno || endptr == str) {
 			fprintf(stderr, "%s: Invalid end %s.\n", endptr, label);
 			return -EINVAL;
 		}
