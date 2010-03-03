@@ -23,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.26\n"
+#define PROGNAME	"filemapper v0.27\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -933,6 +933,7 @@ int width_cmd(const char *args)
 {
 	long x;
 
+	errno = 0;
 	x = strtol(args, NULL, 0);
 	if (errno || x < 1) {
 		fprintf(stderr, "%s: Invalid width.\n", args);

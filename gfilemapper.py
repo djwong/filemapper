@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.26"
+VERSION = "gfilemapper v0.27"
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
