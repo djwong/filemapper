@@ -27,10 +27,15 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
+VERSION = "gfilemapper v0.26"
+
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
 
 	def __init__(self, driver, title):
+		default_restriction = 4
+		default_font = "Anonymous Pro,DejaVu Sans Mono,Consolas,Lucida Console,monospace 8"
+
 		self.title = title
 		self.window_tree = gtk.glade.XML("gfilemapper.glade", "main_window")
 		self.window = self.window_tree.get_widget("main_window")
@@ -39,34 +44,38 @@ class gfilemapper_window(object):
 			"on_filter_btn_clicked": self.set_filter,
 			"on_restriction_list_changed": self.set_filter_type,
 			"on_pull_selection_btn_clicked": self.pull_selection_btn,
-			"on_addfile_btn_clicked": self.add_file_btn}
+			"on_addfile_btn_clicked": self.add_file_btn,
+			"on_set_font_btn_clicked": self.set_font_btn}
 		self.window_tree.signal_autoconnect(events)
 		self.window.connect("destroy", self.close_app)
 
 		self.map = self.window_tree.get_widget("map_text")
-		self.map.modify_font(pango.FontDescription("Anonymous Pro,DejaVu Sans Mono,Consolas,Lucida Console,monospace 8"))
+		self.map.modify_font(pango.FontDescription(default_font))
 		self.map_buffer = self.map.get_buffer()
 
 		self.restriction_list = self.window_tree.get_widget("restriction_list")
 		self.restriction_text = self.window_tree.get_widget("restriction_text")
 		self.addfile_btn = self.window_tree.get_widget("addfile_btn")
+		self.filter_btn = self.window_tree.get_widget("filter_btn")
 		self.pull_selection_btn = self.window_tree.get_widget("pull_selection_btn")
+		self.set_font_btn = self.window_tree.get_widget("set_font_btn")
 		self.detail_list = self.window_tree.get_widget("detail_list")
 		self.detail_list.set_headers_clickable(True)
+		self.old_restrictions = ["", "", "", "", "", "", "2048", default_font]
+		self.old_restriction = default_restriction
 
 		self.driver = driver
 		self.read_map()
 
 		self.window.show_all()
-		self.restriction_list.set_active(4)
+		self.restriction_list.set_active(default_restriction)
 		self.set_filter_type(None)
 		self.filter_descr = "Overview"
 		self.set_window_title()
 
 	def set_filter_type(self, widget):
-		ui_elements = [[False, False, False], [True, False, False], [True, False, True], [True, False, False], [True, True, False], [True, False, True]]
 		idx = self.restriction_list.get_active()
-		self.set_filter_ui(ui_elements[idx])
+		self.set_filter_ui(idx)
 
 	def pull_selection_btn(self, widget):
 		iter = self.map.get_buffer().get_selection_bounds()
@@ -103,7 +112,30 @@ class gfilemapper_window(object):
 			x = x + fname
 		self.restriction_text.set_text(x)
 
-	def set_filter_ui(self, flags):
+	def set_font_btn(self, widget):
+		fsd = gtk.FontSelectionDialog("Set Font")
+		fsd.set_font_name(self.restriction_text.get_text())
+		result = fsd.run()
+		fsd.hide()
+		if result == gtk.RESPONSE_OK:
+			self.restriction_text.set_text(fsd.get_font_name())
+			self.map.modify_font(pango.FontDescription(fsd.get_font_name()))
+
+	def set_filter_ui(self, idx):
+		ui_elements = [ [False, False, False, False, "_Filter"],
+				[True, False, False, False, "_Filter"],
+				[True, False, True, False, "_Filter"],
+				[True, False, False, False, "_Filter"],
+				[True, True, False, False, "_Filter"],
+				[True, False, True, False, "_Filter"],
+				[True, False, False, False, "_Set Width"],
+				[False, False, False, True, None]]
+		flags = ui_elements[idx]
+
+		self.old_restrictions[self.old_restriction] = self.restriction_text.get_text()
+		self.restriction_text.set_text(self.old_restrictions[idx])
+		self.old_restriction = idx
+
 		if flags[0]:
 			self.restriction_text.show()
 		else:
@@ -118,6 +150,17 @@ class gfilemapper_window(object):
 			self.addfile_btn.show()
 		else:
 			self.addfile_btn.hide()
+
+		if flags[3]:
+			self.set_font_btn.show()
+		else:
+			self.set_font_btn.hide()
+
+		if flags[4] != None:
+			self.filter_btn.set_label(flags[4])
+			self.filter_btn.show()
+		else:
+			self.filter_btn.hide()
 
 	def close_app(self, widget):
 		gtk.main_quit()
@@ -143,6 +186,7 @@ class gfilemapper_window(object):
 		self.driver.writeln("o")
 		self.set_detail_columns(None, [])
 		self.read_map()
+		self.filter_descr = "Overview"
 
 	def files_filter(self, args):
 		self.driver.writeln("f " + args)
@@ -233,13 +277,24 @@ class gfilemapper_window(object):
 
 		self.read_map_to_display()
 
+	def set_map_width(self, args):
+		self.driver.writeln("w " + args)
+		self.read_until_prompt()
+		self.overview_filter("")
+
+	def set_font(self, args):
+		pass
+
 	def set_filter(self, widget):
-		filters = [self.overview_filter, self.blocks_filter, self.files_filter, self.inodes_filter, self.map_blocks_filter, self.file_trees_filter]
+		filters = [self.overview_filter, self.blocks_filter,
+			   self.files_filter, self.inodes_filter,
+			   self.map_blocks_filter, self.file_trees_filter,
+			   self.set_map_width, self.set_font]
 		idx = self.restriction_list.get_active()
 		filter = filters[idx]
 		args = self.restriction_text.get_text()
-		filter(args)
 		self.filter_descr = self.restriction_list.get_active_text() + ": " + self.restriction_text.get_text()
+		filter(args)
 		self.set_window_title()
 
 	def set_window_title(self):
@@ -357,6 +412,7 @@ class process_driver:
 					self.errorstr = last
 
 if __name__ == "__main__":
+	print VERSION
 	cmd = ["gksudo", "./filemapper"]
 	cmd = ["./filemapper"]
 	title = "FileMapper -"
