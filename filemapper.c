@@ -217,7 +217,7 @@ int filefrag_fibmap(ino_t inode, const char *path)
 		break;
 	default:
 		if (!fib_weirdness_warning)
-			fprintf(stderr, "WARNING: Unknown filesystem %lx.  FIBMAP data may be incorrect.\n", fs_stat.f_type);
+			fprintf(stderr, "WARNING: Unknown filesystem %lx.  FIBMAP data may be incorrect.\n", (unsigned long)fs_stat.f_type);
 		fib_weirdness_warning = 1;
 		block_size_num = block_size;
 		block_size_den = 1;
@@ -674,7 +674,7 @@ int find_inode_blocks(struct map_context_t *ctxt, void *data)
 				}
 				/* not found?  fall through */
 			default:
-				printf(out_str("Inode %"PRIu64" ", "%"PRIu64"|"), extent->inode);
+				printf(out_str("Inode %"PRIu64" ", "%"PRIu64"|"), (uint64_t)extent->inode);
 			}
 
 			printf(out_str("maps to blocks %"PRIu64"-%"PRIu64".\n", "%"PRIu64"|%"PRIu64"\n"), extent->start, extent->start + extent->length);
@@ -693,6 +693,39 @@ loop_end:
 	return 0;
 }
 
+int parse_long_range(char *str, unsigned long long *start, unsigned long long *end, const char *label)
+{
+	char *endptr;
+	unsigned long long x, y;
+
+	errno = 0;
+	x = strtoull(str, &endptr, 0);
+	if (str[0] == '-' || errno || endptr == str) {
+		fprintf(stderr, "%s: Invalid start %s.\n", str, label);
+		return -EINVAL;
+	}
+	y = x;
+
+	if (*endptr == '-' && *(++endptr) != 0 && *endptr != '-') {
+		str = endptr;
+		errno = 0;
+		y = strtoull(str, &endptr, 0);
+		if (errno || endptr == str) {
+			fprintf(stderr, "%s: Invalid end %s.\n", endptr, label);
+			return -EINVAL;
+		}
+	}
+
+	if (y < x) {
+		unsigned long long t = x;
+		x = y;
+		y = t;
+	}
+
+	*start = x;
+	*end = y;
+	return 0;
+}
 
 int parse_range(char *str, unsigned long *start, unsigned long *end, const char *label)
 {
@@ -863,7 +896,7 @@ int generic_block_command(const char *args, const char *name, int (*block_fn)(st
 		if (!parse_verbosity(tok, &ctxt.verbose))
 			goto loop_end;
 
-		if (parse_range(tok, &x, &y, name))
+		if (parse_long_range(tok, &x, &y, name))
 			goto loop_end;
 
 		ctxt.blocks = realloc(ctxt.blocks, (ctxt.num_blocks + 1) * sizeof(*ctxt.blocks));
