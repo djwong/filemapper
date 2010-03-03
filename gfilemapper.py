@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.28"
+VERSION = "gfilemapper v0.29"
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -241,13 +241,14 @@ class gfilemapper_window(object):
 		self.driver.writeln("m " + args)
 		self.read_until_prompt()
 
-		model = gtk.TreeStore(gobject.TYPE_UINT64, gobject.TYPE_STRING)
-		self.set_detail_columns(model, ["Block", "File"])
+		model = gtk.TreeStore(gobject.TYPE_UINT64, gobject.TYPE_UINT64, gobject.TYPE_STRING)
+		self.set_detail_columns(model, ["Start", "End", "File"])
 
 		str = self.driver.read_output_line()
 		while len(str) and str != "Map:":
 			cols = str.split()
-			model.append(None, [int(cols[1]), cols[4].strip(".")])
+			blocks = cols[1].split("-")
+			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
 			str = self.driver.read_output_line()
 
 		self.read_map_to_display()
@@ -256,13 +257,14 @@ class gfilemapper_window(object):
 		self.driver.writeln("b " + args)
 		self.read_until_prompt()
 
-		model = gtk.TreeStore(gobject.TYPE_UINT64, gobject.TYPE_STRING)
-		self.set_detail_columns(model, ["Block", "File"])
+		model = gtk.TreeStore(gobject.TYPE_UINT64, gobject.TYPE_UINT64, gobject.TYPE_STRING)
+		self.set_detail_columns(model, ["Start", "End", "File"])
 
 		str = self.driver.read_output_line()
 		while len(str) and str != "Map:":
 			cols = str.split()
-			model.append(None, [int(cols[1]), cols[4].strip(".")])
+			blocks = cols[1].split("-")
+			model.append(None, [int(blocks[0]), int(blocks[1]), cols[4].strip(".")])
 			str = self.driver.read_output_line()
 
 		self.read_map_to_display()

@@ -23,7 +23,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.28\n"
+#define PROGNAME	"filemapper v0.29\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -73,6 +73,12 @@ struct block_context_t {
 	struct block_pair_t *blocks;
 	unsigned int num_blocks;
 	int verbose;
+
+	int run_valid;
+	uint64_t run_first_block;
+	uint64_t run_last_block;
+	ino_t run_inode;
+	char *run_file_path;
 };
 
 #define ALLOC_SIZE		4096
@@ -739,8 +745,21 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 				/* ...unless the user wants the filename */
 				key.inode = extent->inode;
 				inode = bsearch(&key, inodes, num_inodes, sizeof(*inodes), compare_inodes);
-				if (inode)
-					printf("Block %"PRIu64" maps to %s.\n", block, inode->path);
+				if (!inode)
+					break;
+
+				/* print runs of blocks */
+				if (!ictxt->run_valid || ictxt->run_inode != key.inode) {
+					/* inode changed, print run */
+					if (ictxt->run_valid)
+						printf("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", ictxt->run_first_block, ictxt->run_last_block, ictxt->run_file_path);
+					ictxt->run_inode = key.inode;
+					ictxt->run_first_block = block;
+					ictxt->run_file_path = inode->path;
+					ictxt->run_valid = 1;
+				}
+				ictxt->run_last_block = block;
+				//printf("Block %"PRIu64" maps to %s.\n", block, inode->path);
 				break;
 			}
 		}
@@ -785,9 +804,12 @@ loop_end:
 	}
 
 	/* print pretty block map */
+	ctxt.run_valid = 0;
 	ret = generate_blockmap(map_width, &mctxt, block_fn, &ctxt);
 	if (ret)
 		goto err;
+	if (ctxt.run_valid)
+		printf("Blocks %"PRIu64"-%"PRIu64" map to %s.\n", ctxt.run_first_block, ctxt.run_last_block, ctxt.run_file_path);
 	print_blockmap(mctxt);
 	free(mctxt);
 
