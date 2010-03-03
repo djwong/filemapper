@@ -135,7 +135,7 @@ Set Font</property>
                     </child>
                     <child>
                       <widget class="GtkButton" id="pull_selection_btn">
-                        <property name="label" translatable="yes">Use _Selection</property>
+                        <property name="label" translatable="yes">Add _Selection</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">True</property>

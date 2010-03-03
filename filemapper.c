@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <search.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <inttypes.h>
@@ -23,7 +24,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.30\n"
+#define PROGNAME	"filemapper v0.31\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -50,6 +51,8 @@ struct command_t {
 
 struct map_context_t {
 	char *map;
+	uint64_t *block_usage;
+
 	uint64_t blocks;
 	unsigned int blocks_per_char;
 };
@@ -431,6 +434,8 @@ void mark_block_in_map(struct map_context_t *ctxt, ino_t inode, uint64_t block)
 		ctxt->map[map_num] |= BLOCK_UNKNOWN;
 	else
 		ctxt->map[map_num] |= val->type;
+
+	ctxt->block_usage[map_num]++;
 }
 
 int find_underlying_block_count_helper(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftw)
@@ -481,6 +486,8 @@ void free_blockmap(struct map_context_t *ctxt)
 {
 	if (ctxt->map)
 		free(ctxt->map);
+	if (ctxt->block_usage)
+		free(ctxt->block_usage);
 	free(ctxt);
 }
 
@@ -500,8 +507,9 @@ int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*
 	memset(c, 0, sizeof (*c));
 
 	/* go find the blocks to highlight */
+	c->block_usage = calloc(nr_chars, sizeof (*c->block_usage));
 	c->map = malloc(nr_chars + 1);
-	if (!c->map) {
+	if (!c->map || !c->block_usage) {
 		ret = -ENOMEM;
 		goto err;
 	}
@@ -528,9 +536,11 @@ int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*
 		else if (c->map[i] == BLOCK_UNKNOWN)
 			c->map[i] = 'U';
 		else if (!c->map[i])
-			c->map[i] = '.';
+			c->map[i] = '-';
 		else
-			c->map[i] = 'X';
+			c->map[i] = 'B';
+		if (c->block_usage[i] != c->blocks_per_char)
+			c->map[i] = tolower(c->map[i]);
 	}
 
 	*ctxt = c;
@@ -1015,7 +1025,7 @@ int help_cmd(const char *args)
 	printf("recursive	Print block usage of specific filesystem subtrees.\n");
 	printf("width		Changes the width of the overview bar (currently %d).\n", map_width);
 	printf("\n");
-	printf("In the overview, D=directory, F=file, U=unknown, X=multiple, and .=empty\n");
+	printf("In the overview, D=directory, F=file, U=unknown, B=both, and -=empty\n");
 	print_summary();
 
 	return 0;

@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.30"
+VERSION = "gfilemapper v0.31"
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -178,7 +178,6 @@ class gfilemapper_window(object):
 
 	def read_map_to_display(self):
 		str = self.driver.read_output_line()
-		str = str.replace('.', '-')
 		self.map_buffer.set_text(str)
 		str = self.driver.read_output_line()
 		self.status_bar.pop(0)
