@@ -24,7 +24,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.34\n"
+#define PROGNAME	"filemapper v0.35\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -55,6 +55,7 @@ struct map_context_t {
 	uint64_t blocks_found;
 	uint64_t blocks;
 	unsigned int blocks_per_char;
+	unsigned int map_length;
 };
 
 struct inode_pair_t {
@@ -106,6 +107,7 @@ static dev_t underlying_dev;
 static char *underlying_dev_path;
 static int force_fibmap = 0;
 static int machine_mode = 0;
+static int ignore_buggy_filesystems = 0;
 
 int int_log2(int arg)
 {
@@ -345,8 +347,10 @@ int process_file(const char *path, const struct stat *sb, int typeflag, struct F
 	if (ret)
 		ret = filefrag_fibmap(inode->inode, inode->path);
 	/* forget inodes with no extent data */
-	if (ret)
+	if (ret) {
+		free(inode->path);
 		num_inodes--;
+	}
 	/* forget but don't kill the search if we get a positive error */
 	if (ret > 0)
 		ret = 0;
@@ -425,10 +429,15 @@ int dump_extents_cmd(const char *args)
 	return 0;
 }
 
-void mark_block_in_map(struct map_context_t *ctxt, ino_t inode, uint64_t block)
+int mark_block_in_map(struct map_context_t *ctxt, ino_t inode, uint64_t block)
 {
 	struct inode_t key, *val;
 	uint64_t map_num = block / ctxt->blocks_per_char;
+
+	if (map_num >= ctxt->map_length) {
+		fprintf(stderr, "ERROR: Filesystem reports inode %"PRIu64" has a block %"PRIu64" beyond the end at %"PRIu64"!\n", (uint64_t)inode, block, ctxt->blocks);
+		return (ignore_buggy_filesystems ? 0 : -EINVAL);
+	}
 
 	key.inode = inode;
 	val = bsearch(&key, inodes, num_inodes, sizeof(*val), compare_inodes);
@@ -438,6 +447,8 @@ void mark_block_in_map(struct map_context_t *ctxt, ino_t inode, uint64_t block)
 		ctxt->map[map_num] |= val->type;
 
 	ctxt->block_usage[map_num]++;
+
+	return 0;
 }
 
 int find_underlying_block_count_helper(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftw)
@@ -522,6 +533,7 @@ int generate_blockmap(unsigned int nr_chars, struct map_context_t **ctxt, int (*
 	if (ret)
 		goto err;
 
+	c->map_length = nr_chars;
 	c->blocks_per_char = c->blocks / nr_chars;
 	if (c->blocks % nr_chars)
 		c->blocks_per_char++;
@@ -563,11 +575,13 @@ int find_all_blocks(struct map_context_t *ctxt, void *data)
 {
 	struct extent_t *extent = extents;
 	struct extent_t *end = extents + num_extents;
-	int i;
+	int i, ret;
 
 	while (extent != end) {
 		for (i = 0; i < extent->length; i++) {
-			mark_block_in_map(ctxt, extent->inode, extent->start + i);
+			ret = mark_block_in_map(ctxt, extent->inode, extent->start + i);
+			if (ret)
+				return ret;
 		}
 		extent++;
 	}
@@ -596,7 +610,7 @@ int find_inode_blocks(struct map_context_t *ctxt, void *data)
 	struct inode_context_t *ictxt = data;
 	struct extent_t *extent = extents;
 	struct extent_t *end = extents + num_extents;
-	int i;
+	int i, ret;
 
 	if (!ictxt->num_inodes)
 		return -ENOENT;
@@ -632,7 +646,9 @@ int find_inode_blocks(struct map_context_t *ctxt, void *data)
 		}
 
 		for (i = 0; i < extent->length; i++) {
-			mark_block_in_map(ctxt, extent->inode, extent->start + i);
+			ret = mark_block_in_map(ctxt, extent->inode, extent->start + i);
+			if (ret)
+				return ret;
 		}
 
 loop_end:
@@ -746,7 +762,7 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 	struct extent_t *end = extents + num_extents;
 	struct inode_t key, *inode;
 	uint64_t block;
-	int i, j;
+	int i, j, ret;
 
 	if (!ictxt->num_blocks)
 		return -ENOENT;
@@ -761,7 +777,10 @@ int find_blocks(struct map_context_t *ctxt, void *data)
 					continue;
 
 				/* if we find the block, we can skip to the next one... */
-				mark_block_in_map(ctxt, extent->inode, block);
+				ret = mark_block_in_map(ctxt, extent->inode, block);
+				if (ret)
+					return ret;
+
 				if (!ictxt->verbose)
 					break;
 
@@ -1081,11 +1100,12 @@ static struct command_t commands[] = {
 void print_cmdline_help(const char *progname)
 {
 	printf(PROGNAME);
-	printf("Usage: %s [-q] [-w width] path [paths...]\n", progname);
+	printf("Usage: %s [-qmbf] [-w width] path [paths...]\n", progname);
 	printf("-q: Print overview and exit.\n");
 	printf("-w: Print the map to be /width/ letters long.\n");
 	printf("-f: Force the use of FIBMAP instead of FIEMAP (slow!).\n");
 	printf("-m: Print output in machine readable format.\n");
+	printf("-b: Ignore obviously incorrect FIEMAP/FIBMAP results.\n");
 }
 
 int main(int argc, char *argv[])
@@ -1103,8 +1123,11 @@ int main(int argc, char *argv[])
 		return ret;
 	}
 
-	while ((opt = getopt(argc, argv, "mfqw:")) != -1) {
+	while ((opt = getopt(argc, argv, "mbfqw:")) != -1) {
 		switch (opt) {
+		case 'b':
+			ignore_buggy_filesystems = 1;
+			break;
 		case 'm':
 			machine_mode = 1;
 			break;
