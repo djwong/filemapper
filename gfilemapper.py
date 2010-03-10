@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.37"
+VERSION = "gfilemapper v0.38"
 PROMPT_STRING = "filemapper> "
 
 class gfilemapper_window(object):
@@ -42,11 +42,12 @@ class gfilemapper_window(object):
 		self.window = self.window_tree.get_widget("main_window")
 		events = {
 			"on_main_window_destroy": self.close_app,
-			"on_filter_btn_clicked": self.set_filter,
+			"on_filter_btn_clicked": self.set_filter_clicked,
 			"on_restriction_list_changed": self.set_filter_type,
-			"on_pull_selection_btn_clicked": self.pull_selection_btn,
-			"on_addfile_btn_clicked": self.add_file_btn,
-			"on_set_font_btn_clicked": self.set_font_btn}
+			"on_pull_selection_btn_clicked": self.pull_selection_btn_clicked,
+			"on_addfile_btn_clicked": self.add_file_btn_clicked,
+			"on_set_font_btn_clicked": self.set_font_btn_clicked,
+			"on_clear_btn_clicked": self.clear_btn_clicked}
 		self.window_tree.signal_autoconnect(events)
 		self.window.connect("destroy", self.close_app)
 
@@ -62,10 +63,14 @@ class gfilemapper_window(object):
 		self.set_font_btn = self.window_tree.get_widget("set_font_btn")
 		self.detail_list = self.window_tree.get_widget("detail_list")
 		self.status_bar = self.window_tree.get_widget("status_bar")
+		self.clear_btn = self.window_tree.get_widget("clear_btn")
+		self.detail_label = self.window_tree.get_widget("detail_label")
+		self.detail_frame = self.window_tree.get_widget("detail_frame")
 		self.status_bar.push(0, "Working...")
 		self.detail_list.set_headers_clickable(True)
 		self.old_restrictions = ["", "", "", "", "", "", "2048", default_font]
 		self.old_restriction = default_restriction
+		self.have_filter = 0
 
 		self.driver = driver
 		self.read_until_prompt()
@@ -81,7 +86,7 @@ class gfilemapper_window(object):
 		idx = self.restriction_list.get_active()
 		self.set_filter_ui(idx)
 
-	def pull_selection_btn(self, widget):
+	def pull_selection_btn_clicked(self, widget):
 		iter = self.map.get_buffer().get_selection_bounds()
 		if len(iter) == 0:
 			x = self.map.get_buffer().get_property("cursor-position")
@@ -97,7 +102,7 @@ class gfilemapper_window(object):
 			x = x + " "
 		self.restriction_text.set_text(x + text)
 
-	def add_file_btn(self, widget):
+	def add_file_btn_clicked(self, widget):
 		fcd = gtk.FileChooserDialog("View File Blocks")
 		fcd.add_button("OK", 0)
 		fcd.add_button("Cancel", 1)
@@ -116,7 +121,7 @@ class gfilemapper_window(object):
 			x = x + fname
 		self.restriction_text.set_text(x)
 
-	def set_font_btn(self, widget):
+	def set_font_btn_clicked(self, widget):
 		fsd = gtk.FontSelectionDialog("Set Font")
 		fsd.set_font_name(self.restriction_text.get_text())
 		result = fsd.run()
@@ -126,14 +131,14 @@ class gfilemapper_window(object):
 			self.map.modify_font(pango.FontDescription(fsd.get_font_name()))
 
 	def set_filter_ui(self, idx):
-		ui_elements = [ [False, False, False, False, "_Filter"],
-				[True, False, False, False, "_Filter"],
-				[True, False, True, False, "_Filter"],
-				[True, False, False, False, "_Filter"],
-				[True, True, False, False, "_Filter"],
-				[True, False, True, False, "_Filter"],
-				[True, False, False, False, "_Set Width"],
-				[False, False, False, True, None]]
+		ui_elements = [ [False, False, False, False, "_See Overview", False, ""],
+				[True, False, False, False, "_Set Criteria", True, "Block to File Mapping"],
+				[True, False, True, False, "_Set Criteria", True, "File to Block Mapping"],
+				[True, False, False, False, "_Set Criteria", True, "Inode to Block Mapping"],
+				[True, True, False, False, "_Set Criteria", True, "Map Block to File Mapping"],
+				[True, False, True, False, "_Set Criteria", True, "File to Block Mapping"],
+				[True, False, False, False, "_Set Map Length", False, None],
+				[False, False, False, True, None, False, None]]
 		flags = ui_elements[idx]
 
 		self.old_restrictions[self.old_restriction] = self.restriction_text.get_text()
@@ -165,6 +170,19 @@ class gfilemapper_window(object):
 			self.filter_btn.show()
 		else:
 			self.filter_btn.hide()
+
+		if flags[5]:
+			self.clear_btn.show()
+		else:
+			self.clear_btn.hide()
+
+		# Now do the UI elements for the current filter
+		flags = ui_elements[self.have_filter]
+		if flags[6] != None and flags[6] != "":
+			self.detail_label.set_label("<b>" + flags[6] + "</b>")
+			self.detail_frame.show()
+		elif flags[6] == "":
+			self.detail_frame.hide()
 
 	def close_app(self, widget):
 		self.driver.terminate()
@@ -218,6 +236,7 @@ class gfilemapper_window(object):
 		self.set_detail_columns(None, [])
 		self.read_map()
 		self.filter_descr = "Overview"
+		self.have_filter = 0
 
 	def files_filter(self, args):
 		self.driver.writeln("f " + args)
@@ -236,6 +255,7 @@ class gfilemapper_window(object):
 
 		self.detail_list.set_model(model)
 		self.read_map_to_display()
+		self.have_filter = 2
 
 	def file_trees_filter(self, args):
 		self.driver.writeln("r " + args)
@@ -254,6 +274,7 @@ class gfilemapper_window(object):
 
 		self.detail_list.set_model(model)
 		self.read_map_to_display()
+		self.have_filter = 5
 
 	def set_detail_columns(self, model, columns):
 		for column in self.detail_list.get_columns():
@@ -263,6 +284,9 @@ class gfilemapper_window(object):
 		renderer = gtk.CellRendererText()
 		for i in range(0, len(columns)):
 			column = gtk.TreeViewColumn(columns[i], renderer, text = i)
+			column.set_clickable(True)
+			column.set_resizable(True)
+			column.set_sort_column_id(i)
 			self.detail_list.append_column(column)
 
 	def map_blocks_filter(self, args):
@@ -282,6 +306,7 @@ class gfilemapper_window(object):
 
 		self.detail_list.set_model(model)
 		self.read_map_to_display()
+		self.have_filter = 4
 
 	def blocks_filter(self, args):
 		self.driver.writeln("b " + args)
@@ -300,6 +325,7 @@ class gfilemapper_window(object):
 
 		self.detail_list.set_model(model)
 		self.read_map_to_display()
+		self.have_filter = 1
 
 	def inodes_filter(self, args):
 		self.driver.writeln("i " + args)
@@ -318,16 +344,17 @@ class gfilemapper_window(object):
 
 		self.detail_list.set_model(model)
 		self.read_map_to_display()
+		self.have_filter = 3
 
 	def set_map_width(self, args):
 		self.driver.writeln("w " + args)
 		self.read_until_prompt()
-		self.overview_filter("")
+		self.clear_btn_clicked(None)
 
 	def set_font(self, args):
 		pass
 
-	def set_filter(self, widget):
+	def set_filter_clicked(self, widget):
 		filters = [self.overview_filter, self.blocks_filter,
 			   self.files_filter, self.inodes_filter,
 			   self.map_blocks_filter, self.file_trees_filter,
@@ -338,6 +365,12 @@ class gfilemapper_window(object):
 		self.filter_descr = self.restriction_list.get_active_text() + ": " + self.restriction_text.get_text()
 		filter(args)
 		self.set_window_title()
+		idx = self.restriction_list.get_active()
+		self.set_filter_ui(idx)
+
+	def clear_btn_clicked(self, widget):
+		self.restriction_list.set_active(0)
+		self.set_filter_clicked(None)
 
 	def set_window_title(self):
 		self.window.set_title(self.title + " - " + self.filter_descr)
@@ -423,6 +456,7 @@ class process_driver:
 			if self.process.poll() != None or res == None:
 				return False
 			if res == True:
+				print "prompt!"
 				return True
 			self.output_waiter.acquire()
 			self.output_waiter.wait()
