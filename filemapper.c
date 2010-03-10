@@ -26,7 +26,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.38\n"
+#define PROGNAME	"filemapper v0.39\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -508,6 +508,11 @@ int find_underlying_block_count(uint64_t *count)
 	if (res < 0)
 		return res;
 	else if (!res || !underlying_dev_path) {
+		if (ignore_buggy_filesystems) {
+			/* horrible hack: assume the fs does not consume more than ~20% of the blocks */
+			*count = vfs_stat.f_blocks * 6 / 5;
+			return 0;
+		}
 		fprintf(stderr, "%s: Could not find underlying block device.\n", save_argv[optind]);
 		return -ENOENT;
 	}

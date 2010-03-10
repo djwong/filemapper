@@ -27,8 +27,9 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.38"
+VERSION = "gfilemapper v0.39"
 PROMPT_STRING = "filemapper> "
+DEFAULT_MAP_WIDTH = 3600
 
 class gfilemapper_window(object):
 	"""Main gfilemapper window."""
@@ -52,6 +53,7 @@ class gfilemapper_window(object):
 		self.window.connect("destroy", self.close_app)
 
 		self.map = self.window_tree.get_widget("map_text")
+		self.map.get_buffer().connect("notify::has-selection", self.map_selection_changed)
 		self.map.modify_font(pango.FontDescription(default_font))
 		self.map_buffer = self.map.get_buffer()
 
@@ -68,7 +70,7 @@ class gfilemapper_window(object):
 		self.detail_frame = self.window_tree.get_widget("detail_frame")
 		self.status_bar.push(0, "Working...")
 		self.detail_list.set_headers_clickable(True)
-		self.old_restrictions = ["", "", "", "", "", "", "2048", default_font]
+		self.old_restrictions = ["", "", "", "", "", "", "%d" % DEFAULT_MAP_WIDTH, default_font]
 		self.old_restriction = default_restriction
 		self.have_filter = 0
 
@@ -175,6 +177,8 @@ class gfilemapper_window(object):
 			self.clear_btn.show()
 		else:
 			self.clear_btn.hide()
+
+		self.validate_map_selection()
 
 		# Now do the UI elements for the current filter
 		flags = ui_elements[self.have_filter]
@@ -375,6 +379,13 @@ class gfilemapper_window(object):
 	def set_window_title(self):
 		self.window.set_title(self.title + " - " + self.filter_descr)
 
+	def map_selection_changed(self, widget, buf):
+		self.validate_map_selection()
+
+	def validate_map_selection(self):
+		make_sel = self.map.get_buffer().get_has_selection()
+		self.pull_selection_btn.set_sensitive(make_sel)
+
 class process_driver:
 	def __init__(self, subprocess):
 		self.outputstr = ""
@@ -522,7 +533,7 @@ class process_driver:
 
 if __name__ == "__main__":
 	print VERSION
-	cmd = ["./filemapper", "-m"]
+	cmd = ["./filemapper", "-m", "-w", "%d" % DEFAULT_MAP_WIDTH]
 	title = "FileMapper -"
 	if len(sys.argv) > 1:
 		cmd = cmd + sys.argv[1:]
