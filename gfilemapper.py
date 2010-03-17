@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.39"
+VERSION = "gfilemapper v0.40"
 PROMPT_STRING = "filemapper> "
 DEFAULT_MAP_WIDTH = 3600
 
@@ -139,6 +139,7 @@ class gfilemapper_window(object):
 				[True, False, False, False, "_Set Criteria", True, "Inode to Block Mapping"],
 				[True, True, False, False, "_Set Criteria", True, "Map Block to File Mapping"],
 				[True, False, True, False, "_Set Criteria", True, "File to Block Mapping"],
+				[True, False, True, False, "_Set Criteria", True, "File to Block Mapping"],
 				[True, False, False, False, "_Set Map Length", False, None],
 				[False, False, False, True, None, False, None]]
 		flags = ui_elements[idx]
@@ -241,6 +242,25 @@ class gfilemapper_window(object):
 		self.read_map()
 		self.filter_descr = "Overview"
 		self.have_filter = 0
+
+	def walk_path_filter(self, args):
+		self.driver.writeln("t " + args)
+		self.read_until_prompt()
+
+		model = gtk.TreeStore(gobject.TYPE_STRING, gobject.TYPE_UINT64, gobject.TYPE_UINT64)
+		self.set_detail_columns(model, ["File", "Start", "End"])
+
+		str = self.driver.read_output_line()
+		if self.is_prompt(str):
+			return
+		while len(str) and str != "Map:":
+			cols = str.split("|")
+			model.append(None, [cols[0], int(cols[1]), int(cols[2])])
+			str = self.driver.read_output_line()
+
+		self.detail_list.set_model(model)
+		self.read_map_to_display()
+		self.have_filter = 6
 
 	def files_filter(self, args):
 		self.driver.writeln("f " + args)
@@ -362,6 +382,7 @@ class gfilemapper_window(object):
 		filters = [self.overview_filter, self.blocks_filter,
 			   self.files_filter, self.inodes_filter,
 			   self.map_blocks_filter, self.file_trees_filter,
+			   self.walk_path_filter,
 			   self.set_map_width, self.set_font]
 		idx = self.restriction_list.get_active()
 		filter = filters[idx]

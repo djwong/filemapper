@@ -134,6 +134,7 @@ Files
 Inodes
 Map Blocks
 File Tree
+Walk Path
 Set Map Length
 Set Map Font</property>
                         <signal name="changed" handler="on_restriction_list_changed"/>

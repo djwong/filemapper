@@ -26,7 +26,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.39\n"
+#define PROGNAME	"filemapper v0.40\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -961,6 +961,33 @@ int map_blocks_cmd(const char *args)
 	return generic_block_command(args, "map block", find_map_blocks);
 }
 
+int add_to_inode_contexts(const char *fname, struct inode_context_t *ctxt)
+{
+	int ret;
+	struct stat buf;
+	
+	ret = lstat(fname, &buf);
+	if (ret) {
+		perror(fname);
+		return -errno;
+	}
+
+	if (buf.st_dev != fs_root_stat.st_dev) {
+		fprintf(stderr, "%s: Not on the same filesystem.\n", fname);
+		return -ENODEV;
+	}
+
+	ctxt->inodes = realloc(ctxt->inodes, (ctxt->num_inodes + 1) * sizeof(*ctxt->inodes));
+	if (!ctxt->inodes)
+		return -ENOMEM;
+
+	ctxt->inodes[ctxt->num_inodes].start = buf.st_ino;
+	ctxt->inodes[ctxt->num_inodes].end = buf.st_ino;
+	ctxt->num_inodes++;
+
+	return 0;
+}
+
 int file_cmd(const char *args)
 {
 	struct map_context_t *mctxt;
@@ -974,8 +1001,6 @@ int file_cmd(const char *args)
 	ctxt.print_path = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
-		struct stat buf;
-
 		if (!strcmp(tok, "--")) {
 			read_args = 0;
 			goto loop_end;
@@ -984,26 +1009,9 @@ int file_cmd(const char *args)
 		if (read_args && !parse_verbosity(tok, &ctxt.verbose))
 			goto loop_end;
 
-		ret = lstat(tok, &buf);
-		if (ret) {
-			perror(tok);
-			goto loop_end;
-		}
-
-		if (buf.st_dev != fs_root_stat.st_dev) {
-			fprintf(stderr, "%s: Not on the same filesystem.\n", tok);
-			goto loop_end;
-		}
-
-		ctxt.inodes = realloc(ctxt.inodes, (ctxt.num_inodes + 1) * sizeof(*ctxt.inodes));
-		if (!ctxt.inodes) {
-			ret = -ENOMEM;
+		ret = add_to_inode_contexts(tok, &ctxt);
+		if (ret == -ENOMEM)
 			goto err;
-		}
-
-		ctxt.inodes[ctxt.num_inodes].start = buf.st_ino;
-		ctxt.inodes[ctxt.num_inodes].end = buf.st_ino;
-		ctxt.num_inodes++;
 
 loop_end:
 		tok_str = NULL;
@@ -1087,6 +1095,67 @@ err:
 	return ret;
 }
 
+int walk_path_cmd(const char *args)
+{
+	struct map_context_t *mctxt;
+	struct inode_context_t ctxt;
+	int ret = 0, read_args = 1;
+	char *tok, *tok_str = (char *)args;
+	char *p, *q;
+
+	ctxt.inodes = NULL;
+	ctxt.num_inodes = 0;
+	ctxt.verbose = 1;
+	ctxt.print_path = 1;
+
+	while ((tok = strtok(tok_str, " "))) {
+		if (!strcmp(tok, "--")) {
+			read_args = 0;
+			goto loop_end;
+		}
+
+		if (read_args && !parse_verbosity(tok, &ctxt.verbose))
+			goto loop_end;
+
+		p = tok;
+		do {
+			q = strchr(p, '/');
+			if (!q)
+				break;
+			else if (q == p) {
+				p = q + 1;
+				continue;
+			}
+			*q = 0;
+			ret = add_to_inode_contexts(tok, &ctxt);
+			if (ret == -ENOMEM)
+				goto err;
+			else if (ret != 0)
+				continue;
+			*q = '/';
+			p = q + 1;
+			if (*p == 0)
+				goto loop_end;
+		} while (1);
+		add_to_inode_contexts(tok, &ctxt);
+
+loop_end:
+		tok_str = NULL;
+	}
+
+	/* print pretty block map */
+	ret = generate_blockmap(map_width, &mctxt, find_inode_blocks, &ctxt);
+	if (ret)
+		goto err;
+	if (mctxt->blocks_found)
+		print_blockmap(mctxt);
+	free(mctxt);
+
+err:
+	free(ctxt.inodes);
+	return ret;
+}
+
 int quit_cmd(const char *args)
 {
 	exit(0);
@@ -1133,6 +1202,7 @@ int help_cmd(const char *args)
 	printf("quit		Terminates this program.\n");
 	printf("recursive	Print block usage of specific filesystem subtrees.\n");
 	printf("width		Changes the width of the overview bar (currently %d).\n", map_width);
+	printf("tree		Display block usage of every component in a file path.\n");
 	printf("\n");
 	printf("In the overview, D=directory, F=file, U=unknown, B=both, and -=empty\n");
 	print_summary();
@@ -1152,6 +1222,7 @@ static struct command_t commands[] = {
 	{"recursive", recursive_file_cmd},
 	{"blocks", blocks_cmd},
 	{"map_blocks", map_blocks_cmd},
+	{"tree", walk_path_cmd},
 
 	/* short command format */
 	{"o", overview_cmd},
@@ -1166,6 +1237,7 @@ static struct command_t commands[] = {
 	{"r", recursive_file_cmd},
 	{"b", blocks_cmd},
 	{"m", map_blocks_cmd},
+	{"t", walk_path_cmd},
 
 	{NULL, NULL},
 };
@@ -1178,7 +1250,7 @@ void print_cmdline_help(const char *progname)
 	printf("-w: Print the map to be /width/ letters long.\n");
 	printf("-f: Force the use of FIBMAP instead of FIEMAP (slow!).\n");
 	printf("-m: Print output in machine readable format.\n");
-	printf("-b: Ignore obviously incorrect FIEMAP/FIBMAP results.\n");
+	printf("-b: Ignore obviously incorrect FIEMAP/FIBMAP results and other broken behaviors.\n");
 }
 
 int main(int argc, char *argv[])
