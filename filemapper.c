@@ -26,7 +26,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.40\n"
+#define PROGNAME	"filemapper v0.41\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
@@ -69,6 +69,7 @@ struct inode_context_t {
 	unsigned int num_inodes;
 	int verbose;
 	int print_path;
+	int complain;
 };
 
 struct block_pair_t {
@@ -790,6 +791,7 @@ int inode_cmd(const char *args)
 	ctxt.num_inodes = 0;
 	ctxt.verbose = 1;
 	ctxt.print_path = 0;
+	ctxt.complain = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
 		unsigned long x, y;
@@ -968,12 +970,14 @@ int add_to_inode_contexts(const char *fname, struct inode_context_t *ctxt)
 	
 	ret = lstat(fname, &buf);
 	if (ret) {
-		perror(fname);
+		if (ctxt->complain)
+			perror(fname);
 		return -errno;
 	}
 
 	if (buf.st_dev != fs_root_stat.st_dev) {
-		fprintf(stderr, "%s: Not on the same filesystem.\n", fname);
+		if (ctxt->complain)
+			fprintf(stderr, "%s: Not on the same filesystem.\n", fname);
 		return -ENODEV;
 	}
 
@@ -999,6 +1003,7 @@ int file_cmd(const char *args)
 	ctxt.num_inodes = 0;
 	ctxt.verbose = 1;
 	ctxt.print_path = 1;
+	ctxt.complain = 1;
 
 	while ((tok = strtok(tok_str, " "))) {
 		if (!strcmp(tok, "--")) {
@@ -1107,6 +1112,7 @@ int walk_path_cmd(const char *args)
 	ctxt.num_inodes = 0;
 	ctxt.verbose = 1;
 	ctxt.print_path = 1;
+	ctxt.complain = 0;
 
 	while ((tok = strtok(tok_str, " "))) {
 		if (!strcmp(tok, "--")) {
@@ -1122,7 +1128,7 @@ int walk_path_cmd(const char *args)
 			q = strchr(p, '/');
 			if (!q)
 				break;
-			else if (q == p) {
+			else if (q == tok) {
 				p = q + 1;
 				continue;
 			}
@@ -1130,8 +1136,6 @@ int walk_path_cmd(const char *args)
 			ret = add_to_inode_contexts(tok, &ctxt);
 			if (ret == -ENOMEM)
 				goto err;
-			else if (ret != 0)
-				continue;
 			*q = '/';
 			p = q + 1;
 			if (*p == 0)

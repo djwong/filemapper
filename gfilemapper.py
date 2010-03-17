@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.40"
+VERSION = "gfilemapper v0.41"
 PROMPT_STRING = "filemapper> "
 DEFAULT_MAP_WIDTH = 3600
 
@@ -70,7 +70,7 @@ class gfilemapper_window(object):
 		self.detail_frame = self.window_tree.get_widget("detail_frame")
 		self.status_bar.push(0, "Working...")
 		self.detail_list.set_headers_clickable(True)
-		self.old_restrictions = ["", "", "", "", "", "", "%d" % DEFAULT_MAP_WIDTH, default_font]
+		self.old_restrictions = ["", "", "", "", "", "", "", "%d" % DEFAULT_MAP_WIDTH, default_font]
 		self.old_restriction = default_restriction
 		self.have_filter = 0
 
