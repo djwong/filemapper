@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 # Crappy program to drive filemapper via GUI.
-# Copyright (C) 2010 Darrick J. Wong.  All rights reserved.
+# Copyright (C) 2010-2015 Darrick J. Wong.  All rights reserved.
 # This program is licensed under the GNU General Public License, version 2.
 
 try:
@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.42"
+VERSION = "gfilemapper v0.43"
 PROMPT_STRING = "filemapper> "
 DEFAULT_MAP_WIDTH = 3600
 

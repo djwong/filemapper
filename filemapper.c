@@ -1,6 +1,6 @@
 /*
  * Crappy program to render a visual file block map.
- * Copyright (C) 2010 Darrick J. Wong.  All rights reserved.
+ * Copyright (C) 2010-2015 Darrick J. Wong.  All rights reserved.
  * (some parts shamelessly stolen from filefrag.c in e2fsprogs)
  * This program is licensed under the GNU General Public License, version 2.
  */
@@ -26,7 +26,7 @@
 #include "fiemap.h"
 #include <linux/fs.h>
 
-#define PROGNAME	"filemapper v0.42\n"
+#define PROGNAME	"filemapper v0.43\n"
 #define FS_IOC_FIEMAP	_IOWR('f', 11, struct fiemap)
 #define BLKGETSIZE64	_IOR(0x12,114,size_t)
 
