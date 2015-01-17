@@ -158,6 +158,8 @@ Set Map Font</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="invisible_char">&#x2022;</property>
+                    <property name="secondary_icon_stock">gtk-clear</property>
+                    <signal name="icon_release" handler="on_restriction_text_icon_release"/>
                   </widget>
                   <packing>
                     <property name="position">1</property>

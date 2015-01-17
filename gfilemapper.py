@@ -27,7 +27,7 @@ except ImportError, e:
 	print "Import error gfilemapper cannot start:", e
 	sys.exit(1)
 
-VERSION = "gfilemapper v0.40"
+VERSION = "gfilemapper v0.42"
 PROMPT_STRING = "filemapper> "
 DEFAULT_MAP_WIDTH = 3600
 
@@ -48,7 +48,8 @@ class gfilemapper_window(object):
 			"on_pull_selection_btn_clicked": self.pull_selection_btn_clicked,
 			"on_addfile_btn_clicked": self.add_file_btn_clicked,
 			"on_set_font_btn_clicked": self.set_font_btn_clicked,
-			"on_clear_btn_clicked": self.clear_btn_clicked}
+			"on_clear_btn_clicked": self.clear_btn_clicked,
+			"on_restriction_text_icon_release": self.clear_restriction_text_btn_clicked}
 		self.window_tree.signal_autoconnect(events)
 		self.window.connect("destroy", self.close_app)
 
@@ -59,6 +60,7 @@ class gfilemapper_window(object):
 
 		self.restriction_list = self.window_tree.get_widget("restriction_list")
 		self.restriction_text = self.window_tree.get_widget("restriction_text")
+		self.restriction_text.connect("notify::text", self.restriction_text_changed)
 		self.addfile_btn = self.window_tree.get_widget("addfile_btn")
 		self.filter_btn = self.window_tree.get_widget("filter_btn")
 		self.pull_selection_btn = self.window_tree.get_widget("pull_selection_btn")
@@ -70,7 +72,7 @@ class gfilemapper_window(object):
 		self.detail_frame = self.window_tree.get_widget("detail_frame")
 		self.status_bar.push(0, "Working...")
 		self.detail_list.set_headers_clickable(True)
-		self.old_restrictions = ["", "", "", "", "", "", "%d" % DEFAULT_MAP_WIDTH, default_font]
+		self.old_restrictions = ["", "", "", "", "", "", "", "%d" % DEFAULT_MAP_WIDTH, default_font]
 		self.old_restriction = default_restriction
 		self.have_filter = 0
 
@@ -83,6 +85,17 @@ class gfilemapper_window(object):
 		self.set_filter_type(None)
 		self.filter_descr = "Overview"
 		self.set_window_title()
+
+	def restriction_text_changed(self, widget, eh):
+		if self.restriction_text.get_text() == "":
+			val = False
+		else:
+			val = True
+
+		self.restriction_text.set_property("secondary-icon-sensitive", val)
+
+	def clear_restriction_text_btn_clicked(self, widget, pos, evt):
+		self.restriction_text.set_text("")
 
 	def set_filter_type(self, widget):
 		idx = self.restriction_list.get_active()
@@ -394,6 +407,7 @@ class gfilemapper_window(object):
 		self.set_filter_ui(idx)
 
 	def clear_btn_clicked(self, widget):
+		self.restriction_text.set_text("")
 		self.restriction_list.set_active(0)
 		self.set_filter_clicked(None)
 
