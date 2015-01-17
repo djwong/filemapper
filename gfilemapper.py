@@ -36,7 +36,7 @@ class gfilemapper_window(object):
 
 	def __init__(self, driver, title):
 		default_restriction = 4
-		default_font = "Anonymous Pro,DejaVu Sans Mono,Consolas,Lucida Console,monospace 8"
+		default_font = "Source Code Pro,Anonymous Pro,DejaVu Sans Mono,Consolas,Lucida Console,monospace 8"
 
 		self.title = title
 		self.window_tree = gtk.glade.XML("gfilemapper.glade", "main_window")
