@@ -1,7 +1,5 @@
-#!/usr/bin/python -O
-
 # Python wrapper of FIEMAP/FIBMAP ioctls.
-# Copyright (C) 2011 Darrick J. Wong.  All rights reserved.
+# Copyright (C) 2015 Darrick J. Wong.  All rights reserved.
 # Licensed under the GPLv2.
 
 import array
@@ -163,6 +161,49 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 		return fiemap2(fd, start, length, flags)
 	except:
 		yield fibmap2(fd, start, length, flags)
+
+def walk_fs(path, dir_fn, ino_fn, extent_fn):
+	'''Iterate the filesystem, looking for extent data.'''
+	def do_map(stat, path):
+		fd = os.open(path, os.O_RDONLY)
+		try:
+			for extent in fiemap2(fd):
+				extent_fn(stat, extent)
+		except:
+			for extent in fibmap2(fd):
+				extent_fn(stat, extent)
+		os.close(fd)
+
+	os.sync()
+	dev = os.stat(path).st_dev
+	for root, dirs, files in os.walk(path):
+		rstat = os.stat(root)
+		ino_fn(rstat, root, True)
+		do_map(rstat, root)
+		for xdir in dirs:
+			dname = os.path.join(root, xdir)
+			try:
+				dstat = os.stat(dname)
+			except Exception as e:
+				print(e)
+				continue
+
+			if dstat.st_dev != dev:
+				dirs.remove(xdir)
+				continue
+		for xfile in files:
+			fname = os.path.join(root, xfile)
+			try:
+				fstat = os.stat(fname)
+			except Exception as e:
+				print(e)
+				continue
+	
+			if fstat.st_dev != dev:
+				continue
+			ino_fn(fstat, fname, False)
+			do_map(fstat, fname)
+		dir_fn(rstat, dirs + files)
 
 if __name__ == '__main__':
 	import sys
