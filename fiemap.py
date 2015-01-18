@@ -73,20 +73,27 @@ _fiemap_extent = collections.namedtuple('fiemap_extent',
 	'logical physical length flags')
 
 def fiemap2(fd, start = 0, length = None, flags = 0):
-	if flags & FIEMAP_FLAG_SYNC:
-		flags &= ~FIEMAP_FLAG_SYNC
-		os.fsync(fd)
+	fe_logical = start
+	fe_length = 0
 
 	if length is None:
 		length = _UINT64_MAX
 
 	count = 512
-	b = bytearray(_struct_fiemap.pack(start, length, flags, 0, count, 0))
-	b = b + bytearray(_struct_fiemap_extent.size * count)
-	buffer_ = b
-
 	while True:
-		ret = fcntl.ioctl(fd, _FS_IOC_FIEMAP, buffer_)
+		hdr = _struct_fiemap.pack(fe_logical + fe_length, length, flags, 0, count, 0)
+		try:
+			b = bytearray(hdr)
+			b = b + bytearray(_struct_fiemap_extent.size * count)
+			buffer_ = b
+			ret = fcntl.ioctl(fd, _FS_IOC_FIEMAP, buffer_)
+		except:
+			fiemap_buffer = '%s%s' % (hdr,
+				'\0' * (_struct_fiemap_extent.size * count))
+
+			# Turn into mutable C-level array of chars
+			buffer_ = array.array('c', fiemap_buffer)
+			ret = fcntl.ioctl(fd, _FS_IOC_FIEMAP, buffer_)
 
 		if length != 0 and ret < 0:
 			raise IOError('ioctl')
@@ -158,23 +165,24 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 	if flags & FIEMAP_FLAG_FORCE_FIBMAP:
 		yield fibmap2(fd, start, length, flags)
 	try:
-		return fiemap2(fd, start, length, flags)
+		yield fiemap2(fd, start, length, flags)
 	except:
 		yield fibmap2(fd, start, length, flags)
 
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
+	flags = FIEMAP_FLAG_SYNC
+
 	def do_map(stat, path):
 		fd = os.open(path, os.O_RDONLY)
 		try:
-			for extent in fiemap2(fd):
+			for extent in fiemap2(fd, flags = flags):
 				extent_fn(stat, extent)
 		except:
-			for extent in fibmap2(fd):
+			for extent in fibmap2(fd, flags = flags):
 				extent_fn(stat, extent)
 		os.close(fd)
 
-	os.sync()
 	dev = os.stat(path).st_dev
 	for root, dirs, files in os.walk(path):
 		rstat = os.stat(root)

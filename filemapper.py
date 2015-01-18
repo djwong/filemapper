@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # Generate a sqlite database of FS data via FIEMAP
 
 import os
@@ -20,7 +20,7 @@ class fiemap_db(fmdb.fmdb):
 
 if __name__ == "__main__":
 	fmdb = fiemap_db(sys.argv[1], '/tmp/test.db')
-	fmdb.regenerate(force = False)
+	fmdb.regenerate(force = True)
 
 	if len(sys.argv) > 3:
 		print(fmdb.query_pblocks(sys.argv[2], sys.argv[3]))
