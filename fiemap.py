@@ -191,9 +191,12 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 		os.close(fd)
 
 	dev = os.lstat(path).st_dev
-	for root, dirs, files in os.walk(path):
+	# Careful - we have to pass a byte string to os.walk so that
+	# it'll return byte strings, which we can then decode ourselves.
+	# Otherwise the automatic Unicode decoding will error out.
+	for root, dirs, files in os.walk(path.encode('utf-8', 'surrogateescape')):
 		rstat = os.lstat(root)
-		ino_fn(rstat, root[prefix_len:].encode('utf-8', 'surrogateescape'))
+		ino_fn(rstat, root[prefix_len:].decode('utf-8', 'replace'))
 		do_map(rstat, root)
 		dentries = []
 		for xdir in dirs:
@@ -207,7 +210,7 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			if dstat.st_dev != dev:
 				dirs.remove(xdir)
 				continue
-			dentries.append((xdir.encode('utf-8', 'surrogateescape'), dstat))
+			dentries.append((xdir.decode('utf-8', 'replace'), dstat))
 		for xfile in files:
 			fname = os.path.join(root, xfile)
 			try:
@@ -222,9 +225,9 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 
 			if fstat.st_dev != dev:
 				continue
-			ino_fn(fstat, fname[prefix_len:].encode('utf-8', 'surrogateescape'))
+			ino_fn(fstat, fname[prefix_len:].decode('utf-8', 'replace'))
 			do_map(fstat, fname)
-			dentries.append((xfile.encode('utf-8', 'surrogateescape'), fstat))
+			dentries.append((xfile.decode('utf-8', 'replace'), fstat))
 		dir_fn(rstat, dentries)
 
 if __name__ == '__main__':

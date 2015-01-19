@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # Generate a sqlite database of FS data via FIEMAP
 
 import os
