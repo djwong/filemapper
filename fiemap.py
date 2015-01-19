@@ -113,7 +113,7 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 					buffer_[offset:offset + \
 						_struct_fiemap_extent.size])
 			yield _fiemap_extent(fe_logical, fe_physical, \
-					fe_length, fe_flags)
+					fe_length, fe_flags & ~FIEMAP_EXTENT_LAST)
 			if fe_flags & FIEMAP_EXTENT_LAST:
 				return
 			offset += _struct_fiemap_extent.size
@@ -158,8 +158,7 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 		block += 1
 
 	if fe_pblk is not None:
-		yield _fiemap_extent(fe_lblk, fe_pblk, fe_len, \
-				FIEMAP_EXTENT_LAST)
+		yield _fiemap_extent(fe_lblk, fe_pblk, fe_len, 0)
 
 def file_mappings(fd, start = 0, length = None, flags = 0):
 	if flags & FIEMAP_FLAG_FORCE_FIBMAP:
@@ -177,21 +176,23 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 		fd = os.open(path, os.O_RDONLY)
 		try:
 			for extent in fiemap2(fd, flags = flags):
-				extent_fn(stat, extent)
+				extent_fn(stat, extent, False)
+			for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
+				extent_fn(stat, extent, True)
 		except:
 			for extent in fibmap2(fd, flags = flags):
-				extent_fn(stat, extent)
+				extent_fn(stat, extent, False)
 		os.close(fd)
 
-	dev = os.stat(path).st_dev
+	dev = os.lstat(path).st_dev
 	for root, dirs, files in os.walk(path):
-		rstat = os.stat(root)
-		ino_fn(rstat, root, True)
+		rstat = os.lstat(root)
+		ino_fn(rstat, root)
 		do_map(rstat, root)
 		for xdir in dirs:
 			dname = os.path.join(root, xdir)
 			try:
-				dstat = os.stat(dname)
+				dstat = os.lstat(dname)
 			except Exception as e:
 				print(e)
 				continue
@@ -202,14 +203,18 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 		for xfile in files:
 			fname = os.path.join(root, xfile)
 			try:
-				fstat = os.stat(fname)
+				fstat = os.lstat(fname)
 			except Exception as e:
 				print(e)
 				continue
 	
+			if not stat.S_ISREG(fstat.st_mode) and \
+			   not stat.S_ISDIR(fstat.st_mode):
+				continue
+
 			if fstat.st_dev != dev:
 				continue
-			ino_fn(fstat, fname, False)
+			ino_fn(fstat, fname)
 			do_map(fstat, fname)
 		dir_fn(rstat, dirs + files)
 
