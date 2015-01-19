@@ -204,6 +204,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 			qarg.append(r[0])
 		if len(qarg) == 0:
 			return
+		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -230,6 +231,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 			qarg.append(p)
 		if len(qarg) == 0:
 			return
+		qstr = qstr + " ORDER BY path, l_off"
 		print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:

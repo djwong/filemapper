@@ -105,7 +105,7 @@ class fmcli(code.InteractiveConsole):
 					sys.exit(0)
 				return
 		print("Command '%s' not recognized." % args[0])
-		self.do_help(None)
+		self.do_help(args)
 
 	# Commands
 	def do_help(self, argv):
@@ -114,15 +114,19 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('commands', nargs = '*', \
 			help = 'Commands to look up.')
 		args = parser.parse_args(argv[1:])
+		print_cmds = False
 		if len(args.commands) == 0:
-			print("Available commands:")
-			for key in sorted(self.commands):
-				print(key[0])
-			return
+			print_cmds = True
 		for key in self.commands:
 			for cmd in args.commands:
 				if cmd in key:
 					self.commands[key]([cmd, '-h'])			
+				else:
+					print_cmds = True
+		if print_cmds:
+			print("Available commands:")
+			for key in sorted(self.commands):
+				print(key[0])
 
 	def do_overview(self, argv):
 		def overview_to_letter(ov):
@@ -213,7 +217,6 @@ class fmcli(code.InteractiveConsole):
 
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
-			res = self.fmdb.query_summary()
 			conv = {
 				'%': lambda x: x * res.total_bytes / 100,
 				'b': lambda x: x * res.block_size,
@@ -241,8 +244,11 @@ class fmcli(code.InteractiveConsole):
 			help = 'Physical offsets to look up.')
 		args = parser.parse_args(argv[1:])
 		ranges = []
+		res = self.fmdb.query_summary()
 		for arg in args.offsets:
-			if '-' in arg:
+			if arg == 'all':
+				ranges.append((0, res.total_bytes))
+			elif '-' in arg:
 				pos = arg.index('-')
 				ranges.append((n2p(arg[:pos]), n2p(arg[pos+1:])))
 			else:
@@ -258,7 +264,9 @@ class fmcli(code.InteractiveConsole):
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.cells:
-			if '-' in arg:
+			if arg == 'all':
+				ranges.append((0, self.fmdb.overview_len))
+			elif '-' in arg:
 				pos = arg.index('-')
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
@@ -295,11 +303,17 @@ class fmcli(code.InteractiveConsole):
 	def do_paths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given path.')
+		parser.add_argument('-e', action = 'count', default = 0, \
+			help = 'Exact matches only.')
 		parser.add_argument('paths', nargs = '+', \
 			help = 'Paths to look up.')
 		args = parser.parse_args(argv[1:])
 		arg = [x.replace('*', '%') for x in args.paths]
-		for ext in self.fmdb.query_paths(arg, True):
+		if args.e > 0:
+			exact = False
+		else:
+			exact = True
+		for ext in self.fmdb.query_paths(arg, exact):
 			self.print_extent(ext)
 
 	def do_machine(self, argv):
