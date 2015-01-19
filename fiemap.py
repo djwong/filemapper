@@ -9,6 +9,7 @@ import collections
 import os
 import errno
 import stat
+import itertools
 
 # From linux/fiemap.h
 FIEMAP_FLAG_SYNC = 0x0001
@@ -87,6 +88,8 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 			b = b + bytearray(_struct_fiemap_extent.size * count)
 			buffer_ = b
 			ret = fcntl.ioctl(fd, _FS_IOC_FIEMAP, buffer_)
+		except OSError:
+			raise
 		except:
 			fiemap_buffer = '%s%s' % (hdr,
 				'\0' * (_struct_fiemap_extent.size * count))
@@ -171,6 +174,9 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
 	flags = FIEMAP_FLAG_SYNC
+	prefix_len = len(path)
+	if path[prefix_len - 1] == '/':
+		prefix_len -= 1
 
 	def do_map(stat, path):
 		fd = os.open(path, os.O_RDONLY)
@@ -187,8 +193,9 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	dev = os.lstat(path).st_dev
 	for root, dirs, files in os.walk(path):
 		rstat = os.lstat(root)
-		ino_fn(rstat, root)
+		ino_fn(rstat, root[prefix_len:].encode('utf-8', 'surrogateescape'))
 		do_map(rstat, root)
+		dentries = []
 		for xdir in dirs:
 			dname = os.path.join(root, xdir)
 			try:
@@ -200,6 +207,7 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			if dstat.st_dev != dev:
 				dirs.remove(xdir)
 				continue
+			dentries.append((xdir.encode('utf-8', 'surrogateescape'), dstat))
 		for xfile in files:
 			fname = os.path.join(root, xfile)
 			try:
@@ -214,9 +222,10 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 
 			if fstat.st_dev != dev:
 				continue
-			ino_fn(fstat, fname)
+			ino_fn(fstat, fname[prefix_len:].encode('utf-8', 'surrogateescape'))
 			do_map(fstat, fname)
-		dir_fn(rstat, dirs + files)
+			dentries.append((xfile.encode('utf-8', 'surrogateescape'), fstat))
+		dir_fn(rstat, dentries)
 
 if __name__ == '__main__':
 	import sys

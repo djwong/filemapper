@@ -206,11 +206,13 @@ class fmcli(code.InteractiveConsole):
 		}
 		if self.machine:
 			print("'%s',%d,%d,%d,0x%x,'%s'" % \
-				(ext.path, ext.p_off, ext.l_off, ext.length, \
+				(ext.path.decode('utf-8', 'replace'), \
+				 ext.p_off, ext.l_off, ext.length, \
 				 ext.flags, typecodes[ext.type]))
 			return
 		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
-			(ext.path, self.format_number(ext.p_off), \
+			(ext.path.decode('utf-8', 'replace'), \
+			 self.format_number(ext.p_off), \
 			 self.format_number(ext.l_off), \
 			 self.format_number(ext.length), \
 			 ext.flags, typecodes[ext.type]))

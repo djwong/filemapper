@@ -35,10 +35,6 @@ class fmdb:
 	def __init__(self, fspath, dbpath):
 		'''Initialize a database object.'''
 		self.fspath = fspath
-		self.prefix_len = len(self.fspath)
-		if self.fspath[self.prefix_len - 1] == '/':
-			self.prefix_len -= 1
-		self.statfs = os.statvfs(fspath)
 		self.conn = sqlite3.connect(dbpath)
 		self.fs = None
 		self.overview_len = None
@@ -60,21 +56,22 @@ DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
 CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL);
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL);
-CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino), name TEXT NOT NULL);
+CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
 CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x')));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 		""")
 
 		self.fs = None
+		statfs = os.statvfs(self.fspath)
 		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', \
-				(self.fspath, self.statfs.f_bsize, \
-				 self.statfs.f_frsize, \
-				 self.statfs.f_blocks * self.statfs.f_bsize, \
-				 self.statfs.f_bfree * self.statfs.f_bsize, \
-				 self.statfs.f_bavail * self.statfs.f_bsize, \
-				 self.statfs.f_files, self.statfs.f_ffree, \
-				 self.statfs.f_favail, self.statfs.f_namemax, \
+				(self.fspath, statfs.f_bsize, \
+				 statfs.f_frsize, \
+				 statfs.f_blocks * statfs.f_bsize, \
+				 statfs.f_bfree * statfs.f_bsize, \
+				 statfs.f_bavail * statfs.f_bsize, \
+				 statfs.f_files, statfs.f_ffree, \
+				 statfs.f_favail, statfs.f_namemax, \
 				 str(datetime.datetime.today())))
 
 	def must_regenerate(self):
@@ -89,19 +86,15 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 
 	def insert_dir(self, root, dentries):
 		'''Insert a directory record into the database.'''
-		self.conn.executemany('INSERT INTO dir_t VALUES(?, ?);', \
-				[(root.st_ino, x) for x in dentries])
+		self.conn.executemany('INSERT INTO dir_t VALUES(?, ?, ?);', \
+				[(root.st_ino, name, stat.st_ino) for name, stat in dentries])
 
 	def insert_inode(self, stat, path):
 		'''Insert an inode record into the database.'''
 		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?);', \
 				(stat.st_ino,))
-		try:
-			# XXX unicode shit...
-			self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
-					(path[self.prefix_len:], stat.st_ino))
-		except:
-			print(type(path))
+		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
+				(path, stat.st_ino))
 		
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
