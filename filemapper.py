@@ -5,6 +5,7 @@ import os
 import fiemap
 import fmdb
 import fmcli
+import fmgui
 import sys
 import argparse
 
@@ -27,6 +28,7 @@ if __name__ == "__main__":
 	parser.add_argument('-l', default = 2048, type = int, help = 'Initial overview length.')
 	parser.add_argument('-d', default = '/tmp/test.db', help = 'Database file.')
 	parser.add_argument('-r', default = 0, action = 'count', help = 'Regenerate the database.')
+	parser.add_argument('-g', default = 0, action = 'count', help = 'Run the GUI.')
 	parser.add_argument('fspath', help = 'Filesystem path to examine.')
 	parser.add_argument('commands', nargs = '*', \
 		help = 'Commands to run up.')
@@ -37,7 +39,14 @@ if __name__ == "__main__":
 		f = True
 	fmdb.regenerate(f)
 	fmdb.set_overview_length(args.l)
-	fmcli = fmcli.fmcli(fmdb)
-	if args.m > 0:
-		fmcli.machine = True
-	fmcli.interact('filemapper v0.5')
+
+	if args.g > 0:
+		from PyQt4 import QtGui, uic
+		app = QtGui.QApplication([])
+		fmgui = fmgui.fmgui(fmdb)
+		sys.exit(app.exec_())
+	else:
+		fmcli = fmcli.fmcli(fmdb)
+		if args.m > 0:
+			fmcli.machine = True
+		fmcli.interact('filemapper v0.5')
