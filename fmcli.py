@@ -9,6 +9,14 @@ import os
 import argparse
 import sys
 
+typecodes = {
+	'f': 'file',
+	'd': 'directory',
+	'e': 'file map',
+	'm': 'metadata',
+	'x': 'extended attribute',
+}
+
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	"""
 	>>> split_unescape('foo,bar', ',')
@@ -53,6 +61,9 @@ def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 		ret.append(''.join(current))
 	return ret
 
+def format_number(units, num):
+	return "{:,} {}".format(int(units[2](num)), units[1])
+
 class fmcli(code.InteractiveConsole):
 	def __init__(self, fmdb, locals=None, filename="<console>", \
 		     histfile=os.path.expanduser("~/.config/fmcli-history")):
@@ -72,7 +83,7 @@ class fmcli(code.InteractiveConsole):
 			('units', 'u'): self.do_set_units,
 		}
 		self.done = False
-		self.unit = ['', 'bytes', 1]
+		self.units = ['', 'bytes', lambda x: x]
 		self.machine = False
 
 	def init_history(self, histfile):
@@ -178,9 +189,6 @@ class fmcli(code.InteractiveConsole):
 		parser.parse_args(argv[1:])
 		self.done = True
 
-	def format_number(self, num):
-		return "{:,} {}".format(int(num / self.unit[2]), self.unit[1])
-
 	def do_summary(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Display a summary of the filesystem.')
@@ -189,23 +197,16 @@ class fmcli(code.InteractiveConsole):
 		print("Summary of '%s':" % res.path)
 		print("Block size:\t{:,}".format(res.block_size))
 		print("Fragment size:\t{:,}".format(res.frag_size))
-		print("Total space:\t%s" % self.format_number(res.total_bytes))
+		print("Total space:\t%s" % format_number(self.units, res.total_bytes))
 		print("Used space:\t%s (%.0f%%)" % \
-			(self.format_number(res.total_bytes - res.free_bytes), \
+			(format_number(self.units, res.total_bytes - res.free_bytes), \
 			 100 * (1.0 - (res.free_bytes / res.total_bytes))))
-		print("Free space:\t%s" % self.format_number(res.free_bytes))
+		print("Free space:\t%s" % format_number(self.units, res.free_bytes))
 		print("Total inodes:\t{:,}".format(res.total_inodes))
 		print("Used inodes:\t{:,} ({:.0%})".format(res.total_inodes - res.free_inodes, 1.0 - (res.free_inodes / res.total_inodes)))
 		print("Free inodes:\t{:,}".format(res.free_inodes))
 
 	def print_extent(self, ext):
-		typecodes = {
-			'f': 'file',
-			'd': 'directory',
-			'e': 'file map',
-			'm': 'metadata',
-			'x': 'extended attribute',
-		}
 		if self.machine:
 			print("'%s',%d,%d,%d,0x%x,'%s'" % \
 				(ext.path, \
@@ -214,9 +215,9 @@ class fmcli(code.InteractiveConsole):
 			return
 		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
 			(ext.path, \
-			 self.format_number(ext.p_off), \
-			 self.format_number(ext.l_off), \
-			 self.format_number(ext.length), \
+			 format_number(self.units, ext.p_off), \
+			 format_number(self.units, ext.l_off), \
+			 format_number(self.units, ext.length), \
 			 ext.flags, typecodes[ext.type]))
 
 	def do_poff_to_extents(self, argv):
@@ -286,13 +287,13 @@ class fmcli(code.InteractiveConsole):
 	def do_set_units(self, argv):
 		res = self.fmdb.query_summary()
 		units = [
-			['', 'bytes', 1],
-			['B', 'blocks', res.block_size],
-			['s', 'sectors', 2 ** 9],
-			['K', 'KiB', 2 ** 10],
-			['M', 'MiB', 2 ** 20],
-			['G', 'GiB', 2 ** 30],
-			['T', 'TiB', 2 ** 40],
+			['', 'bytes', lambda x: x],
+			['s', 'sectors', lambda x: x // (2 ** 9)],
+			['B', 'blocks', lambda x: x // (res.block_size)],
+			['K', 'KiB', lambda x: x / (2 ** 10)],
+			['M', 'MiB', lambda x: x / (2 ** 20)],
+			['G', 'GiB', lambda x: x / (2 ** 30)],
+			['T', 'TiB', lambda x: x / (2 ** 40)],
 		]
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Set display units.')
@@ -302,8 +303,8 @@ class fmcli(code.InteractiveConsole):
 		for u in units:
 			if args.units.lower() == u[0].lower() or \
 			   args.units.lower() == u[1].lower():
-				self.unit = u
-				print("Units set to '%s'." % self.unit[1])
+				self.units = u
+				print("Units set to '%s'." % self.units[1])
 				return
 		print("Unrecognized unit '%s'.  Available units:" % args.units)
 		print(', '.join([x[1] for x in units]))

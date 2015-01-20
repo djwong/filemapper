@@ -1,31 +1,71 @@
-
+import sip
+sip.setapi('QVariant', 1)
 
 import sys
 from PyQt4 import QtGui, uic, QtCore
+import fmcli
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
-	def __init__(self, parent=None, *args):
+	def __init__(self, data, units, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
-		self.arraydata = [['A:', '0', '0', '100', 'moo?', 'urk']]
-		self.headerdata = ['path', 'p_off', 'l_off', 'length', 'flags', 'type']
+		self.__data = data
+		self.headers = ['Physical Offset', 'Logical Offset', \
+				'Length', 'Flags', 'Type', 'Path']
+		self.header_map = [
+			lambda x: fmcli.format_number(self.units, x.p_off),
+			lambda x: fmcli.format_number(self.units, x.l_off),
+			lambda x: fmcli.format_number(self.units, x.length),
+			lambda x: x.flags,
+			lambda x: fmcli.typecodes[x.type],
+			lambda x: x.path]
+		self.units = units
+
+	def change_units(self, new_units):
+		self.units = new_units
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(len(self.__data) - 1, 2)
+		self.dataChanged.emit(tl, br)
+
+	def revise(self, new_data):
+		olen = len(self.__data)
+		nlen = len(new_data)
+		parent = self.createIndex(-1, -1)
+		self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+		if olen > nlen:
+			self.beginRemoveRows(parent, nlen, olen)
+		elif nlen > olen:
+			self.beginInsertRows(parent, olen, nlen)
+		self.__data = new_data
+		if olen > nlen:
+			self.endRemoveRows()
+		elif nlen > olen:
+			self.endInsertRows()
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(olen - 1, len(self.headers) - 1)
+		self.dataChanged.emit(tl, br)
+		self.emit(QtCore.SIGNAL("layoutChanged()"))
 
 	def rowCount(self, parent):
-		return len(self.arraydata)
+		if not parent.isValid():
+			return len(self.__data)
+		return 0
 
 	def columnCount(self, parent):
-		return len(self.arraydata[0])
+		return len(self.headers)
 
-	def itemData(self, index, role):
+	def data(self, index, role):
 		if not index.isValid():
-			return '' #QtCore.QVariant()
+			return QtCore.QVariant()
 		elif role != QtCore.Qt.DisplayRole:
-			return '' #QtCore.QVariant()
-		return self.arraydata[index.row()][index.column()] #QtCore.QVariant(self.arraydata[index.row()][index.column()])
+			return QtCore.QVariant()
+		i = index.row()
+		j = index.column()
+		return QtCore.QVariant(self.header_map[j](self.__data[i]))
 
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
-			return self.headerdata[col] #QtCore.QVariant(self.headerdata[col])
-		return '' #QtCore.QVariant()
+			return self.headers[col]
+		return QtCore.QVariant()
 
 class fmgui(QtGui.QMainWindow):
 	def __init__(self, fmdb):
@@ -33,63 +73,144 @@ class fmgui(QtGui.QMainWindow):
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.show()
-		self.do_overview()
-		#self.extent_table.setModel(ExtentTableModel())
-		self.extent_table.setRowCount(0)
-		self.extent_table.setColumnCount(6)
-		self.extent_table.setHorizontalHeaderLabels(['Path', 'Physical Offset', 'Logical Offset', 'Length', 'Flags', 'Type'])
-		self.extent_table.resizeColumnsToContents()
+
+		# Set up the units menu
+		units = ['', 'bytes', lambda x: x]
+		self.unit_actions = self.menuUnits.actions()
+		ag = QtGui.QActionGroup(self)
+		for u in self.unit_actions:
+			u.setActionGroup(ag)
+		ag.triggered.connect(self.change_units)
+
+		# Set up the overview
+		self.overview_text.selectionChanged.connect(self.select_overview)
+
+		# Set up the views
+		self.etm = ExtentTableModel([], units)
+		self.unit_actions[0].setChecked(True)
+		self.extent_table.setModel(self.etm)
+
+		# Set up the query UI
 		self.query_btn.clicked.connect(self.run_query)
 		self.query_types = [
-			['Overview Cells', self.query_overview],
-			['Physical Offsets', self.query_poff],
-			['Inode Numbers', self.query_inodes],
-			['Path', self.query_paths],
+			['Overview Cells', self.query_overview, ''],
+			['Physical Offsets', self.query_poff, ''],
+			['Inode Numbers', self.query_inodes, ''],
+			['Path', self.query_paths, ''],
 		]
 		self.querytype_combo.insertItems(0, [x[0] for x in self.query_types])
+		self.old_querytype = 0
+		self.querytype_combo.setCurrentIndex(self.old_querytype)
+		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 
-		# set up first query
-		self.query_text.setText('651571531776')
-		self.querytype_combo.setCurrentIndex(1)
+	def start(self):
+		self.do_overview()
+
+	def change_querytype(self, idx):
+		self.query_types[self.old_querytype][2] = self.query_text.text()
+		self.query_text.setText(self.query_types[idx][2])
+		self.old_querytype = idx
+
+	def change_units(self, action):
+		idx = self.unit_actions.index(action)
+		res = self.fmdb.query_summary()
+		units = [
+			['', 'bytes', lambda x: x],
+			['s', 'sectors', lambda x: x // (2 ** 9)],
+			['B', 'blocks', lambda x: x // (res.block_size)],
+			['K', 'KiB', lambda x: x / (2 ** 10)],
+			['M', 'MiB', lambda x: x / (2 ** 20)],
+			['G', 'GiB', lambda x: x / (2 ** 30)],
+			['T', 'TiB', lambda x: x / (2 ** 40)],
+		]
+		self.etm.change_units(units[idx])
+		for u in self.unit_actions:
+			u.setChecked(False)
+		self.unit_actions[idx].setChecked(True)
+
+	def select_overview(self):
+		cursor = self.overview_text.textCursor()
+		start = cursor.selectionStart()
+		end = cursor.selectionEnd()
+		if start == end:
+			return
+		self.querytype_combo.setCurrentIndex(0)
+		self.query_text.setText("%s-%s" % (start, end - 1))
 
 	def run_query(self):
 		idx = self.querytype_combo.currentIndex()
+		args = fmcli.split_unescape(str(self.query_text.text()), ' ', ('"', "'"))
 		fn = self.query_types[idx][1]
-		fn()
+		fn(args)
 
-	def load_extent(self, row, ext):
-		typecodes = {
-			'f': 'file',
-			'd': 'directory',
-			'e': 'file map',
-			'm': 'metadata',
-			'x': 'extended attribute',
-		}
-		self.extent_table.setItem(row, 0, QtGui.QTableWidgetItem(ext.path))
-		self.extent_table.setItem(row, 1, QtGui.QTableWidgetItem('%d' % ext.p_off))
-		self.extent_table.setItem(row, 2, QtGui.QTableWidgetItem('%d' % ext.l_off))
-		self.extent_table.setItem(row, 3, QtGui.QTableWidgetItem('%d' % ext.length))
-		self.extent_table.setItem(row, 4, QtGui.QTableWidgetItem('0x%x' % ext.flags))
-		self.extent_table.setItem(row, 5, QtGui.QTableWidgetItem(typecodes[ext.type]))
+	def query_overview(self, args):
+		ranges = []
+		for arg in args:
+			if arg == 'all':
+				self.load_extents(self.fmdb.query_poff_range([]))
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+			else:
+				ranges.append(int(arg))
+		r = self.fmdb.pick_cells(ranges)
+		self.load_extents(self.fmdb.query_poff_range(r))
 
-	def query_overview(self):
-		pass
+	def query_poff(self, args):
+		def n2p(num):
+			conv = {
+				'%': lambda x: x * res.total_bytes / 100,
+				'b': lambda x: x * res.block_size,
+				'B': lambda x: x * res.block_size,
+				's': lambda x: x * (2 ** 9),
+				'S': lambda x: x * (2 ** 9),
+				'k': lambda x: x * (2 ** 10),
+				'K': lambda x: x * (2 ** 10),
+				'M': lambda x: x * (2 ** 20),
+				'm': lambda x: x * (2 ** 20),
+				'G': lambda x: x * (2 ** 30),
+				'g': lambda x: x * (2 ** 30),
+				'T': lambda x: x * (2 ** 40),
+				't': lambda x: x * (2 ** 40),
+			}
+			if num[-1] in conv:
+				fn = conv[num[-1]]
+				return int(fn(int(num[:-1])))
+			else:
+				return int(num)
 
-	def query_poff(self):
-		row = 0
-		ls = [x for x in self.fmdb.query_poff_range([])]
-		self.extent_table.setRowCount(len(ls))
-		for x in ls:
-			self.load_extent(row, x)
-			row += 1
-		self.extent_table.setRowCount(row)
-		self.extent_table.resizeColumnsToContents()
+		ranges = []
+		res = self.fmdb.query_summary()
+		for arg in args:
+			if arg == 'all':
+				self.load_extents(self.fmdb.query_poff_range([]))
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((n2p(arg[:pos]), n2p(arg[pos+1:])))
+			else:
+				ranges.append((n2p(arg), n2p(arg)))
+		self.load_extents(self.fmdb.query_poff_range(ranges))
+
+	def load_extents(self, f):
+		if isinstance(f, list):
+			new_data = f
+		else:
+			new_data = [x for x in f]
+		self.etm.revise(new_data)
+		for x in range(self.etm.columnCount(None)):
+			self.extent_table.resizeColumnToContents(x)
 
 	def query_inodes(self):
 		pass
 
-	def query_paths(self):
-		pass
+	def query_paths(self, args):
+		if '*' in args:
+			self.load_extents(self.fmdb.query_paths([], False))
+			return
+		arg = [x.replace('*', '%') for x in args]
+		self.load_extents(self.fmdb.query_paths(arg))
 
 	def do_overview(self):
 		def overview_to_letter(ov):

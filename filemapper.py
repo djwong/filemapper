@@ -44,6 +44,7 @@ if __name__ == "__main__":
 		from PyQt4 import QtGui, uic
 		app = QtGui.QApplication([])
 		fmgui = fmgui.fmgui(fmdb)
+		fmgui.start()
 		sys.exit(app.exec_())
 	else:
 		fmcli = fmcli.fmcli(fmdb)

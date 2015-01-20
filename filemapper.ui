@@ -99,7 +99,10 @@
        <item>
         <widget class="QPushButton" name="query_btn">
          <property name="text">
-          <string>Query</string>
+          <string>Show Details</string>
+         </property>
+         <property name="shortcut">
+          <string>Alt+S</string>
          </property>
          <property name="default">
           <bool>true</bool>
@@ -164,19 +167,10 @@
       <number>2</number>
      </property>
      <item row="0" column="0">
-      <widget class="QTableWidget" name="extent_table">
+      <widget class="QTreeView" name="extent_table">
        <property name="editTriggers">
         <set>QAbstractItemView::NoEditTriggers</set>
        </property>
-       <property name="showGrid">
-        <bool>false</bool>
-       </property>
-       <property name="sortingEnabled">
-        <bool>true</bool>
-       </property>
-       <attribute name="verticalHeaderVisible">
-        <bool>false</bool>
-       </attribute>
       </widget>
      </item>
     </layout>
@@ -223,6 +217,9 @@
   <action name="actionQuit">
    <property name="text">
     <string>Quit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
    </property>
    <property name="menuRole">
     <enum>QAction::QuitRole</enum>
