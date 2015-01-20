@@ -87,7 +87,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QComboBox" name="query_type">
+        <widget class="QComboBox" name="querytype_combo">
          <property name="editable">
           <bool>false</bool>
          </property>
@@ -164,7 +164,20 @@
       <number>2</number>
      </property>
      <item row="0" column="0">
-      <widget class="QTreeView" name="extent_list"/>
+      <widget class="QTableWidget" name="extent_table">
+       <property name="editTriggers">
+        <set>QAbstractItemView::NoEditTriggers</set>
+       </property>
+       <property name="showGrid">
+        <bool>false</bool>
+       </property>
+       <property name="sortingEnabled">
+        <bool>true</bool>
+       </property>
+       <attribute name="verticalHeaderVisible">
+        <bool>false</bool>
+       </attribute>
+      </widget>
      </item>
     </layout>
    </widget>
