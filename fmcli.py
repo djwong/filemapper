@@ -95,6 +95,8 @@ class fmcli(code.InteractiveConsole):
 
 	def runsource(self, source, filename='<stdin>'):
 		args = split_unescape(source, ' ', ('"', "'"))
+		if len(args) == 0:
+			return
 		for key in self.commands:
 			if args[0] in key:
 				try:
@@ -249,7 +251,9 @@ class fmcli(code.InteractiveConsole):
 		res = self.fmdb.query_summary()
 		for arg in args.offsets:
 			if arg == 'all':
-				ranges.append((0, res.total_bytes))
+				for x in self.fmdb.query_poff_range([]):
+					self.print_extent(x)
+				return
 			elif '-' in arg:
 				pos = arg.index('-')
 				ranges.append((n2p(arg[:pos]), n2p(arg[pos+1:])))
@@ -267,7 +271,9 @@ class fmcli(code.InteractiveConsole):
 		ranges = []
 		for arg in args.cells:
 			if arg == 'all':
-				ranges.append((0, self.fmdb.overview_len))
+				for x in self.fmdb.query_poff_range([]):
+					self.print_extent(x)
+				return
 			elif '-' in arg:
 				pos = arg.index('-')
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
@@ -310,6 +316,10 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('paths', nargs = '+', \
 			help = 'Paths to look up.')
 		args = parser.parse_args(argv[1:])
+		if '*' in args.paths:
+			for ext in self.fmdb.query_paths([], False):
+				self.print_extent(ext)
+			return
 		arg = [x.replace('*', '%') for x in args.paths]
 		if args.e > 0:
 			exact = False

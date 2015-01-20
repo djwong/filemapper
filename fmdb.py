@@ -39,12 +39,13 @@ class fmdb:
 		self.fs = None
 		self.overview_len = None
 		self.cached_overview = None
+		self.result_batch_size = 512
 
 	def __del__(self):
 		'''Destroy database object.'''
 		self.conn.close()
 
-	def reset(self):
+	def start_update(self):
 		'''Prepare a database for new data.'''
 		self.conn.executescript("""
 PRAGMA page_size = 4096;
@@ -54,7 +55,7 @@ DROP TABLE IF EXISTS inode_t;
 DROP TABLE IF EXISTS path_t;
 DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
-CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL);
+CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL);
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL);
 CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
@@ -64,7 +65,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
-		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', \
+		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);', \
 				(self.fspath, statfs.f_bsize, \
 				 statfs.f_frsize, \
 				 statfs.f_blocks * statfs.f_bsize, \
@@ -74,13 +75,27 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 				 statfs.f_favail, statfs.f_namemax, \
 				 str(datetime.datetime.today())))
 
+	def end_update(self):
+		'''Finish updating a database.'''
+
+		self.conn.executescript("""
+CREATE INDEX path_ino_i ON path_t(ino);
+CREATE INDEX extent_poff_i ON extent_t(p_off);
+		""")
+		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
+		self.conn.commit()
+
 	def must_regenerate(self):
 		'''Decide if we need to regenerate the database.'''
 		try:
 			cur = self.conn.cursor()
-			cur.execute('SELECT path, timestamp FROM fs_t WHERE path = ?', (self.fspath,))
+			cur.execute('SELECT path, finished FROM fs_t WHERE path = ?', (self.fspath,))
 			results = cur.fetchall()
-			return len(results) != 1
+			if len(results) != 1:
+				return True
+			if results[0][1] == 0:
+				return True
+			return False
 		except:
 			return True
 
@@ -123,7 +138,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 
 		self.query_summary()
 		cur = self.conn.cursor()
-		cur.arraysize = 512
+		cur.arraysize = self.result_batch_size
 		overview = [overview_block() for x in range(1, self.overview_len)]
 
 		t0 = datetime.datetime.today()
@@ -186,7 +201,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 	def query_poff_range(self, ranges):
 		'''Query extents spanning a range of bytes.'''
 		cur = self.conn.cursor()
-		cur.arraysize = 512
+		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
@@ -195,8 +210,6 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 			cond = 'OR'
 			qarg.append(r[1])
 			qarg.append(r[0])
-		if len(qarg) == 0:
-			return
 		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
 		while True:
@@ -210,7 +223,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 	def query_paths(self, paths, wildcards = True):
 		'''Query extents used by a given path.'''
 		cur = self.conn.cursor()
-		cur.arraysize = 512
+		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		if wildcards:
 			op = 'LIKE'
@@ -222,8 +235,6 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 			qstr = qstr + ' %s path %s ?' % (cond, op)
 			cond = 'OR'
 			qarg.append(p)
-		if len(qarg) == 0:
-			return
 		qstr = qstr + " ORDER BY path, l_off"
 		print(qstr, qarg)
 		cur.execute(qstr, qarg)

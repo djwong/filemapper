@@ -13,12 +13,12 @@ class fiemap_db(fmdb.fmdb):
 		'''Regenerate the database.'''
 		if not force and not self.must_regenerate():
 			return
-		self.reset()
+		self.start_update()
 		fiemap.walk_fs(self.fspath,
 			self.insert_dir,
 			self.insert_inode,
 			self.insert_extent)
-		self.conn.commit()
+		self.end_update()
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(prog = sys.argv[0],
