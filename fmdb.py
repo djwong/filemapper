@@ -59,8 +59,8 @@ CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, f
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL);
 CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
-CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x')));
-CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
+CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x')), p_end INTEGER NOT NULL);
+CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 		""")
 
 		self.fs = None
@@ -80,7 +80,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 
 		self.conn.executescript("""
 CREATE INDEX path_ino_i ON path_t(ino);
-CREATE INDEX extent_poff_i ON extent_t(p_off);
+CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 		""")
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
 		self.conn.commit()
@@ -114,10 +114,10 @@ CREATE INDEX extent_poff_i ON extent_t(p_off);
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
 		code = stmode_to_type(stat, is_xattr)
-		self.conn.execute('INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?);', \
+		self.conn.execute('INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?);', \
 			    (stat.st_ino, extent.physical, extent.logical, \
 			     extent.flags, extent.length, \
-			     code))
+			     code, extent.physical + extent.length - 1))
 
 	def set_overview_length(self, length):
 		'''Set the overview length.'''
@@ -206,7 +206,7 @@ CREATE INDEX extent_poff_i ON extent_t(p_off);
 		qarg = []
 		cond = 'WHERE'
 		for r in ranges:
-			qstr = qstr + ' %s (p_off <= ? AND p_off + length >= ?)' % cond
+			qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
 			cond = 'OR'
 			qarg.append(r[1])
 			qarg.append(r[0])
