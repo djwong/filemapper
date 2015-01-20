@@ -81,6 +81,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 		self.conn.executescript("""
 CREATE INDEX path_ino_i ON path_t(ino);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
+CREATE INDEX extent_ino_i ON extent_t(ino);
 		""")
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
 		self.conn.commit()
