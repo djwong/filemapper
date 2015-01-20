@@ -60,7 +60,7 @@ CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL);
 CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
 CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x')), p_end INTEGER NOT NULL);
-CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
+CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 		""")
 
 		self.fs = None
@@ -183,7 +183,7 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 		return self.fs
 
 	def pick_cells(self, ranges):
-		'''Convert a range of cells to byte ranges.'''
+		'''Convert ranges of cells to ranges of bytes.'''
 		sbc = self.bytes_per_cell
 
 		for i in ranges:
@@ -199,7 +199,7 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 				yield (i[0] * sbc, (i[1] + 1) * sbc - 1)
 
 	def query_poff_range(self, ranges):
-		'''Query extents spanning a range of bytes.'''
+		'''Query extents spanning ranges of bytes.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
@@ -242,6 +242,28 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				return
+			for row in rows:
+				yield poff_row(row[0], row[1], row[2], row[3], \
+						row[4], row[5])
+
+	def query_inodes(self, ranges):
+		'''Query extents given ranges of inodes.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
+		qarg = []
+		cond = 'WHERE'
+		for r in ranges:
+			qstr = qstr + ' %s ino BETWEEN ? AND ?' % cond
+			cond = 'OR'
+			qarg.append(r[0])
+			qarg.append(r[1])
+		qstr = qstr + " ORDER BY path, l_off"
+		cur.execute(qstr, qarg)
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
 			for row in rows:
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])

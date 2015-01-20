@@ -75,6 +75,7 @@ class fmcli(code.InteractiveConsole):
 			('cell', 'c'): self.do_cell_to_extents,
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
+			('inode', 'i'): self.do_inodes,
 			('machine', 'm'): self.do_machine,
 			('overview', 'o'): self.do_overview,
 			('phys', 'p'): self.do_poff_to_extents,
@@ -339,6 +340,26 @@ class fmcli(code.InteractiveConsole):
 			self.machine = True
 		else:
 			self.machine = False		
+
+	def do_inodes(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of inodes.')
+		parser.add_argument('inodes', nargs = '+', \
+			help = 'Inodes to look up.')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.inodes:
+			if arg == 'all':
+				for x in self.fmdb.query_inodes([]):
+					self.print_extent(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+			else:
+				ranges.append((int(arg), int(arg)))
+		for x in self.fmdb.query_inodes(ranges):
+			self.print_extent(x)
 
 if __name__ == '__main__':
 	fmcli().interact()

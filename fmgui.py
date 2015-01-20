@@ -72,6 +72,7 @@ class fmgui(QtGui.QMainWindow):
 		super(fmgui, self).__init__()
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
+		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
 		self.show()
 
 		# Set up the units menu
@@ -202,8 +203,18 @@ class fmgui(QtGui.QMainWindow):
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
 
-	def query_inodes(self):
-		pass
+	def query_inodes(self, args):
+		ranges = []
+		for arg in args:
+			if arg == 'all':
+				self.load_extents(self.fmdb.query_inodes([]))
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+			else:
+				ranges.append((int(arg), int(arg)))
+		self.load_extents(self.fmdb.query_inodes(ranges))
 
 	def query_paths(self, args):
 		if '*' in args:
