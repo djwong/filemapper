@@ -156,27 +156,32 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		overview = [overview_block() for x in range(1, self.overview_len)]
 
 		t0 = datetime.datetime.today()
-		cur.execute('SELECT p_off, length, flags, type FROM path_extent_v;')
+		cur.execute('SELECT p_off, length, type FROM extent_t;')
 		t1 = datetime.datetime.today()
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
-			for (e_p_off, e_len, e_flags, e_type) in rows:
+			for (e_p_off, e_len, e_type) in rows:
 				start_cell = int(e_p_off // self.bytes_per_cell)
-				end_cell = int((e_p_off + e_len) // self.bytes_per_cell)
-				for i in range(start_cell, end_cell + 1):
-					if e_type == 'f':
+				end_cell = int((e_p_off + e_len - 1) // self.bytes_per_cell)
+				if e_type == 'f':
+					for i in range(start_cell, end_cell + 1):
 						overview[i].files += 1
-					elif e_type == 'd':
+				elif e_type == 'd':
+					for i in range(start_cell, end_cell + 1):
 						overview[i].dirs += 1
-					elif e_type == 'e':
+				elif e_type == 'e':
+					for i in range(start_cell, end_cell + 1):
 						overview[i].mappings += 1
-					elif e_type == 'm':
+				elif e_type == 'm':
+					for i in range(start_cell, end_cell + 1):
 						overview[i].metadata += 1
-					elif e_type == 'x':
+				elif e_type == 'x':
+					for i in range(start_cell, end_cell + 1):
 						overview[i].xattrs += 1
 		t2 = datetime.datetime.today()
+		print(t2 - t1, t1 - t0)
 		self.cached_overview = overview
 		return self.cached_overview
 
