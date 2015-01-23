@@ -56,11 +56,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def fetchMore(self, parent):
 		nlen = min(len(self.__data) - self.rows, self.rows_to_show)
-		#self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
 		self.beginInsertRows(parent, self.rows, self.rows + nlen)
 		self.rows += nlen
 		self.endInsertRows()
-		#self.emit(QtCore.SIGNAL("layoutChanged()"))
 
 	def rowCount(self, parent):
 		if not parent.isValid():
@@ -86,15 +84,12 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		return null_variant
 
 class FsTreeNode:
-	def __init__(self, path = None, type = None, load_fn = None, parent = None):
-		if path is not None and type is None:
-			raise InvalidArgument("BLSDHDGSS")
-		if path is None:
-			self.path = ''
-			self.type = 'd'
-		else:
-			self.path = path
-			self.type = type
+	def __init__(self, path, ino, type, load_fn = None, parent = None):
+		if load_fn is None and parent is None:
+			raise Exception
+		self.path = path
+		self.type = type
+		self.ino = ino
 		self.parent = parent
 		if load_fn is not None:
 			self.load_fn = load_fn
@@ -112,7 +107,7 @@ class FsTreeNode:
 		if self.loaded:
 			return
 		self.loaded = True
-		self.children = [FsTreeNode(self.path + '/' + de.name, de.type, parent = self) for de in self.load_fn([self.path])]
+		self.children = [FsTreeNode(self.path + '/' + de.name, de.ino, de.type, parent = self) for de in self.load_fn(self.path)]
 
 	def row(self):
 		if self.__row is None:
@@ -129,6 +124,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 	def __init__(self, root, parent=None, *args):
 		QtCore.QAbstractItemModel.__init__(self, parent, *args)
 		self.root = root
+		self.headers = ['Name'] #, 'Inode']
 
 	def index(self, row, column, parent):
 		if not parent.isValid():
@@ -163,23 +159,26 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		return len(node.children)
 
 	def columnCount(self, parent):
-		return 1
+		return len(self.headers)
 
 	def data(self, index, role):
 		if not index.isValid():
 			return None
 		node = index.internalPointer()
-		if role == QtCore.Qt.DisplayRole:
-			node.load()
+		if role != QtCore.Qt.DisplayRole:
+			return None
+		node.load()
+		if index.column() == 0:
 			r = node.path.rindex('/')
 			return node.path[r + 1:]
-		return None
+		else:
+			return node.ino
 
-	def headerData(self, section, orientation, role):
+	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and \
-		   role == QtCore.Qt.DisplayRole and section == 0:
-			return 'Name'
-		return None
+		   role == QtCore.Qt.DisplayRole:
+			return self.headers[col]
+		return null_variant
 
 class fmgui(QtGui.QMainWindow):
 	def __init__(self, fmdb):
@@ -205,10 +204,10 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 
-		root = FsTreeNode('', 'd', self.fmdb.query_ls)
+		de = self.fmdb.query_root()
+		root = FsTreeNode(de.name, de.ino, de.type, lambda x: self.fmdb.query_ls([x]))
 
-		self.ftm = FsTreeModel(root) #QtGui.QFileSystemModel()
-		#self.ftm.setRootPath('/')
+		self.ftm = FsTreeModel(root)
 		self.fs_tree.setModel(self.ftm)
 
 		# Set up the query UI
@@ -225,8 +224,7 @@ class fmgui(QtGui.QMainWindow):
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 
 	def start(self):
-		#self.load_fstree()
-		#self.do_overview()
+		self.do_overview()
 		return
 
 	def change_querytype(self, idx):
@@ -371,9 +369,6 @@ class fmgui(QtGui.QMainWindow):
 			return letter
 		x = [overview_to_letter(ov) for ov in self.fmdb.query_overview()]
 		self.overview_text.setText(''.join(x))
-
-	def load_fstree(self):
-		self.ftm.revise([pi for pi in self.fmdb.query_ls([])])
 
 if __name__ == '__main__':
 	app = QtGui.QApplication(sys.argv)

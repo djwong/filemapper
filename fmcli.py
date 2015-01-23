@@ -375,13 +375,12 @@ class fmcli(code.InteractiveConsole):
 			help = 'Directory names to look up.')
 		args = parser.parse_args(argv[1:])
 		if '*' in args.dirnames:
-			for pi in self.fmdb.query_ls([]):
-				self.print_dentry(pi)
+			for de in self.fmdb.query_ls([]):
+				self.print_dentry(de)
 			return
-		for pi in self.fmdb.query_ls(args.dirnames):
-			if pi == '/':
-				pi = ''
-			self.print_dentry(pi)
+		dnames = ['' if p == '/' else p for p in args.dirnames]
+		for de in self.fmdb.query_ls(dnames):
+			self.print_dentry(de)
 
 if __name__ == '__main__':
 	fmcli().interact()

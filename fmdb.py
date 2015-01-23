@@ -281,6 +281,15 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
+	def query_root(self):
+		'''Retrieve a dentry for root.'''
+		cur = self.conn.cursor()
+		qstr = 'SELECT inode_t.ino, inode_t.type FROM inode_t, path_t WHERE inode_t.ino = path_t.ino AND path_t.path = ?'
+		qarg = ['']
+		cur.execute(qstr, qarg)
+		rows = cur.fetchall()
+		return dentry('', rows[0][0], rows[0][1])
+
 	def query_ls(self, paths):
 		'''Query all paths available under a given path.'''
 		cur = self.conn.cursor()
@@ -301,7 +310,6 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		else:
 			cond = ')'
 		qstr = qstr + '%s ORDER by dentry_t.name' % cond
-		print("LS ", paths)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
