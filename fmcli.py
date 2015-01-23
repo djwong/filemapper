@@ -20,19 +20,40 @@ typecodes = {
 
 units = namedtuple('units', ['abbrev', 'label', 'factor'])
 
+# Units for regular numbers
 units_none = units('', '', 1)
+units_k = units('K', 'K', 10 ** 3)
+units_m = units('M', 'M', 10 ** 6)
+units_g = units('G', 'G', 10 ** 9)
+units_t = units('T', 'T', 10 ** 12)
+
+# Units for storage quantities
 units_bytes = units('', 'bytes', 1)
 units_sectors = units('s', 'sectors', 2 ** 9)
 units_kib = units('K', 'KiB', 2 ** 10)
 units_mib = units('M', 'MiB', 2 ** 20)
 units_gib = units('G', 'GiB', 2 ** 30)
 units_tib = units('T', 'TiB', 2 ** 40)
+
 units_auto = units('a', 'auto', None)
+
+def format_size(units, num):
+	if units.factor is not None:
+		if units.factor == 1:
+			return "{:,} {}".format(int(num / units.factor), units.label)
+		return "{:,.1f} {}".format(num / units.factor, units.label)
+	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
+	for i in range(0, len(units_scale) - 1):
+		if num < units_scale[i + 1].factor:
+			return format_size(units_scale[i], num)
+	return format_size(units_scale[-1], num)
 
 def format_number(units, num):
 	if units.factor is not None:
-		return "{:,} {}".format(int(num / units.factor), units.label)
-	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
+		if units.factor == 1:
+			return "{:,} {}".format(int(num / units.factor), units.label)
+		return "{:,.1f} {}".format(num / units.factor, units.label)
+	units_scale = [units_none, units_k, units_m, units_g, units_t]
 	for i in range(0, len(units_scale) - 1):
 		if num < units_scale[i + 1].factor:
 			return format_number(units_scale[i], num)
@@ -215,17 +236,19 @@ class fmcli(code.InteractiveConsole):
 		parser.parse_args(argv[1:])
 		res = self.fmdb.query_summary()
 		print("Summary of '%s':" % res.path)
-		print("Block size:\t{:,}".format(res.block_size))
-		print("Fragment size:\t{:,}".format(res.frag_size))
-		print("Total space:\t%s" % format_number(self.units, res.total_bytes))
+		print("Block size:\t%s" % format_size(units_auto, res.block_size))
+		print("Fragment size:\t%s" % format_size(units_auto, res.frag_size))
+		print("Total space:\t%s" % format_size(self.units, res.total_bytes))
 		print("Used space:\t%s (%.0f%%)" % \
-			(format_number(self.units, res.total_bytes - res.free_bytes), \
+			(format_size(self.units, res.total_bytes - res.free_bytes), \
 			 100 * (1.0 - (res.free_bytes / res.total_bytes))))
-		print("Free space:\t%s" % format_number(self.units, res.free_bytes))
-		print("Total inodes:\t{:,}".format(res.total_inodes))
-		print("Used inodes:\t{:,} ({:.0%})".format(res.total_inodes - res.free_inodes, 1.0 - (res.free_inodes / res.total_inodes)))
-		print("Free inodes:\t{:,}".format(res.free_inodes))
-		print("Extents:\t%s" % format_number(units_none, res.extents))
+		print("Free space:\t%s" % format_size(self.units, res.free_bytes))
+		print("Total inodes:\t%s" % format_number(units_auto, res.total_inodes))
+		print("Used inodes:\t%s (%.0f%%)" % \
+			(format_number(units_auto, res.total_inodes - res.free_inodes), \
+			100 * (1.0 - (res.free_inodes / res.total_inodes))))
+		print("Free inodes:\t%s" % format_number(units_auto, res.free_inodes))
+		print("Extents:\t%s" % format_number(units_auto, res.extents))
 
 	def print_extent(self, ext):
 		if self.machine:
@@ -236,9 +259,9 @@ class fmcli(code.InteractiveConsole):
 			return
 		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
 			(ext.path if ext.path != '' else '/', \
-			 format_number(self.units, ext.p_off), \
-			 format_number(self.units, ext.l_off), \
-			 format_number(self.units, ext.length), \
+			 format_size(self.units, ext.p_off), \
+			 format_size(self.units, ext.l_off), \
+			 format_size(self.units, ext.length), \
 			 ext.flags, typecodes[ext.type]))
 
 	def print_dentry(self, de):

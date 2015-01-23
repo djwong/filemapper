@@ -15,9 +15,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.headers = ['Physical Offset', 'Logical Offset', \
 				'Length', 'Flags', 'Type', 'Path']
 		self.header_map = [
-			lambda x: fmcli.format_number(self.units, x.p_off),
-			lambda x: fmcli.format_number(self.units, x.l_off),
-			lambda x: fmcli.format_number(self.units, x.length),
+			lambda x: fmcli.format_size(self.units, x.p_off),
+			lambda x: fmcli.format_size(self.units, x.l_off),
+			lambda x: fmcli.format_size(self.units, x.length),
 			lambda x: x.flags,
 			lambda x: fmcli.typecodes[x.type],
 			lambda x: x.path if x.path != '' else '/']
@@ -343,14 +343,14 @@ class fmgui(QtGui.QMainWindow):
 	def do_summary(self):
 		res = self.fmdb.query_summary()
 		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
-			(fmcli.format_number(fmcli.units_auto, res.total_bytes - res.free_bytes), \
-			 fmcli.format_number(fmcli.units_auto, res.total_bytes), \
+			(fmcli.format_size(fmcli.units_auto, res.total_bytes - res.free_bytes), \
+			 fmcli.format_size(fmcli.units_auto, res.total_bytes), \
 			 100 * (1.0 - (res.free_bytes / res.total_bytes)), \
-			 fmcli.format_number(fmcli.units_none, res.total_inodes - res.free_inodes), \
-			 fmcli.format_number(fmcli.units_none, res.total_inodes), \
+			 fmcli.format_number(fmcli.units_auto, res.total_inodes - res.free_inodes), \
+			 fmcli.format_number(fmcli.units_auto, res.total_inodes), \
 			 100 * (1.0 - (res.free_inodes / res.total_inodes)), \
-			 fmcli.format_number(fmcli.units_none, res.extents), \
-			 fmcli.format_number(fmcli.units_auto, res.block_size))
+			 fmcli.format_number(fmcli.units_auto, res.extents), \
+			 fmcli.format_size(fmcli.units_auto, res.block_size))
 		self.status_bar.showMessage(s)
 
 	def do_overview(self):
