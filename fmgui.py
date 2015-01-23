@@ -351,7 +351,6 @@ class fmgui(QtGui.QMainWindow):
 			 100 * (1.0 - (res.free_inodes / res.total_inodes)), \
 			 fmcli.format_number(fmcli.units_none, res.extents), \
 			 fmcli.format_number(fmcli.units_auto, res.block_size))
-		print(s)
 		self.status_bar.showMessage(s)
 
 	def do_overview(self):
