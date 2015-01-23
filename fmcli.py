@@ -225,6 +225,7 @@ class fmcli(code.InteractiveConsole):
 		print("Total inodes:\t{:,}".format(res.total_inodes))
 		print("Used inodes:\t{:,} ({:.0%})".format(res.total_inodes - res.free_inodes, 1.0 - (res.free_inodes / res.total_inodes)))
 		print("Free inodes:\t{:,}".format(res.free_inodes))
+		print("Extents:\t%s" % format_number(units_none, res.extents))
 
 	def print_extent(self, ext):
 		if self.machine:

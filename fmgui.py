@@ -225,6 +225,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def start(self):
 		self.do_overview()
+		self.do_summary()
 		return
 
 	def change_querytype(self, idx):
@@ -338,6 +339,20 @@ class fmgui(QtGui.QMainWindow):
 			return
 		arg = [x.replace('*', '%') for x in args]
 		self.load_extents(self.fmdb.query_paths(arg))
+
+	def do_summary(self):
+		res = self.fmdb.query_summary()
+		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
+			(fmcli.format_number(fmcli.units_auto, res.total_bytes - res.free_bytes), \
+			 fmcli.format_number(fmcli.units_auto, res.total_bytes), \
+			 100 * (1.0 - (res.free_bytes / res.total_bytes)), \
+			 fmcli.format_number(fmcli.units_none, res.total_inodes - res.free_inodes), \
+			 fmcli.format_number(fmcli.units_none, res.total_inodes), \
+			 100 * (1.0 - (res.free_inodes / res.total_inodes)), \
+			 fmcli.format_number(fmcli.units_none, res.extents), \
+			 fmcli.format_number(fmcli.units_auto, res.block_size))
+		print(s)
+		self.status_bar.showMessage(s)
 
 	def do_overview(self):
 		def overview_to_letter(ov):

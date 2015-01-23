@@ -21,7 +21,8 @@ def stmode_to_type(xstat, is_xattr):
 fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'total_bytes', 'free_bytes', \
 				       'avail_bytes', 'total_inodes', \
-				       'free_inodes', 'avail_inodes'])
+				       'free_inodes', 'avail_inodes',
+				       'extents'])
 
 poff_row = namedtuple('poff_row', ['path', 'p_off', 'l_off', 'length', \
 				   'flags', 'type'])
@@ -191,6 +192,10 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			return self.fs
 
 		cur = self.conn.cursor()
+		cur.execute('SELECT COUNT(p_off) FROM extent_t;')
+		rows = cur.fetchall()
+		extents = rows[0][0]
+
 		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes FROM fs_t;')
 		rows = cur.fetchall()
 		assert len(rows) == 1
@@ -198,7 +203,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
-				 int(res[6]), int(res[7]), int(res[8]))
+				 int(res[6]), int(res[7]), int(res[8]),
+				 int(extents))
 		return self.fs
 
 	def pick_cells(self, ranges):

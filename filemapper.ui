@@ -114,7 +114,7 @@
     </item>
    </layout>
   </widget>
-  <widget class="QStatusBar" name="statusBar"/>
+  <widget class="QStatusBar" name="status_bar"/>
   <widget class="QDockWidget" name="fs_tree_dock">
    <property name="accessibleName">
     <string/>
