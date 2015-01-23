@@ -81,6 +81,10 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 		length = _UINT64_MAX
 
 	count = 512
+	e_physical = None
+	e_logical = None
+	e_length = None
+	e_flags = None
 	while True:
 		hdr = _struct_fiemap.pack(fe_logical + fe_length, length, flags, 0, count, 0)
 		try:
@@ -106,7 +110,7 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 				fm_extent_count, fm_reserved = \
 				_struct_fiemap.unpack_from(buffer_)
 		if fm_mapped_extents == 0:
-			return
+			break
 
 		offset = _struct_fiemap.size
 		for i in range(fm_mapped_extents):
@@ -115,11 +119,32 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 					_struct_fiemap_extent.unpack_from( \
 					buffer_[offset:offset + \
 						_struct_fiemap_extent.size])
-			yield _fiemap_extent(fe_logical, fe_physical, \
-					fe_length, fe_flags & ~FIEMAP_EXTENT_LAST)
-			if fe_flags & FIEMAP_EXTENT_LAST:
-				return
+			is_last = fe_flags & FIEMAP_EXTENT_LAST > 0
+			fe_flags &= ~FIEMAP_EXTENT_LAST
+			if e_physical is not None:
+				if e_physical + e_length == fe_physical and \
+				   e_logical + e_length == fe_logical and \
+				   e_flags == fe_flags:
+					e_length += fe_length
+				else:
+					yield _fiemap_extent(e_logical, \
+							     e_physical, \
+							     e_length, \
+							     e_flags)
+					e_physical = None
+			if e_physical is None:
+				e_physical = fe_physical
+				e_logical = fe_logical
+				e_length = fe_length
+				e_flags = fe_flags
+			if is_last:
+				break
 			offset += _struct_fiemap_extent.size
+
+	# Emit the last extent
+	if e_physical is None:
+		return
+	yield _fiemap_extent(e_logical, e_physical, e_length, e_flags)
 
 def fibmap2(fd, start = 0, end = None, flags = 0):
 	xstat = os.fstat(fd)
@@ -173,11 +198,6 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
-	flags = FIEMAP_FLAG_SYNC
-	prefix_len = len(path)
-	if path[prefix_len - 1] == '/':
-		prefix_len -= 1
-
 	def do_map(stat, path):
 		fd = os.open(path, os.O_RDONLY)
 		try:
@@ -190,7 +210,6 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 				extent_fn(stat, extent, False)
 		os.close(fd)
 
-	dev = os.lstat(path).st_dev
 	# Careful - we have to pass a byte string to os.walk so that
 	# it'll return byte strings, which we can then decode ourselves.
 	# Otherwise the automatic Unicode decoding will error out.
@@ -198,6 +217,9 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	# Strip out the trailing / so that root is ''
 	if path[-1] == os.sep:
 		path = path[:-1]
+	prefix_len = len(path)
+	dev = os.lstat(path).st_dev
+	flags = FIEMAP_FLAG_SYNC
 	for root, dirs, files in os.walk(path.encode('utf-8', 'surrogateescape')):
 		rstat = os.lstat(root)
 		ino_fn(rstat, root[prefix_len:].decode('utf-8', 'replace'))
