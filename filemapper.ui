@@ -194,7 +194,7 @@
      <height>23</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuFIle">
+   <widget class="QMenu" name="menuFile">
     <property name="title">
      <string>FIle</string>
     </property>
@@ -211,6 +211,7 @@
     <property name="title">
      <string>Units</string>
     </property>
+    <addaction name="actionAuto"/>
     <addaction name="actionBytes"/>
     <addaction name="actionSectors"/>
     <addaction name="actionBlocks"/>
@@ -219,7 +220,7 @@
     <addaction name="actionGiB"/>
     <addaction name="actionTiB"/>
    </widget>
-   <addaction name="menuFIle"/>
+   <addaction name="menuFile"/>
    <addaction name="menuView"/>
    <addaction name="menuUnits"/>
   </widget>
@@ -232,6 +233,14 @@
    </property>
    <property name="menuRole">
     <enum>QAction::QuitRole</enum>
+   </property>
+  </action>
+  <action name="actionAuto">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Automatic</string>
    </property>
   </action>
   <action name="actionBytes">

@@ -18,15 +18,25 @@ typecodes = {
 	'x': 'extended attribute',
 }
 
-units = namedtuple('units', ['abbrev', 'label', 'out_fn', 'in_fn'])
+units = namedtuple('units', ['abbrev', 'label', 'factor'])
 
-units_none = units('', '', lambda x: x, lambda x: x)
-units_bytes = units('', 'bytes', lambda x: x, lambda x: x)
-units_sectors = units('s', 'sectors', lambda x: x // (2 ** 9), lambda x: x * (2 ** 9))
-units_kib = units('K', 'KiB', lambda x: x / (2 ** 10), lambda x: x * (2 ** 10))
-units_mib = units('M', 'MiB', lambda x: x / (2 ** 20), lambda x: x * (2 ** 20))
-units_gib = units('G', 'GiB', lambda x: x / (2 ** 30), lambda x: x * (2 ** 30))
-units_tib = units('T', 'TiB', lambda x: x / (2 ** 40), lambda x: x * (2 ** 40))
+units_none = units('', '', 1)
+units_bytes = units('', 'bytes', 1)
+units_sectors = units('s', 'sectors', 2 ** 9)
+units_kib = units('K', 'KiB', 2 ** 10)
+units_mib = units('M', 'MiB', 2 ** 20)
+units_gib = units('G', 'GiB', 2 ** 30)
+units_tib = units('T', 'TiB', 2 ** 40)
+units_auto = units('a', 'auto', None)
+
+def format_number(units, num):
+	if units.factor is not None:
+		return "{:,} {}".format(int(num / units.factor), units.label)
+	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
+	for i in range(0, len(units_scale) - 1):
+		if num < units_scale[i + 1].factor:
+			return format_number(units_scale[i], num)
+	return format_number(units_scale[-1], num)
 
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	"""
@@ -72,9 +82,6 @@ def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 		ret.append(''.join(current))
 	return ret
 
-def format_number(units, num):
-	return "{:,} {}".format(int(units.out_fn(num)), units.label)
-
 class fmcli(code.InteractiveConsole):
 	def __init__(self, fmdb, locals=None, filename="<console>", \
 		     histfile=os.path.expanduser("~/.config/fmcli-history")):
@@ -96,7 +103,7 @@ class fmcli(code.InteractiveConsole):
 			('units', 'u'): self.do_set_units,
 		}
 		self.done = False
-		self.units = units_bytes
+		self.units = units_auto
 		self.machine = False
 
 	def init_history(self, histfile):
@@ -222,12 +229,12 @@ class fmcli(code.InteractiveConsole):
 	def print_extent(self, ext):
 		if self.machine:
 			print("'%s',%d,%d,%d,0x%x,'%s'" % \
-				(ext.path, \
+				(ext.path if ext.path != '' else '/', \
 				 ext.p_off, ext.l_off, ext.length, \
 				 ext.flags, typecodes[ext.type]))
 			return
 		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
-			(ext.path, \
+			(ext.path if ext.path != '' else '/', \
 			 format_number(self.units, ext.p_off), \
 			 format_number(self.units, ext.l_off), \
 			 format_number(self.units, ext.length), \
@@ -244,8 +251,8 @@ class fmcli(code.InteractiveConsole):
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
 			conv = [
-				units('%', 'percent', None, lambda x: x * res_total_bytes / 100),
-				units('B', 'blocks', None, lambda x: x * res.block_size),
+				units('%', 'percent', None, res.total_bytes / 100),
+				units('B', 'blocks', None, res.block_size),
 				units_bytes,
 				units_sectors,
 				units_kib,
@@ -255,7 +262,7 @@ class fmcli(code.InteractiveConsole):
 			]
 			for unit in conv:
 				if num[-1].lower() == unit.abbrev.lower():
-					return int(unit.in_fn(float(num[:-1])))
+					return int(unit.factor * float(num[:-1]))
 			return int(num)
 
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -301,10 +308,11 @@ class fmcli(code.InteractiveConsole):
 
 	def do_set_units(self, argv):
 		res = self.fmdb.query_summary()
-		units = [
+		avail_units = [
+			units_auto,
 			units_bytes,
 			units_sectors,
-			units('B', 'blocks', lambda x: x // (res.block_size), None),
+			units('B', 'blocks', res.block_size),
 			units_kib,
 			units_mib,
 			units_gib,
@@ -315,14 +323,14 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('units', \
 			help = 'Units for display output.  Default is bytes.')
 		args = parser.parse_args(argv[1:])
-		for u in units:
+		for u in avail_units:
 			if args.units.lower() == u.abbrev.lower() or \
 			   args.units.lower() == u.label.lower():
 				self.units = u
 				print("Units set to '%s'." % self.units.label)
 				return
 		print("Unrecognized unit '%s'.  Available units:" % args.units)
-		print(', '.join([x[1] for x in units]))
+		print(', '.join([x[1] for x in avail_units]))
 
 	def do_paths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],

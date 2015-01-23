@@ -20,7 +20,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_number(self.units, x.length),
 			lambda x: x.flags,
 			lambda x: fmcli.typecodes[x.type],
-			lambda x: x.path]
+			lambda x: x.path if x.path != '' else '/']
 		self.units = units
 		self.rows_to_show = rows_to_show
 		self.rows = min(rows_to_show, len(data))
@@ -189,7 +189,7 @@ class fmgui(QtGui.QMainWindow):
 		self.show()
 
 		# Set up the units menu
-		units = fmcli.units_bytes
+		units = fmcli.units_auto
 		self.unit_actions = self.menuUnits.actions()
 		ag = QtGui.QActionGroup(self)
 		for u in self.unit_actions:
@@ -235,16 +235,17 @@ class fmgui(QtGui.QMainWindow):
 	def change_units(self, action):
 		idx = self.unit_actions.index(action)
 		res = self.fmdb.query_summary()
-		units = [
+		avail_units = [
+			fmcli.units_auto,
 			fmcli.units_bytes,
 			fmcli.units_sectors,
-			fmcli.units('B', 'blocks', lambda x: x // (res.block_size), None),
+			fmcli.units('B', 'blocks', res.block_size),
 			fmcli.units_kib,
 			fmcli.units_mib,
 			fmcli.units_gib,
 			fmcli.units_tib,
 		]
-		self.etm.change_units(units[idx])
+		self.etm.change_units(avail_units[idx])
 		for u in self.unit_actions:
 			u.setChecked(False)
 		self.unit_actions[idx].setChecked(True)
@@ -281,8 +282,8 @@ class fmgui(QtGui.QMainWindow):
 	def query_poff(self, args):
 		def n2p(num):
 			conv = [
-				fmcli.units('%', 'percent', None, lambda x: x * res_total_bytes / 100),
-				fmcli.units('B', 'blocks', None, lambda x: x * res.block_size),
+				fmcli.units('%', 'percent', res.total_bytes / 100),
+				fmcli.units('B', 'blocks', res.block_size),
 				fmcli.units_bytes,
 				fmcli.units_sectors,
 				fmcli.units_kib,
@@ -292,7 +293,7 @@ class fmgui(QtGui.QMainWindow):
 			]
 			for unit in conv:
 				if num[-1].lower() == unit.abbrev.lower():
-					return int(unit.in_fn(float(num[:-1])))
+					return int(unit.factor * float(num[:-1]))
 			return int(num)
 
 		ranges = []
@@ -316,6 +317,7 @@ class fmgui(QtGui.QMainWindow):
 		self.etm.revise(new_data)
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
+		self.extent_dock.setWindowTitle('Extents (%d)' % len(new_data))
 
 	def query_inodes(self, args):
 		ranges = []
