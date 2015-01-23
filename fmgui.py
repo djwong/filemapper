@@ -228,11 +228,17 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
+	def enter_query(self, fn, text):
+		for x in range(0, len(self.query_types)):
+			if self.query_types[x][1] == fn:
+				self.querytype_combo.setCurrentIndex(x)
+				self.query_text.setText(text)
+				return
+
 	def pick_fs_tree(self, n, o):
 		paths = [m.internalPointer().path for m in n.indexes()]
-		self.query_paths(paths)
-		self.querytype_combo.setCurrentIndex(3)
-		self.query_text.setText(' '.join(paths))
+		self.enter_query(self.query_paths, ' '.join(paths))
+		self.run_query()
 
 	def start(self):
 		self.do_overview()
@@ -268,8 +274,8 @@ class fmgui(QtGui.QMainWindow):
 		end = cursor.selectionEnd()
 		if start == end:
 			return
-		self.querytype_combo.setCurrentIndex(0)
-		self.query_text.setText("%s-%s" % (start, end - 1))
+		self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
+		self.run_query()
 
 	def run_query(self):
 		idx = self.querytype_combo.currentIndex()
