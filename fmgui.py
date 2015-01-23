@@ -318,7 +318,7 @@ class fmgui(QtGui.QMainWindow):
 		self.etm.revise(new_data)
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
-		self.extent_dock.setWindowTitle('Extents (%s)' % format_number(fmcli.units_auto, len(new_data)))
+		self.extent_dock.setWindowTitle('Extents (%s)' % fmcli.format_number(fmcli.units_none, len(new_data)))
 
 	def query_inodes(self, args):
 		ranges = []
