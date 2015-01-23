@@ -26,7 +26,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 poff_row = namedtuple('poff_row', ['path', 'p_off', 'l_off', 'length', \
 				   'flags', 'type'])
 
-path_ino = namedtuple('path_ino', ['path', 'ino'])
+dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
 class overview_block:
 	def __init__(self):
@@ -52,18 +52,21 @@ class fmdb:
 		'''Prepare a database for new data.'''
 		self.conn.executescript("""
 PRAGMA page_size = 4096;
+DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
+DROP TABLE IF EXISTS dentry_t;
 DROP TABLE IF EXISTS extent_t;
 DROP TABLE IF EXISTS inode_t;
 DROP TABLE IF EXISTS path_t;
 DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
 CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL);
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL);
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'm')));
 CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
 CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x')), p_end INTEGER NOT NULL);
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
+CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;
 		""")
 
 		self.fs = None
@@ -82,8 +85,10 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 		'''Finish updating a database.'''
 
 		self.conn.executescript("""
+CREATE INDEX inode_i ON inode_t(ino);
 CREATE INDEX path_ino_i ON path_t(ino);
 CREATE INDEX path_path_i ON path_t(path);
+CREATE INDEX dir_ino_i ON dir_t(dir_ino);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 CREATE INDEX extent_ino_i ON extent_t(ino);
 		""")
@@ -109,12 +114,16 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		self.conn.executemany('INSERT INTO dir_t VALUES(?, ?, ?);', \
 				[(root.st_ino, name, stat.st_ino) for name, stat in dentries])
 
-	def insert_inode(self, stat, path):
+	def insert_inode(self, xstat, path):
 		'''Insert an inode record into the database.'''
-		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?);', \
-				(stat.st_ino,))
+		if stat.S_ISDIR(xstat.st_mode):
+			xtype = 'd'
+		else:
+			xtype = 'f'
+		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?);', \
+				(xstat.st_ino, xtype))
 		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
-				(path, stat.st_ino))
+				(path, xstat.st_ino))
 		
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
@@ -241,7 +250,6 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			cond = 'OR'
 			qarg.append(p.replace('*', '%'))
 		qstr = qstr + " ORDER BY path, l_off"
-		print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -277,24 +285,28 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		'''Query all paths available under a given path.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		qstr = 'SELECT path, ino FROM path_t'
+		qstr = 'SELECT dentry_t.name, dentry_t.name_ino, dentry_t.type FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino'
+		cond = 'AND ('
 		qarg = []
-		cond = 'WHERE'
 		for p in paths:
 			if '*' in p:
 				op = 'LIKE'
 			else:
 				op = '='
-			qstr = qstr + ' %s path %s ?' % (cond, op)
+			qstr = qstr + ' %s path_t.path %s ?' % (cond, op)
 			cond = 'OR'
 			qarg.append(p.replace('*', '%'))
-		qstr = qstr + ' ORDER by path'
-		print(qstr)
+		if len(qarg) == 0:
+			cond = ''
+		else:
+			cond = ')'
+		qstr = qstr + '%s ORDER by dentry_t.name' % cond
+		print("LS ", paths)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield path_ino(row[0], row[1])
+				yield dentry(row[0], row[1], row[2])
 

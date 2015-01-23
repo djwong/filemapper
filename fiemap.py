@@ -194,6 +194,10 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	# Careful - we have to pass a byte string to os.walk so that
 	# it'll return byte strings, which we can then decode ourselves.
 	# Otherwise the automatic Unicode decoding will error out.
+	#
+	# Strip out the trailing / so that root is ''
+	if path[-1] == os.sep:
+		path = path[:-1]
 	for root, dirs, files in os.walk(path.encode('utf-8', 'surrogateescape')):
 		rstat = os.lstat(root)
 		ino_fn(rstat, root[prefix_len:].decode('utf-8', 'replace'))

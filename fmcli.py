@@ -233,14 +233,13 @@ class fmcli(code.InteractiveConsole):
 			 format_number(self.units, ext.length), \
 			 ext.flags, typecodes[ext.type]))
 
-	def print_path_ino(self, pi):
+	def print_dentry(self, de):
 		if self.machine:
-			print("'%s',%d" % \
-				(pi.path, pi.ino))
+			print("'%s',%d,'%s'" % \
+				(de.name, de.ino, de.type))
 			return
-		print("'%s', %s" % \
-			(pi.path, \
-			 format_number(units_none, pi.ino)))
+		print("'%s', %s, '%s'" % \
+			(de.name, format_number(units_none, de.ino), de.type))
 
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
@@ -371,16 +370,18 @@ class fmcli(code.InteractiveConsole):
 
 	def do_ls(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up paths in the filesystem tree.')
-		parser.add_argument('paths', nargs = '+', \
-			help = 'Paths to look up.')
+			description = 'Look up directories in the filesystem tree.')
+		parser.add_argument('dirnames', nargs = '+', \
+			help = 'Directory names to look up.')
 		args = parser.parse_args(argv[1:])
-		if '*' in args.paths:
+		if '*' in args.dirnames:
 			for pi in self.fmdb.query_ls([]):
-				self.print_path_ino(pi)
+				self.print_dentry(pi)
 			return
-		for pi in self.fmdb.query_ls(args.paths):
-			self.print_path_ino(pi)
+		for pi in self.fmdb.query_ls(args.dirnames):
+			if pi == '/':
+				pi = ''
+			self.print_dentry(pi)
 
 if __name__ == '__main__':
 	fmcli().interact()
