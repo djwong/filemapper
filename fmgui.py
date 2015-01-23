@@ -76,7 +76,7 @@ class fmgui(QtGui.QMainWindow):
 		self.show()
 
 		# Set up the units menu
-		units = ['', 'bytes', lambda x: x]
+		units = fmcli.units_bytes
 		self.unit_actions = self.menuUnits.actions()
 		ag = QtGui.QActionGroup(self)
 		for u in self.unit_actions:
@@ -116,13 +116,13 @@ class fmgui(QtGui.QMainWindow):
 		idx = self.unit_actions.index(action)
 		res = self.fmdb.query_summary()
 		units = [
-			['', 'bytes', lambda x: x],
-			['s', 'sectors', lambda x: x // (2 ** 9)],
-			['B', 'blocks', lambda x: x // (res.block_size)],
-			['K', 'KiB', lambda x: x / (2 ** 10)],
-			['M', 'MiB', lambda x: x / (2 ** 20)],
-			['G', 'GiB', lambda x: x / (2 ** 30)],
-			['T', 'TiB', lambda x: x / (2 ** 40)],
+			fmcli.units_bytes,
+			fmcli.units_sectors,
+			fmcli.units('B', 'blocks', lambda x: x // (res.block_size), None),
+			fmcli.units_kib,
+			fmcli.units_mib,
+			fmcli.units_gib,
+			fmcli.units_tib,
 		]
 		self.etm.change_units(units[idx])
 		for u in self.unit_actions:
@@ -160,26 +160,20 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_poff(self, args):
 		def n2p(num):
-			conv = {
-				'%': lambda x: x * res.total_bytes / 100,
-				'b': lambda x: x * res.block_size,
-				'B': lambda x: x * res.block_size,
-				's': lambda x: x * (2 ** 9),
-				'S': lambda x: x * (2 ** 9),
-				'k': lambda x: x * (2 ** 10),
-				'K': lambda x: x * (2 ** 10),
-				'M': lambda x: x * (2 ** 20),
-				'm': lambda x: x * (2 ** 20),
-				'G': lambda x: x * (2 ** 30),
-				'g': lambda x: x * (2 ** 30),
-				'T': lambda x: x * (2 ** 40),
-				't': lambda x: x * (2 ** 40),
-			}
-			if num[-1] in conv:
-				fn = conv[num[-1]]
-				return int(fn(int(num[:-1])))
-			else:
-				return int(num)
+			conv = [
+				fmcli.units('%', 'percent', None, lambda x: x * res_total_bytes / 100),
+				fmcli.units('B', 'blocks', None, lambda x: x * res.block_size),
+				fmcli.units_bytes,
+				fmcli.units_sectors,
+				fmcli.units_kib,
+				fmcli.units_mib,
+				fmcli.units_gib,
+				fmcli.units_tib,
+			]
+			for unit in conv:
+				if num[-1].lower() == unit.abbrev.lower():
+					return int(unit.in_fn(float(num[:-1])))
+			return int(num)
 
 		ranges = []
 		res = self.fmdb.query_summary()

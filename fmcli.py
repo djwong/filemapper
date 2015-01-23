@@ -8,6 +8,7 @@ import atexit
 import os
 import argparse
 import sys
+from collections import namedtuple
 
 typecodes = {
 	'f': 'file',
@@ -16,6 +17,15 @@ typecodes = {
 	'm': 'metadata',
 	'x': 'extended attribute',
 }
+
+units = namedtuple('units', ['abbrev', 'label', 'out_fn', 'in_fn'])
+
+units_bytes = units('', 'bytes', lambda x: x, lambda x: x)
+units_sectors = units('s', 'sectors', lambda x: x // (2 ** 9), lambda x: x * (2 ** 9))
+units_kib = units('K', 'KiB', lambda x: x / (2 ** 10), lambda x: x * (2 ** 10))
+units_mib = units('M', 'MiB', lambda x: x / (2 ** 20), lambda x: x * (2 ** 20))
+units_gib = units('G', 'GiB', lambda x: x / (2 ** 30), lambda x: x * (2 ** 30))
+units_tib = units('T', 'TiB', lambda x: x / (2 ** 40), lambda x: x * (2 ** 40))
 
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	"""
@@ -62,7 +72,7 @@ def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	return ret
 
 def format_number(units, num):
-	return "{:,} {}".format(int(units[2](num)), units[1])
+	return "{:,} {}".format(int(units.out_fn(num)), units.label)
 
 class fmcli(code.InteractiveConsole):
 	def __init__(self, fmdb, locals=None, filename="<console>", \
@@ -84,7 +94,7 @@ class fmcli(code.InteractiveConsole):
 			('units', 'u'): self.do_set_units,
 		}
 		self.done = False
-		self.units = ['', 'bytes', lambda x: x]
+		self.units = units_bytes
 		self.machine = False
 
 	def init_history(self, histfile):
@@ -223,26 +233,20 @@ class fmcli(code.InteractiveConsole):
 
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
-			conv = {
-				'%': lambda x: x * res.total_bytes / 100,
-				'b': lambda x: x * res.block_size,
-				'B': lambda x: x * res.block_size,
-				's': lambda x: x * (2 ** 9),
-				'S': lambda x: x * (2 ** 9),
-				'k': lambda x: x * (2 ** 10),
-				'K': lambda x: x * (2 ** 10),
-				'M': lambda x: x * (2 ** 20),
-				'm': lambda x: x * (2 ** 20),
-				'G': lambda x: x * (2 ** 30),
-				'g': lambda x: x * (2 ** 30),
-				'T': lambda x: x * (2 ** 40),
-				't': lambda x: x * (2 ** 40),
-			}
-			if num[-1] in conv:
-				fn = conv[num[-1]]
-				return int(fn(int(num[:-1])))
-			else:
-				return int(num)
+			conv = [
+				units('%', 'percent', None, lambda x: x * res_total_bytes / 100),
+				units('B', 'blocks', None, lambda x: x * res.block_size),
+				units_bytes,
+				units_sectors,
+				units_kib,
+				units_mib,
+				units_gib,
+				units_tib,
+			]
+			for unit in conv:
+				if num[-1].lower() == unit.abbrev.lower():
+					return int(unit.in_fn(float(num[:-1])))
+			return int(num)
 
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of physical offsets.')
@@ -288,13 +292,13 @@ class fmcli(code.InteractiveConsole):
 	def do_set_units(self, argv):
 		res = self.fmdb.query_summary()
 		units = [
-			['', 'bytes', lambda x: x],
-			['s', 'sectors', lambda x: x // (2 ** 9)],
-			['B', 'blocks', lambda x: x // (res.block_size)],
-			['K', 'KiB', lambda x: x / (2 ** 10)],
-			['M', 'MiB', lambda x: x / (2 ** 20)],
-			['G', 'GiB', lambda x: x / (2 ** 30)],
-			['T', 'TiB', lambda x: x / (2 ** 40)],
+			units_bytes,
+			units_sectors,
+			units('B', 'blocks', lambda x: x // (res.block_size), None),
+			units_kib,
+			units_mib,
+			units_gib,
+			units_tib,
 		]
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Set display units.')
@@ -302,10 +306,10 @@ class fmcli(code.InteractiveConsole):
 			help = 'Units for display output.  Default is bytes.')
 		args = parser.parse_args(argv[1:])
 		for u in units:
-			if args.units.lower() == u[0].lower() or \
-			   args.units.lower() == u[1].lower():
+			if args.units.lower() == u.abbrev.lower() or \
+			   args.units.lower() == u.label.lower():
 				self.units = u
-				print("Units set to '%s'." % self.units[1])
+				print("Units set to '%s'." % self.units.label)
 				return
 		print("Unrecognized unit '%s'.  Available units:" % args.units)
 		print(', '.join([x[1] for x in units]))
