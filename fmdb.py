@@ -26,6 +26,8 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 poff_row = namedtuple('poff_row', ['path', 'p_off', 'l_off', 'length', \
 				   'flags', 'type'])
 
+path_ino = namedtuple('path_ino', ['path', 'ino'])
+
 class overview_block:
 	def __init__(self):
 		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = 0
@@ -80,6 +82,7 @@ CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off,
 
 		self.conn.executescript("""
 CREATE INDEX path_ino_i ON path_t(ino);
+CREATE INDEX path_path_i ON path_t(path);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 CREATE INDEX extent_ino_i ON extent_t(ino);
 		""")
@@ -221,21 +224,21 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
-	def query_paths(self, paths, wildcards = True):
+	def query_paths(self, paths):
 		'''Query extents used by a given path.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
-		if wildcards:
-			op = 'LIKE'
-		else:
-			op = '='
 		qarg = []
 		cond = 'WHERE'
 		for p in paths:
+			if '*' in p:
+				op = 'LIKE'
+			else:
+				op = '='
 			qstr = qstr + ' %s path %s ?' % (cond, op)
 			cond = 'OR'
-			qarg.append(p)
+			qarg.append(p.replace('*', '%'))
 		qstr = qstr + " ORDER BY path, l_off"
 		print(qstr, qarg)
 		cur.execute(qstr, qarg)
@@ -268,4 +271,29 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			for row in rows:
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
+
+	def query_ls(self, paths):
+		'''Query all paths available under a given path.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT path, ino FROM path_t'
+		qarg = []
+		cond = 'WHERE'
+		for p in paths:
+			if '*' in p:
+				op = 'LIKE'
+			else:
+				op = '='
+			qstr = qstr + ' %s path %s ?' % (cond, op)
+			cond = 'OR'
+			qarg.append(p.replace('*', '%'))
+		qstr = qstr + ' ORDER by path'
+		print(qstr)
+		cur.execute(qstr, qarg)
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for row in rows:
+				yield path_ino(row[0], row[1])
 

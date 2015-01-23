@@ -20,6 +20,7 @@ typecodes = {
 
 units = namedtuple('units', ['abbrev', 'label', 'out_fn', 'in_fn'])
 
+units_none = units('', '', lambda x: x, lambda x: x)
 units_bytes = units('', 'bytes', lambda x: x, lambda x: x)
 units_sectors = units('s', 'sectors', lambda x: x // (2 ** 9), lambda x: x * (2 ** 9))
 units_kib = units('K', 'KiB', lambda x: x / (2 ** 10), lambda x: x * (2 ** 10))
@@ -86,6 +87,7 @@ class fmcli(code.InteractiveConsole):
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
 			('inode', 'i'): self.do_inodes,
+			('ls', 'l'): self.do_ls,
 			('machine', 'm'): self.do_machine,
 			('overview', 'o'): self.do_overview,
 			('phys', 'p'): self.do_poff_to_extents,
@@ -231,6 +233,15 @@ class fmcli(code.InteractiveConsole):
 			 format_number(self.units, ext.length), \
 			 ext.flags, typecodes[ext.type]))
 
+	def print_path_ino(self, pi):
+		if self.machine:
+			print("'%s',%d" % \
+				(pi.path, pi.ino))
+			return
+		print("'%s', %s" % \
+			(pi.path, \
+			 format_number(units_none, pi.ino)))
+
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
 			conv = [
@@ -317,21 +328,14 @@ class fmcli(code.InteractiveConsole):
 	def do_paths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given path.')
-		parser.add_argument('-e', action = 'count', default = 0, \
-			help = 'Exact matches only.')
 		parser.add_argument('paths', nargs = '+', \
 			help = 'Paths to look up.')
 		args = parser.parse_args(argv[1:])
 		if '*' in args.paths:
-			for ext in self.fmdb.query_paths([], False):
+			for ext in self.fmdb.query_paths([]):
 				self.print_extent(ext)
 			return
-		arg = [x.replace('*', '%') for x in args.paths]
-		if args.e > 0:
-			exact = False
-		else:
-			exact = True
-		for ext in self.fmdb.query_paths(arg, exact):
+		for ext in self.fmdb.query_paths(args.paths):
 			self.print_extent(ext)
 
 	def do_machine(self, argv):
@@ -364,6 +368,19 @@ class fmcli(code.InteractiveConsole):
 				ranges.append((int(arg), int(arg)))
 		for x in self.fmdb.query_inodes(ranges):
 			self.print_extent(x)
+
+	def do_ls(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up paths in the filesystem tree.')
+		parser.add_argument('paths', nargs = '+', \
+			help = 'Paths to look up.')
+		args = parser.parse_args(argv[1:])
+		if '*' in args.paths:
+			for pi in self.fmdb.query_ls([]):
+				self.print_path_ino(pi)
+			return
+		for pi in self.fmdb.query_ls(args.paths):
+			self.print_path_ino(pi)
 
 if __name__ == '__main__':
 	fmcli().interact()
