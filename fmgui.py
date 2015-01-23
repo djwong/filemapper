@@ -223,6 +223,10 @@ class fmgui(QtGui.QMainWindow):
 		self.querytype_combo.setCurrentIndex(self.old_querytype)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 
+		# Set up the status bar
+		self.status_label = QtGui.QLabel()
+		self.status_bar.addWidget(self.status_label)
+
 	def start(self):
 		self.do_overview()
 		self.do_summary()
@@ -337,8 +341,7 @@ class fmgui(QtGui.QMainWindow):
 		if '*' in args:
 			self.load_extents(self.fmdb.query_paths([], False))
 			return
-		arg = [x.replace('*', '%') for x in args]
-		self.load_extents(self.fmdb.query_paths(arg))
+		self.load_extents(self.fmdb.query_paths(args))
 
 	def do_summary(self):
 		res = self.fmdb.query_summary()
@@ -351,7 +354,7 @@ class fmgui(QtGui.QMainWindow):
 			 100 * (1.0 - (res.free_inodes / res.total_inodes)), \
 			 fmcli.format_number(fmcli.units_auto, res.extents), \
 			 fmcli.format_size(fmcli.units_auto, res.block_size))
-		self.status_bar.showMessage(s)
+		self.status_label.setText(s)
 
 	def do_overview(self):
 		def overview_to_letter(ov):

@@ -40,7 +40,8 @@ units_auto = units('a', 'auto', None)
 def format_size(units, num):
 	if units.factor is not None:
 		if units.factor == 1:
-			return "{:,} {}".format(int(num / units.factor), units.label)
+			return "{:,}{}{}".format(int(num / units.factor), \
+				' ' if len(units.label) > 0 else '', units.label)
 		return "{:,.1f} {}".format(num / units.factor, units.label)
 	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
 	for i in range(0, len(units_scale) - 1):
@@ -51,7 +52,8 @@ def format_size(units, num):
 def format_number(units, num):
 	if units.factor is not None:
 		if units.factor == 1:
-			return "{:,} {}".format(int(num / units.factor), units.label)
+			return "{:,}{}{}".format(int(num / units.factor), \
+				' ' if len(units.label) > 0 else '', units.label)
 		return "{:,.1f} {}".format(num / units.factor, units.label)
 	units_scale = [units_none, units_k, units_m, units_g, units_t]
 	for i in range(0, len(units_scale) - 1):
