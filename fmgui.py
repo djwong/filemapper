@@ -5,8 +5,10 @@ import sys
 from PyQt4 import QtGui, uic, QtCore
 import fmcli
 
+null_variant = QtCore.QVariant()
+
 class ExtentTableModel(QtCore.QAbstractTableModel):
-	def __init__(self, data, units, parent=None, *args):
+	def __init__(self, data, units, rows_to_show=50, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
@@ -19,6 +21,8 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.typecodes[x.type],
 			lambda x: x.path]
 		self.units = units
+		self.rows_to_show = rows_to_show
+		self.rows = min(rows_to_show, len(data))
 
 	def change_units(self, new_units):
 		self.units = new_units
@@ -27,8 +31,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.dataChanged.emit(tl, br)
 
 	def revise(self, new_data):
-		olen = len(self.__data)
-		nlen = len(new_data)
+		olen = self.rows
+		nlen = min(len(new_data), self.rows_to_show)
+		self.rows = nlen
 		parent = self.createIndex(-1, -1)
 		self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
 		if olen > nlen:
@@ -45,9 +50,22 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.dataChanged.emit(tl, br)
 		self.emit(QtCore.SIGNAL("layoutChanged()"))
 
+	def canFetchMore(self, parent):
+		print("cfm", parent.isValid(), parent.row(), parent.column())
+		return self.rows < len(self.__data)
+
+	def fetchMore(self, parent):
+		print("fm", parent.isValid(), parent.row(), parent.column())
+		nlen = min(len(self.__data) - self.rows, self.rows_to_show)
+		#self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+		self.beginInsertRows(parent, self.rows, self.rows + nlen)
+		self.rows += nlen
+		self.endInsertRows()
+		#self.emit(QtCore.SIGNAL("layoutChanged()"))
+
 	def rowCount(self, parent):
 		if not parent.isValid():
-			return len(self.__data)
+			return self.rows
 		return 0
 
 	def columnCount(self, parent):
@@ -55,9 +73,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def data(self, index, role):
 		if not index.isValid():
-			return QtCore.QVariant()
+			return null_variant
 		elif role != QtCore.Qt.DisplayRole:
-			return QtCore.QVariant()
+			return null_variant
 		i = index.row()
 		j = index.column()
 		return QtCore.QVariant(self.header_map[j](self.__data[i]))
@@ -65,7 +83,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and role == QtCore.Qt.DisplayRole:
 			return self.headers[col]
-		return QtCore.QVariant()
+		return null_variant
 
 class fmgui(QtGui.QMainWindow):
 	def __init__(self, fmdb):
@@ -91,6 +109,10 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 
+		self.ftm = QtGui.QFileSystemModel()
+		self.ftm.setRootPath('/')
+		self.fs_tree.setModel(self.ftm)
+
 		# Set up the query UI
 		self.query_btn.clicked.connect(self.run_query)
 		self.query_types = [
@@ -105,7 +127,9 @@ class fmgui(QtGui.QMainWindow):
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 
 	def start(self):
-		self.do_overview()
+		#self.load_fstree()
+		#self.do_overview()
+		return
 
 	def change_querytype(self, idx):
 		self.query_types[self.old_querytype][2] = self.query_text.text()
@@ -249,6 +273,9 @@ class fmgui(QtGui.QMainWindow):
 			return letter
 		x = [overview_to_letter(ov) for ov in self.fmdb.query_overview()]
 		self.overview_text.setText(''.join(x))
+
+	def load_fstree(self):
+		self.ftm.revise([pi for pi in self.fmdb.query_ls([])])
 
 if __name__ == '__main__':
 	app = QtGui.QApplication(sys.argv)

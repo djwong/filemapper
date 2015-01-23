@@ -42,6 +42,7 @@ class fmdb:
 		self.overview_len = None
 		self.cached_overview = None
 		self.result_batch_size = 512
+		self.conn.execute("PRAGMA cache_size = 20000")
 
 	def __del__(self):
 		'''Destroy database object.'''
