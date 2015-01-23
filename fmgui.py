@@ -209,6 +209,7 @@ class fmgui(QtGui.QMainWindow):
 
 		self.ftm = FsTreeModel(root)
 		self.fs_tree.setModel(self.ftm)
+		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 
 		# Set up the query UI
 		self.query_btn.clicked.connect(self.run_query)
@@ -226,6 +227,12 @@ class fmgui(QtGui.QMainWindow):
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
+
+	def pick_fs_tree(self, n, o):
+		paths = [m.internalPointer().path for m in n.indexes()]
+		self.query_paths(paths)
+		self.querytype_combo.setCurrentIndex(3)
+		self.query_text.setText(' '.join(paths))
 
 	def start(self):
 		self.do_overview()
