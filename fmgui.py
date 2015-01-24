@@ -1,5 +1,6 @@
-#import sip
-#sip.setapi('QVariant', 1)
+# QT GUI routines for filemapper
+# Copyright(C) 2015 Darrick J. Wong
+# Licensed under GPLv2.
 
 import sys
 from PyQt4 import QtGui, uic, QtCore
