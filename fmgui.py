@@ -198,6 +198,10 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the overview
 		self.overview_text.selectionChanged.connect(self.select_overview)
+		self.ost = QtCore.QTimer()
+		self.ost.timeout.connect(self.run_query)
+		self.old_ostart = None
+		self.old_oend = None
 
 		# Set up the views
 		self.etm = ExtentTableModel([], units)
@@ -236,6 +240,7 @@ class fmgui(QtGui.QMainWindow):
 				return
 
 	def pick_fs_tree(self, n, o):
+		self.ost.stop()
 		paths = [m.internalPointer().path for m in n.indexes()]
 		self.enter_query(self.query_paths, ' '.join(paths))
 		self.run_query()
@@ -274,12 +279,18 @@ class fmgui(QtGui.QMainWindow):
 		end = cursor.selectionEnd()
 		if start == end:
 			return
+		if self.old_ostart == start and self.old_oend == end:
+			return
+		self.old_ostart = start
+		self.old_oend = end
 		self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
-		self.run_query()
+		self.ost.start(500)
 
 	def run_query(self):
+		self.ost.stop()
 		idx = self.querytype_combo.currentIndex()
 		args = fmcli.split_unescape(str(self.query_text.text()), ' ', ('"', "'"))
+		#print("QUERY:", self.query_types[idx][0], args)
 		fn = self.query_types[idx][1]
 		fn(args)
 
