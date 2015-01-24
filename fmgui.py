@@ -226,10 +226,27 @@ class fmgui(QtGui.QMainWindow):
 		self.old_querytype = 0
 		self.querytype_combo.setCurrentIndex(self.old_querytype)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
+		self.zoom_levels = [
+			['100%', 1.0],
+			['200%', 2.0],
+			['400%', 4.0],
+			['800%', 8.0],
+		]
+		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
+		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
+		self.overview_length = 2048
+		self.overview_zoom = 1.0
+		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
+
+	def change_zoom(self, idx):
+		self.overview_zoom = self.zoom_levels[idx][1]
+		olen = int(self.overview_length * self.overview_zoom)
+		self.fmdb.set_overview_length(olen)
+		self.do_overview()
 
 	def enter_query(self, fn, text):
 		for x in range(0, len(self.query_types)):

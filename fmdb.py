@@ -41,7 +41,7 @@ class fmdb:
 		self.conn = sqlite3.connect(dbpath)
 		self.fs = None
 		self.overview_len = None
-		self.cached_overview = None
+		self.cached_overview = []
 		self.result_batch_size = 512
 		self.conn.execute("PRAGMA cache_size = 20000")
 
@@ -143,13 +143,13 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		if self.overview_len == length:
 			return
 		self.overview_len = length
-		self.cached_overview = None
 		self.bytes_per_cell = int(self.fs.total_bytes / self.overview_len)
 
 	def query_overview(self):
 		'''Create the overview.'''
-		if self.cached_overview is not None:
-			return self.cached_overview
+		for c in self.cached_overview:
+			if c[0] == self.overview_len:
+				return c[1]
 
 		self.query_summary()
 		cur = self.conn.cursor()
@@ -183,8 +183,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 						overview[i].xattrs += 1
 		t2 = datetime.datetime.today()
 		print(t2 - t1, t1 - t0)
-		self.cached_overview = overview
-		return self.cached_overview
+		self.cached_overview.append([self.overview_len, overview])
+		return overview
 
 	def query_summary(self):
 		'''Fetch the filesystem summary.'''
