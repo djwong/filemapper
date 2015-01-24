@@ -1,11 +1,10 @@
-import sip
-sip.setapi('QVariant', 1)
+#import sip
+#sip.setapi('QVariant', 1)
 
 import sys
 from PyQt4 import QtGui, uic, QtCore
 import fmcli
 
-null_variant = QtCore.QVariant()
 null_model = QtCore.QModelIndex()
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
@@ -70,18 +69,18 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def data(self, index, role):
 		if not index.isValid():
-			return null_variant
+			return None
 		elif role != QtCore.Qt.DisplayRole:
-			return null_variant
+			return None
 		i = index.row()
 		j = index.column()
-		return QtCore.QVariant(self.header_map[j](self.__data[i]))
+		return self.header_map[j](self.__data[i])
 
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and \
 		   role == QtCore.Qt.DisplayRole:
 			return self.headers[col]
-		return null_variant
+		return None
 
 class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
@@ -178,7 +177,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if orientation == QtCore.Qt.Horizontal and \
 		   role == QtCore.Qt.DisplayRole:
 			return self.headers[col]
-		return null_variant
+		return None
 
 class fmgui(QtGui.QMainWindow):
 	def __init__(self, fmdb):
