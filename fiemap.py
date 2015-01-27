@@ -215,7 +215,7 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	# Otherwise the automatic Unicode decoding will error out.
 	#
 	# Strip out the trailing / so that root is ''
-	if path[-1] == os.sep:
+	if path != os.sep and path[-1] == os.sep:
 		path = path[:-1]
 	prefix_len = len(path)
 	dev = os.lstat(path).st_dev
