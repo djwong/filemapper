@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 # QT GUI routines for filemapper
 # Copyright(C) 2015 Darrick J. Wong
+=======
+# filemapper GUI
+# Copyright (C) 2015 Darrick J. Wong
+>>>>>>> origin/master
 # Licensed under GPLv2.
 
 import sys
@@ -7,9 +12,11 @@ from PyQt4 import QtGui, uic, QtCore
 import fmcli
 
 null_model = QtCore.QModelIndex()
+bold_font = QtGui.QFont()
+bold_font.setBold(True)
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
-	def __init__(self, data, units, rows_to_show=50, parent=None, *args):
+	def __init__(self, data, units, hm, rows_to_show=50, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
@@ -18,12 +25,13 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.p_off),
 			lambda x: fmcli.format_size(self.units, x.l_off),
 			lambda x: fmcli.format_size(self.units, x.length),
-			lambda x: x.flags,
+			lambda x: x.flags_to_str(),
 			lambda x: fmcli.typecodes[x.type],
 			lambda x: x.path if x.path != '' else '/']
 		self.units = units
 		self.rows_to_show = rows_to_show
 		self.rows = min(rows_to_show, len(data))
+		self.highlight = hm
 
 	def change_units(self, new_units):
 		self.units = new_units
@@ -71,17 +79,41 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 	def data(self, index, role):
 		if not index.isValid():
 			return None
-		elif role != QtCore.Qt.DisplayRole:
-			return None
 		i = index.row()
 		j = index.column()
-		return self.header_map[j](self.__data[i])
+		row = self.__data[i]
+		if role == QtCore.Qt.DisplayRole:
+			return self.header_map[j](row)
+		elif role == QtCore.Qt.FontRole:
+			if self.highlight.is_name_highlighted(row.path):
+				return bold_font
+			return None
+		else:
+			return None
 
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and \
 		   role == QtCore.Qt.DisplayRole:
 			return self.headers[col]
 		return None
+
+class HighlightModel:
+	def __init__(self):
+		self.extents = None
+		self.paths = None
+
+	def set_highlight(self, extents = None, paths = None):
+		self.extents = extents
+		self.paths = paths
+		# FIXME: actually whack the models?
+
+	def is_name_highlighted(self, name):
+		if self.paths is None:
+			return False
+		return name in self.paths
+
+	def is_range_highlighted(self, start, end):
+		return False
 
 class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
@@ -186,7 +218,7 @@ class fmgui(QtGui.QMainWindow):
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
-		self.show()
+		self.highlight = HighlightModel()
 
 		# Set up the units menu
 		units = fmcli.units_auto
@@ -198,13 +230,19 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the overview
 		self.overview_text.selectionChanged.connect(self.select_overview)
+		self.overview_text.resizeEvent = self.resize_overview
 		self.ost = QtCore.QTimer()
 		self.ost.timeout.connect(self.run_query)
 		self.old_ostart = None
 		self.old_oend = None
+		self.overview_length = 2048
+		self.overview_zoom = 1.0
+		qfm = QtGui.QFontMetrics(self.overview_text.currentFont())
+		self.overview_font_width = qfm.width('D')
+		self.overview_font_height = qfm.height()
 
 		# Set up the views
-		self.etm = ExtentTableModel([], units)
+		self.etm = ExtentTableModel([], units, self.highlight)
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 
@@ -227,10 +265,36 @@ class fmgui(QtGui.QMainWindow):
 		self.old_querytype = 0
 		self.querytype_combo.setCurrentIndex(self.old_querytype)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
+		self.zoom_levels = [
+			['100%', 1.0],
+			['200%', 2.0],
+			['400%', 4.0],
+			['800%', 8.0],
+		]
+		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
+		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
+		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
+
+	def resize_overview(self, event):
+		QtGui.QTextEdit.resizeEvent(self.overview_text, event)
+		sz = self.overview_text.viewport().size()
+		# Cheat with the textedit width/height -- use one less
+		# column than we probably could, and force wrapping at
+		# that column.
+		w = (sz.width() // self.overview_font_width) - 1
+		h = (sz.height() // self.overview_font_height) - 1
+		self.overview_text.setLineWrapColumnOrWidth(w)
+		print("overview; %f x %f = %f" % (w, h, w * h))
+		self.overview_length = w * h
+		self.do_overview()
+
+	def change_zoom(self, idx):
+		self.overview_zoom = self.zoom_levels[idx][1]
+		self.do_overview()
 
 	def enter_query(self, fn, text):
 		for x in range(0, len(self.query_types)):
@@ -241,12 +305,20 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		self.ost.stop()
-		paths = [m.internalPointer().path for m in n.indexes()]
-		self.enter_query(self.query_paths, ' '.join(paths))
+		nodes = [m.internalPointer() for m in n.indexes()]
+		paths = [n.path for n in nodes]
+		self.highlight.set_highlight(None, paths)
+		if QtGui.QApplication.keyboardModifiers() == QtCore.Qt.ShiftModifier:
+			p = [n.path + '*' if n.hasChildren() else n.path for n in nodes]
+		else:
+			p = paths
+		self.enter_query(self.query_paths, ' '.join(p))
 		self.run_query()
 
 	def start(self):
-		self.do_overview()
+		# Don't call show() until you're done overriding widget methods
+		self.show()
+		#self.do_overview()
 		self.do_summary()
 		return
 
@@ -410,6 +482,8 @@ class fmgui(QtGui.QMainWindow):
 			if ov.xattrs > x:
 				letter = 'x'
 			return letter
+		olen = int(self.overview_length * self.overview_zoom)
+		self.fmdb.set_overview_length(olen)
 		x = [overview_to_letter(ov) for ov in self.fmdb.query_overview()]
 		self.overview_text.setText(''.join(x))
 

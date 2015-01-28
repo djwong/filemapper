@@ -85,6 +85,7 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 	e_logical = None
 	e_length = None
 	e_flags = None
+	is_last = False
 	while True:
 		hdr = _struct_fiemap.pack(fe_logical + fe_length, length, flags, 0, count, 0)
 		try:
@@ -140,6 +141,8 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 			if is_last:
 				break
 			offset += _struct_fiemap_extent.size
+		if is_last:
+			break
 
 	# Emit the last extent
 	if e_physical is None:
@@ -199,6 +202,9 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
 	def do_map(stat, path):
+		if stat.st_ino in seen:
+			return
+		seen.add(stat.st_ino)
 		fd = os.open(path, os.O_RDONLY)
 		try:
 			for extent in fiemap2(fd, flags = flags):
@@ -210,12 +216,13 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 				extent_fn(stat, extent, False)
 		os.close(fd)
 
+	seen = set()
 	# Careful - we have to pass a byte string to os.walk so that
 	# it'll return byte strings, which we can then decode ourselves.
 	# Otherwise the automatic Unicode decoding will error out.
 	#
 	# Strip out the trailing / so that root is ''
-	if path[-1] == os.sep:
+	if path != os.sep and path[-1] == os.sep:
 		path = path[:-1]
 	prefix_len = len(path)
 	dev = os.lstat(path).st_dev
@@ -255,6 +262,26 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			do_map(fstat, fname)
 			dentries.append((xfile.decode('utf-8', 'replace'), fstat))
 		dir_fn(rstat, dentries)
+
+def extent_flags_to_str(flags):
+	ext_flags = [
+		[FIEMAP_EXTENT_LAST, 'l'],
+		[FIEMAP_EXTENT_UNKNOWN, '?'],
+		[FIEMAP_EXTENT_DELALLOC, 'd'],
+		[FIEMAP_EXTENT_ENCODED, 'e'],
+		[FIEMAP_EXTENT_DATA_ENCRYPTED, 'E'],
+		[FIEMAP_EXTENT_NOT_ALIGNED, 'u'],
+		[FIEMAP_EXTENT_DATA_INLINE, 'i'],
+		[FIEMAP_EXTENT_DATA_TAIL, 't'],
+		[FIEMAP_EXTENT_UNWRITTEN, 'U'],
+		[FIEMAP_EXTENT_MERGED, 'm'],
+		[FIEMAP_EXTENT_SHARED, 's'],
+	]
+	s = ''
+	for flag in ext_flags:
+		if flags & flag[0]:
+			s += flag[1]
+	return s
 
 if __name__ == '__main__':
 	import sys

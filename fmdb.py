@@ -7,6 +7,7 @@ import os
 import datetime
 import stat
 import array
+import fiemap
 from collections import namedtuple
 
 def stmode_to_type(xstat, is_xattr):
@@ -24,8 +25,17 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'free_inodes', 'avail_inodes',
 				       'extents'])
 
-poff_row = namedtuple('poff_row', ['path', 'p_off', 'l_off', 'length', \
-				   'flags', 'type'])
+class poff_row:
+	def __init__(self, path, p_off, l_off, length, flags, type):
+		self.path = path
+		self.p_off = p_off
+		self.l_off = l_off
+		self.length = length
+		self.flags = flags
+		self.type = type
+
+	def flags_to_str(self):
+		return fiemap.extent_flags_to_str(self.flags)
 
 dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
@@ -41,7 +51,7 @@ class fmdb:
 		self.conn = sqlite3.connect(dbpath)
 		self.fs = None
 		self.overview_len = None
-		self.cached_overview = None
+		self.cached_overview = []
 		self.result_batch_size = 512
 		self.conn.execute("PRAGMA cache_size = 20000")
 
@@ -129,6 +139,9 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
 		code = stmode_to_type(stat, is_xattr)
+		if extent.flags & (fiemap.FIEMAP_EXTENT_UNKNOWN | \
+				   fiemap.FIEMAP_EXTENT_DELALLOC):
+			return
 		self.conn.execute('INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?);', \
 			    (stat.st_ino, extent.physical, extent.logical, \
 			     extent.flags, extent.length, \
@@ -143,18 +156,18 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		if self.overview_len == length:
 			return
 		self.overview_len = length
-		self.cached_overview = None
 		self.bytes_per_cell = int(self.fs.total_bytes / self.overview_len)
 
 	def query_overview(self):
 		'''Create the overview.'''
-		if self.cached_overview is not None:
-			return self.cached_overview
+		for c in self.cached_overview:
+			if c[0] == self.overview_len:
+				return c[1]
 
 		self.query_summary()
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		overview = [overview_block() for x in range(1, self.overview_len)]
+		overview = [overview_block() for x in range(0, self.overview_len)]
 
 		t0 = datetime.datetime.today()
 		cur.execute('SELECT p_off, length, type FROM extent_t;')
@@ -183,8 +196,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 						overview[i].xattrs += 1
 		t2 = datetime.datetime.today()
 		print(t2 - t1, t1 - t0)
-		self.cached_overview = overview
-		return self.cached_overview
+		self.cached_overview.append([self.overview_len, overview])
+		return overview
 
 	def query_summary(self):
 		'''Fetch the filesystem summary.'''
