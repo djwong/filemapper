@@ -1,6 +1,6 @@
 # filemapper CLI
 # Copyright (C) 2015 Darrick J. Wong
-# Licensed under GPLv2
+# Licensed under GPLv2.
 
 import code
 import readline
