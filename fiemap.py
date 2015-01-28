@@ -202,6 +202,9 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
 	def do_map(stat, path):
+		if stat.st_ino in seen:
+			return
+		seen.add(stat.st_ino)
 		fd = os.open(path, os.O_RDONLY)
 		try:
 			for extent in fiemap2(fd, flags = flags):
@@ -213,6 +216,7 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 				extent_fn(stat, extent, False)
 		os.close(fd)
 
+	seen = set()
 	# Careful - we have to pass a byte string to os.walk so that
 	# it'll return byte strings, which we can then decode ourselves.
 	# Otherwise the automatic Unicode decoding will error out.
