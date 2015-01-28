@@ -230,6 +230,8 @@ class fmgui(QtGui.QMainWindow):
 		self.ost.timeout.connect(self.run_query)
 		self.old_ostart = None
 		self.old_oend = None
+		self.overview_length = 2048
+		self.overview_zoom = 1.0
 		self.overview_fm = QtGui.QFontMetrics(self.overview_text.currentFont())
 
 		# Set up the views
@@ -264,8 +266,6 @@ class fmgui(QtGui.QMainWindow):
 		]
 		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
 		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
-		self.overview_length = 2048
-		self.overview_zoom = 1.0
 		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
@@ -278,11 +278,11 @@ class fmgui(QtGui.QMainWindow):
 		w = sz.width() / self.overview_fm.width('.')
 		h = sz.height() / self.overview_fm.height()
 		print("overview; %d x %d = %d" % (w, h, w * h))
+		self.overview_length = w * h
+		self.do_overview()
 
 	def change_zoom(self, idx):
 		self.overview_zoom = self.zoom_levels[idx][1]
-		olen = int(self.overview_length * self.overview_zoom)
-		self.fmdb.set_overview_length(olen)
 		self.do_overview()
 
 	def enter_query(self, fn, text):
@@ -307,7 +307,7 @@ class fmgui(QtGui.QMainWindow):
 	def start(self):
 		# Don't call show() until you're done overriding widget methods
 		self.show()
-		self.do_overview()
+		#self.do_overview()
 		self.do_summary()
 		return
 
@@ -471,6 +471,8 @@ class fmgui(QtGui.QMainWindow):
 			if ov.xattrs > x:
 				letter = 'x'
 			return letter
+		olen = int(self.overview_length * self.overview_zoom)
+		self.fmdb.set_overview_length(olen)
 		x = [overview_to_letter(ov) for ov in self.fmdb.query_overview()]
 		self.overview_text.setText(''.join(x))
 

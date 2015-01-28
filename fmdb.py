@@ -167,7 +167,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		self.query_summary()
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		overview = [overview_block() for x in range(1, self.overview_len)]
+		overview = [overview_block() for x in range(0, self.overview_len)]
 
 		t0 = datetime.datetime.today()
 		cur.execute('SELECT p_off, length, type FROM extent_t;')
