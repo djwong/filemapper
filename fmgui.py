@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 # QT GUI routines for filemapper
 # Copyright(C) 2015 Darrick J. Wong
-=======
-# filemapper GUI
-# Copyright (C) 2015 Darrick J. Wong
->>>>>>> origin/master
 # Licensed under GPLv2.
 
 import sys
