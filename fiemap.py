@@ -259,6 +259,26 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			dentries.append((xfile.decode('utf-8', 'replace'), fstat))
 		dir_fn(rstat, dentries)
 
+def extent_flags_to_str(flags):
+	ext_flags = [
+		[FIEMAP_EXTENT_LAST, 'l'],
+		[FIEMAP_EXTENT_UNKNOWN, '?'],
+		[FIEMAP_EXTENT_DELALLOC, 'd'],
+		[FIEMAP_EXTENT_ENCODED, 'e'],
+		[FIEMAP_EXTENT_DATA_ENCRYPTED, 'E'],
+		[FIEMAP_EXTENT_NOT_ALIGNED, 'u'],
+		[FIEMAP_EXTENT_DATA_INLINE, 'i'],
+		[FIEMAP_EXTENT_DATA_TAIL, 't'],
+		[FIEMAP_EXTENT_UNWRITTEN, 'U'],
+		[FIEMAP_EXTENT_MERGED, 'm'],
+		[FIEMAP_EXTENT_SHARED, 's'],
+	]
+	s = ''
+	for flag in ext_flags:
+		if flags & flag[0]:
+			s += flag[1]
+	return s
+
 if __name__ == '__main__':
 	import sys
 	import pprint

@@ -17,7 +17,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.p_off),
 			lambda x: fmcli.format_size(self.units, x.l_off),
 			lambda x: fmcli.format_size(self.units, x.length),
-			lambda x: x.flags,
+			lambda x: x.flags_to_str(),
 			lambda x: fmcli.typecodes[x.type],
 			lambda x: x.path if x.path != '' else '/']
 		self.units = units

@@ -257,14 +257,16 @@ class fmcli(code.InteractiveConsole):
 			print("'%s',%d,%d,%d,0x%x,'%s'" % \
 				(ext.path if ext.path != '' else '/', \
 				 ext.p_off, ext.l_off, ext.length, \
-				 ext.flags, typecodes[ext.type]))
+				 ext.flags_to_str(), \
+				 typecodes[ext.type]))
 			return
 		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
 			(ext.path if ext.path != '' else '/', \
 			 format_size(self.units, ext.p_off), \
 			 format_size(self.units, ext.l_off), \
 			 format_size(self.units, ext.length), \
-			 ext.flags, typecodes[ext.type]))
+			 ext.flags_to_str(), \
+			 typecodes[ext.type]))
 
 	def print_dentry(self, de):
 		if self.machine:

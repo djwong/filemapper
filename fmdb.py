@@ -7,6 +7,7 @@ import os
 import datetime
 import stat
 import array
+import fiemap
 from collections import namedtuple
 
 def stmode_to_type(xstat, is_xattr):
@@ -24,8 +25,17 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'free_inodes', 'avail_inodes',
 				       'extents'])
 
-poff_row = namedtuple('poff_row', ['path', 'p_off', 'l_off', 'length', \
-				   'flags', 'type'])
+class poff_row:
+	def __init__(self, path, p_off, l_off, length, flags, type):
+		self.path = path
+		self.p_off = p_off
+		self.l_off = l_off
+		self.length = length
+		self.flags = flags
+		self.type = type
+
+	def flags_to_str(self):
+		return fiemap.extent_flags_to_str(self.flags)
 
 dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
@@ -129,6 +139,9 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
 		code = stmode_to_type(stat, is_xattr)
+		if extent.flags & (fiemap.FIEMAP_EXTENT_UNKNOWN | \
+				   fiemap.FIEMAP_EXTENT_DELALLOC):
+			return
 		self.conn.execute('INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?);', \
 			    (stat.st_ino, extent.physical, extent.logical, \
 			     extent.flags, extent.length, \
