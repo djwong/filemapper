@@ -213,7 +213,6 @@ class fmgui(QtGui.QMainWindow):
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
-		self.show()
 		self.highlight = HighlightModel()
 
 		# Set up the units menu
@@ -226,10 +225,12 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the overview
 		self.overview_text.selectionChanged.connect(self.select_overview)
+		self.overview_text.resizeEvent = self.resize_overview
 		self.ost = QtCore.QTimer()
 		self.ost.timeout.connect(self.run_query)
 		self.old_ostart = None
 		self.old_oend = None
+		self.overview_fm = QtGui.QFontMetrics(self.overview_text.currentFont())
 
 		# Set up the views
 		self.etm = ExtentTableModel([], units, self.highlight)
@@ -271,6 +272,13 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
+	def resize_overview(self, event):
+		QtGui.QTextEdit.resizeEvent(self.overview_text, event)
+		sz = self.overview_text.viewport().size()
+		w = sz.width() / self.overview_fm.width('.')
+		h = sz.height() / self.overview_fm.height()
+		print("overview; %d x %d = %d" % (w, h, w * h))
+
 	def change_zoom(self, idx):
 		self.overview_zoom = self.zoom_levels[idx][1]
 		olen = int(self.overview_length * self.overview_zoom)
@@ -297,6 +305,8 @@ class fmgui(QtGui.QMainWindow):
 		self.run_query()
 
 	def start(self):
+		# Don't call show() until you're done overriding widget methods
+		self.show()
 		self.do_overview()
 		self.do_summary()
 		return
