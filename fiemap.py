@@ -85,6 +85,7 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 	e_logical = None
 	e_length = None
 	e_flags = None
+	is_last = False
 	while True:
 		hdr = _struct_fiemap.pack(fe_logical + fe_length, length, flags, 0, count, 0)
 		try:
@@ -140,6 +141,8 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 			if is_last:
 				break
 			offset += _struct_fiemap_extent.size
+		if is_last:
+			break
 
 	# Emit the last extent
 	if e_physical is None:
