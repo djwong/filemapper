@@ -232,7 +232,9 @@ class fmgui(QtGui.QMainWindow):
 		self.old_oend = None
 		self.overview_length = 2048
 		self.overview_zoom = 1.0
-		self.overview_fm = QtGui.QFontMetrics(self.overview_text.currentFont())
+		qfm = QtGui.QFontMetrics(self.overview_text.currentFont())
+		self.overview_font_width = qfm.width('D')
+		self.overview_font_height = qfm.height()
 
 		# Set up the views
 		self.etm = ExtentTableModel([], units, self.highlight)
@@ -275,9 +277,13 @@ class fmgui(QtGui.QMainWindow):
 	def resize_overview(self, event):
 		QtGui.QTextEdit.resizeEvent(self.overview_text, event)
 		sz = self.overview_text.viewport().size()
-		w = sz.width() / self.overview_fm.width('.')
-		h = sz.height() / self.overview_fm.height()
-		print("overview; %d x %d = %d" % (w, h, w * h))
+		# Cheat with the textedit width/height -- use one less
+		# column than we probably could, and force wrapping at
+		# that column.
+		w = (sz.width() // self.overview_font_width) - 1
+		h = (sz.height() // self.overview_font_height) - 1
+		self.overview_text.setLineWrapColumnOrWidth(w)
+		print("overview; %f x %f = %f" % (w, h, w * h))
 		self.overview_length = w * h
 		self.do_overview()
 

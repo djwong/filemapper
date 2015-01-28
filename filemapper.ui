@@ -46,7 +46,7 @@
       </property>
       <property name="font">
        <font>
-        <family>Source Code Pro</family>
+        <family>Source Code Pro,monospace</family>
         <pointsize>8</pointsize>
        </font>
       </property>
@@ -55,6 +55,9 @@
       </property>
       <property name="verticalScrollBarPolicy">
        <enum>Qt::ScrollBarAlwaysOn</enum>
+      </property>
+      <property name="lineWrapMode">
+       <enum>QTextEdit::FixedColumnWidth</enum>
       </property>
       <property name="readOnly">
        <bool>true</bool>
