@@ -14,6 +14,7 @@ bold_font = QtGui.QFont()
 bold_font.setBold(True)
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
+	'''Render and highlight an extent table.'''
 	def __init__(self, data, units, rows_to_show=100, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
@@ -40,12 +41,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.name_highlight = None
 
 	def change_units(self, new_units):
+		'''Change the display units of the size and length columns.'''
 		self.units = new_units
 		tl = self.createIndex(0, 0)
 		br = self.createIndex(len(self.__data) - 1, 2)
 		self.dataChanged.emit(tl, br)
 
 	def revise(self, new_data):
+		'''Update the extent table and redraw.'''
 		olen = self.rows
 		nlen = min(len(new_data), self.rows_to_show)
 		self.rows = nlen
@@ -69,6 +72,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		return self.rows < len(self.__data)
 
 	def fetchMore(self, parent):
+		'''Reduce load times by rendering subsets selectively.'''
 		nlen = min(len(self.__data) - self.rows, self.rows_to_show)
 		self.beginInsertRows(parent, self.rows, self.rows + nlen)
 		self.rows += nlen
@@ -108,10 +112,12 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		return None
 
 	def highlight_names(self, names = None):
+		'''Highlight rows corresponding to some FS paths.'''
 		self.name_highlight = names
 		# Skip the re-render since we're just about to requery anyway.
 
 	def extents(self, rows):
+		'''Retrieve a range of extents.'''
 		for r in rows:
 			yield self.__data[r]
 
@@ -124,6 +130,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.dataChanged.emit(tl, br)
 
 class FsTreeNode:
+	'''A node in the recorded filesystem.'''
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
 		if load_fn is None and parent is None:
 			raise Exception
@@ -144,6 +151,7 @@ class FsTreeNode:
 			self.children = []
 
 	def load(self):
+		'''Query the database for child nodes.'''
 		if self.loaded:
 			return
 		self.loaded = True
@@ -161,6 +169,7 @@ class FsTreeNode:
 		return self.type == 'd'
 
 class FsTreeModel(QtCore.QAbstractItemModel):
+	'''Model the filesystem tree recorded in the database.'''
 	def __init__(self, root, parent=None, *args):
 		QtCore.QAbstractItemModel.__init__(self, parent, *args)
 		self.root = root
@@ -175,13 +184,13 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		return self.createIndex(row, column, parent.children[row])
 
 	def parent(self, index):
+		'''Create an index for the parent of an indexed cell, from 
+		   the perspective of the grandparent node.'''
 		if not index.isValid():
 			return null_model
 		node = index.internalPointer()
 		if node.parent is None:
 			return null_model
-		# Create an index for the parent, from the perspective
-		# of the *grandparent* node...
 		return self.createIndex(node.parent.row(), 0, node.parent)
 
 	def hasChildren(self, parent):
@@ -221,6 +230,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		return None
 
 class fmgui(QtGui.QMainWindow):
+	'''Manage the GUI widgets and interactions.'''
 	def __init__(self, fmdb):
 		super(fmgui, self).__init__()
 		self.fmdb = fmdb
@@ -285,9 +295,11 @@ class fmgui(QtGui.QMainWindow):
 		self.status_bar.addWidget(self.status_label)
 
 	def change_zoom(self, idx):
+		'''Handle a change in the zoom selector.'''
 		self.overview.set_zoom(self.zoom_levels[idx][1])
 
 	def enter_query(self, fn, text):
+		'''Load the query UI elements.'''
 		for x in range(0, len(self.query_types)):
 			if self.query_types[x][1] == fn:
 				self.querytype_combo.setCurrentIndex(x)
@@ -295,6 +307,7 @@ class fmgui(QtGui.QMainWindow):
 				return
 
 	def pick_fs_tree(self, n, o):
+		'''Handle the selection of a FS tree nodes.'''
 		self.ost.stop()
 		nodes = {m.internalPointer() for m in self.fs_tree.selectedIndexes()}
 		paths = [n.path for n in nodes]
@@ -312,6 +325,7 @@ class fmgui(QtGui.QMainWindow):
 		self.run_query()
 
 	def pick_extent_table(self, n, o):
+		'''Handle the selection of extent table rows.'''
 		rows = {m.row() for m in self.extent_table.selectedIndexes()}
 		if len(rows) == 0:
 			ranges = None
@@ -320,6 +334,7 @@ class fmgui(QtGui.QMainWindow):
 		self.overview.highlight_ranges(ranges)
 
 	def start(self):
+		'''Load data from the database.'''
 		# Don't call show() until you're done overriding widget methods
 		self.overview.load()
 		self.show()
@@ -327,11 +342,13 @@ class fmgui(QtGui.QMainWindow):
 		return
 
 	def change_querytype(self, idx):
+		'''Handle a change in the query type selector.'''
 		self.query_types[self.old_querytype][2] = self.query_text.text()
 		self.query_text.setText(self.query_types[idx][2])
 		self.old_querytype = idx
 
 	def change_units(self, action):
+		'''Handle one of the units menu items.'''
 		idx = self.unit_actions.index(action)
 		avail_units = [
 			fmcli.units_auto,
@@ -349,6 +366,8 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[idx].setChecked(True)
 
 	def select_overview(self):
+		'''Handle the user making a physical block selection in
+		   the overview.'''
 		cursor = self.overview_text.textCursor()
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
@@ -362,6 +381,7 @@ class fmgui(QtGui.QMainWindow):
 		self.ost.start(500)
 
 	def run_query(self):
+		'''Dispatch a query to populate the extent table.'''
 		self.ost.stop()
 		idx = self.querytype_combo.currentIndex()
 		args = fmcli.split_unescape(str(self.query_text.text()), ' ', ('"', "'"))
@@ -371,6 +391,7 @@ class fmgui(QtGui.QMainWindow):
 		self.pick_extent_table(None, None)
 
 	def query_overview(self, args):
+		'''Query for extents mapped to ranges of overview cells.'''
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -385,6 +406,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_poff_range(r))
 
 	def query_poff(self, args):
+		'''Query for extents mapped to ranges of physical bytes.'''
 		def n2p(num):
 			conv = [
 				fmcli.units('%', 'percent', self.fs_summary.total_bytes / 100),
@@ -414,6 +436,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_poff_range(ranges))
 
 	def load_extents(self, f):
+		'''Populate the extent table.'''
 		if isinstance(f, list):
 			new_data = f
 		else:
@@ -425,6 +448,7 @@ class fmgui(QtGui.QMainWindow):
 		self.extent_dock.setWindowTitle('Extents (%s)' % fmcli.format_number(fmcli.units_none, len(new_data)))
 
 	def query_inodes(self, args):
+		'''Query for extents mapped to ranges of inodes.'''
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -438,12 +462,14 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_inodes(ranges))
 
 	def query_paths(self, args):
+		'''Query for extents mapped to a list of FS paths.'''
 		if '*' in args:
 			self.load_extents(self.fmdb.query_paths([], False))
 			return
 		self.load_extents(self.fmdb.query_paths(args))
 
 	def do_summary(self):
+		'''Load the FS summary into the status line.'''
 		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes - self.fs_summary.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes), \
@@ -475,6 +501,7 @@ class OverviewModel:
 
 	@staticmethod
 	def overview_to_letter(ov):
+		'''Convert an overview block to a letter.'''
 		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs
 		if tot == 0:
 			return '.'
@@ -505,19 +532,23 @@ class OverviewModel:
 		return letter
 
 	def load(self):
+		'''Query the DB for the high-res overview data.'''
 		olen = min(self.precision, self.fs_summary.total_bytes // self.fs_summary.block_size)
 		self.fmdb.set_overview_length(olen)
 		self.overview_big = [ov for ov in self.fmdb.query_overview()]
 
 	def set_zoom(self, zoom):
+		'''Set the zoom factor for the overview.'''
 		self.zoom = zoom
 		self.render()
 
 	def set_length(self, length):
+		'''Set the overview length, in characters.'''
 		self.length = length
 		self.render()
 
 	def render(self):
+		'''Render the overview into the text view.'''
 		def is_highlighted(cell):
 			if range_highlight is None:
 				return False
@@ -525,6 +556,7 @@ class OverviewModel:
 				if cell >= start and cell <= end:
 					return True
 			return False
+
 		if self.overview_big is None:
 			return
 		olen = int(self.length * self.zoom)
@@ -558,6 +590,7 @@ class OverviewModel:
 		# XXX: need to set the selection background?
 
 	def resize_ctl(self, event):
+		'''Handle the resizing of the text view control.'''
 		QtGui.QTextEdit.resizeEvent(self.ctl, event)
 		sz = self.ctl.viewport().size()
 		# Cheat with the textedit width/height -- use one less
@@ -575,6 +608,7 @@ class OverviewModel:
 		self.render()
 
 	def highlight_ranges(self, ranges):
+		'''Highlight a range of physical extents in the overview.'''
 		old_highlight = self.range_highlight
 		if ranges is None:
 			self.range_highlight = None
@@ -583,8 +617,3 @@ class OverviewModel:
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
-
-if __name__ == '__main__':
-	app = QtGui.QApplication(sys.argv)
-	window = fmgui(None)
-	sys.exit(app.exec_())

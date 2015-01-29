@@ -417,6 +417,3 @@ class fmcli(code.InteractiveConsole):
 		dnames = ['' if p == '/' else p for p in args.dirnames]
 		for de in self.fmdb.query_ls(dnames):
 			self.print_dentry(de)
-
-if __name__ == '__main__':
-	fmcli().interact()
