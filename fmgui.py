@@ -298,6 +298,8 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
+		self.query_combo.setModel(ChecklistModel())
+
 	def change_zoom(self, idx):
 		'''Handle a change in the zoom selector.'''
 		self.overview.set_zoom(self.zoom_levels[idx][1])
@@ -648,3 +650,27 @@ class OverviewModel:
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
+
+class ChecklistModel(QtCore.QAbstractTableModel):
+	def __init__(self, parent=None, *args):
+		QtCore.QAbstractTableModel.__init__(self, parent, *args)
+		self.rows = ['Physical Offset', 'Logical Offset', \
+				'Length', 'Flags', 'Type', 'Path']
+
+	def rowCount(self, parent):
+		return len(self.rows)
+
+	def columnCount(self, parent):
+		return 1
+
+	def data(self, index, role):
+		i = index.row()
+		j = index.column()
+		if j != 0:
+			return None
+		if role == QtCore.Qt.DisplayRole:
+			return self.rows[i]
+		elif role == QtCore.Qt.CheckStateRole:
+			return i % 2 == 0
+		else:
+			return None
