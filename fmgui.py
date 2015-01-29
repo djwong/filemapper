@@ -430,6 +430,7 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label.setText(s)
 
 class OverviewModel:
+	'''Render the overview into a text field.'''
 	def __init__(self, fmdb, ctl, precision = 65536):
 		self.fmdb = fmdb
 		self.fs_summary = self.fmdb.query_summary()
@@ -442,6 +443,8 @@ class OverviewModel:
 		self.zoom = 1.0
 		self.precision = precision
 		self.overview_big = None
+		self.rst = QtCore.QTimer()
+		self.rst.timeout.connect(self.delayed_resize)
 
 	@staticmethod
 	def overview_to_letter(ov):
@@ -517,7 +520,12 @@ class OverviewModel:
 		h = (sz.height() // self.overview_font_height) - 1
 		self.ctl.setLineWrapColumnOrWidth(w)
 		#print("overview; %f x %f = %f" % (w, h, w * h))
-		self.set_length(w * h)
+		self.length = w * h
+		self.rst.start(40)
+
+	def delayed_resize(self):
+		self.rst.stop()
+		self.render()
 
 if __name__ == '__main__':
 	app = QtGui.QApplication(sys.argv)
