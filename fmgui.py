@@ -519,9 +519,9 @@ class OverviewModel:
 
 	def render(self):
 		def is_highlighted(cell):
-			if self.range_highlight is None:
+			if range_highlight is None:
 				return False
-			for start, end in self.range_highlight:
+			for start, end in range_highlight:
 				if cell >= start and cell <= end:
 					return True
 			return False
@@ -529,6 +529,10 @@ class OverviewModel:
 			return
 		olen = int(self.length * self.zoom)
 		self.fmdb.set_overview_length(olen)
+		if self.range_highlight is None:
+			range_highlight = None
+		else:
+			range_highlight = {x for x in self.fmdb.pick_bytes(self.range_highlight)}
 		o2s = len(self.overview_big) / olen
 		ov_str = []
 		t0 = datetime.datetime.today()
@@ -575,7 +579,7 @@ class OverviewModel:
 		if ranges is None:
 			self.range_highlight = None
 		else:
-			self.range_highlight = {x for x in self.fmdb.pick_bytes(ranges)}
+			self.range_highlight = {x for x in ranges}
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
