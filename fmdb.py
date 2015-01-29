@@ -243,6 +243,23 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 					raise ValueError("range %d outside of overview" % i[1])
 				yield (i[0] * sbc, (i[1] + 1) * sbc - 1)
 
+	def pick_bytes(self, ranges):
+		'''Convert ranges of bytes to ranges of cells.'''
+		sbc = self.bytes_per_cell
+		self.query_summary()
+
+		for i in ranges:
+			if type(i) == int:
+				if i > self.fs.total_bytes:
+					raise ValueError("range %d outside of fs" % i)
+				yield (int(i / sbc), int(i / sbc))
+			else:
+				if i[0] > self.fs.total_bytes:
+					raise ValueError("range %d outside of fs" % i)
+				if i[1] > self.fs.total_bytes:
+					raise ValueError("range %d outside of fs" % i)
+				yield (int(i[0] / sbc), int(i[1] / sbc))
+
 	def query_poff_range(self, ranges):
 		'''Query extents spanning ranges of bytes.'''
 		cur = self.conn.cursor()

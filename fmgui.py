@@ -103,6 +103,10 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.name_highlight = names
 		# XXX: do we need to update the model?
 
+	def extents(self, rows):
+		for r in rows:
+			yield self.__data[r]
+
 class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
 		if load_fn is None and parent is None:
@@ -207,7 +211,6 @@ class fmgui(QtGui.QMainWindow):
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
 		self.fs_summary = self.fmdb.query_summary()
-		self.overview = OverviewModel(fmdb, self.overview_text)
 
 		# Set up the units menu
 		units = fmcli.units_auto
@@ -218,17 +221,20 @@ class fmgui(QtGui.QMainWindow):
 		ag.triggered.connect(self.change_units)
 
 		# Set up the overview
+		self.overview = OverviewModel(fmdb, self.overview_text)
 		self.overview_text.selectionChanged.connect(self.select_overview)
 		self.ost = QtCore.QTimer()
 		self.ost.timeout.connect(self.run_query)
 		self.old_ostart = None
 		self.old_oend = None
 
-		# Set up the views
+		# Set up the extent view
 		self.etm = ExtentTableModel([], units)
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
+		self.extent_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
 
+		# Set up the fs tree view
 		de = self.fmdb.query_root()
 		root = FsTreeNode(de.name, de.ino, de.type, lambda x: self.fmdb.query_ls([x]))
 
@@ -286,6 +292,14 @@ class fmgui(QtGui.QMainWindow):
 		self.enter_query(self.query_paths, ' '.join(p))
 		self.run_query()
 
+	def pick_extent_table(self, n, o):
+		rows = {m.row() for m in self.extent_table.selectedIndexes()}
+		if len(rows) == 0:
+			ranges = None
+		else:
+			ranges = [(ex.p_off, ex.p_off + ex.length) for ex in self.etm.extents(rows)]
+		self.overview.highlight_ranges(ranges)
+
 	def start(self):
 		# Don't call show() until you're done overriding widget methods
 		self.overview.load()
@@ -335,6 +349,7 @@ class fmgui(QtGui.QMainWindow):
 		#print("QUERY:", self.query_types[idx][0], args)
 		fn = self.query_types[idx][1]
 		fn(args)
+		self.pick_extent_table(None, None)
 
 	def query_overview(self, args):
 		ranges = []
@@ -436,6 +451,7 @@ class OverviewModel:
 		self.overview_big = None
 		self.rst = QtCore.QTimer()
 		self.rst.timeout.connect(self.delayed_resize)
+		self.range_highlight = None
 
 	@staticmethod
 	def overview_to_letter(ov):
@@ -482,12 +498,19 @@ class OverviewModel:
 		self.render()
 
 	def render(self):
+		def is_highlighted(cell):
+			if self.range_highlight is None:
+				return False
+			for start, end in self.range_highlight:
+				if cell >= start and cell <= end:
+					return True
+			return False
 		if self.overview_big is None:
 			return
 		olen = int(self.length * self.zoom)
 		self.fmdb.set_overview_length(olen)
 		o2s = len(self.overview_big) / olen
-		ov_str = ['.' for x in range(0, olen)]
+		ov_str = []
 		t0 = datetime.datetime.today()
 		for i in range(0, olen):
 			x = int(math.floor(i * o2s))
@@ -496,9 +519,17 @@ class OverviewModel:
 			ovs = fmdb.overview_block()
 			for s in ss:
 				ovs.add(s)
-			ov_str[i] = self.overview_to_letter(ovs)
+			h = is_highlighted(i)
+			if h:
+				ov_str.append('<b>')
+			ov_str.append(self.overview_to_letter(ovs))
+			if h:
+				ov_str.append('</b>')
 		t1 = datetime.datetime.today()
 		#print("render ", t1 - t0)
+		cursor = self.ctl.textCursor()
+		start = cursor.selectionStart()
+		end = cursor.selectionEnd()
 		self.ctl.setText(''.join(ov_str))
 
 	def resize_ctl(self, event):
@@ -516,6 +547,16 @@ class OverviewModel:
 
 	def delayed_resize(self):
 		self.rst.stop()
+		self.render()
+
+	def highlight_ranges(self, ranges):
+		old_highlight = self.range_highlight
+		if ranges is None:
+			self.range_highlight = None
+		else:
+			self.range_highlight = {x for x in self.fmdb.pick_bytes(ranges)}
+		if old_highlight == self.range_highlight:
+			return
 		self.render()
 
 if __name__ == '__main__':
