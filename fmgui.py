@@ -26,6 +26,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: x.flags_to_str(),
 			lambda x: fmcli.typecodes[x.type],
 			lambda x: x.path if x.path != '' else '/']
+		self.sort_keys = [
+			lambda x: x.p_off,
+			lambda x: x.l_off,
+			lambda x: x.length,
+			lambda x: x.flags_to_str(),
+			lambda x: fmcli.typecodes[x.type],
+			lambda x: x.path,
+		]
 		self.units = units
 		self.rows_to_show = rows_to_show
 		self.rows = min(rows_to_show, len(data))
@@ -106,6 +114,13 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 	def extents(self, rows):
 		for r in rows:
 			yield self.__data[r]
+
+	def sort(self, column, order):
+		self.__data.sort(key = self.sort_keys[column], reverse = order == 1)
+		# update the model?
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(self.rows - 1, len(self.headers) - 1)
+		self.dataChanged.emit(tl, br)
 
 class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
