@@ -14,7 +14,7 @@ bold_font = QtGui.QFont()
 bold_font.setBold(True)
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
-	def __init__(self, data, units, hm, rows_to_show=100, parent=None, *args):
+	def __init__(self, data, units, rows_to_show=100, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
@@ -29,7 +29,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		self.units = units
 		self.rows_to_show = rows_to_show
 		self.rows = min(rows_to_show, len(data))
-		self.highlight = hm
+		self.name_highlight = None
 
 	def change_units(self, new_units):
 		self.units = new_units
@@ -75,6 +75,10 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		return len(self.headers)
 
 	def data(self, index, role):
+		def is_name_highlighted(name):
+			if self.name_highlight is None:
+				return False
+			return name in self.name_highlight
 		if not index.isValid():
 			return None
 		i = index.row()
@@ -83,7 +87,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		if role == QtCore.Qt.DisplayRole:
 			return self.header_map[j](row)
 		elif role == QtCore.Qt.FontRole:
-			if self.highlight.is_name_highlighted(row.path):
+			if is_name_highlighted(row.path):
 				return bold_font
 			return None
 		else:
@@ -95,23 +99,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			return self.headers[col]
 		return None
 
-class HighlightModel:
-	def __init__(self):
-		self.extents = None
-		self.paths = None
-
-	def set_highlight(self, extents = None, paths = None):
-		self.extents = extents
-		self.paths = paths
-		# FIXME: actually whack the models?
-
-	def is_name_highlighted(self, name):
-		if self.paths is None:
-			return False
-		return name in self.paths
-
-	def is_range_highlighted(self, start, end):
-		return False
+	def highlight_names(self, names = None):
+		self.name_highlight = names
+		# XXX: do we need to update the model?
 
 class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None):
@@ -216,7 +206,6 @@ class fmgui(QtGui.QMainWindow):
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
-		self.highlight = HighlightModel()
 		self.fs_summary = self.fmdb.query_summary()
 		self.overview = OverviewModel(fmdb, self.overview_text)
 
@@ -236,7 +225,7 @@ class fmgui(QtGui.QMainWindow):
 		self.old_oend = None
 
 		# Set up the views
-		self.etm = ExtentTableModel([], units, self.highlight)
+		self.etm = ExtentTableModel([], units)
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 
@@ -289,10 +278,10 @@ class fmgui(QtGui.QMainWindow):
 		paths = [n.path for n in nodes]
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		if keymod & QtCore.Qt.AltModifier:
-			self.highlight.set_highlight(None, paths)
+			self.etm.highlight_names(paths)
 			p = [n.path + '*' if n.hasChildren() else n.path for n in nodes]
 		else:
-			self.highlight.set_highlight(None, None)
+			self.etm.highlight_names(None)
 			p = paths
 		self.enter_query(self.query_paths, ' '.join(p))
 		self.run_query()
