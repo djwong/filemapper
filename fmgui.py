@@ -585,7 +585,6 @@ class OverviewModel:
 						start = None
 			if start is not None:
 				ret.append((start, end))
-			print(ranges, ret)
 			return ret
 
 		if self.overview_big is None:
