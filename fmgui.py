@@ -109,15 +109,16 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def highlight_names(self, names = None):
 		self.name_highlight = names
-		# XXX: do we need to update the model?
+		# Skip the re-render since we're just about to requery anyway.
 
 	def extents(self, rows):
 		for r in rows:
 			yield self.__data[r]
 
 	def sort(self, column, order):
+		if column < 0:
+			return
 		self.__data.sort(key = self.sort_keys[column], reverse = order == 1)
-		# update the model?
 		tl = self.createIndex(0, 0)
 		br = self.createIndex(self.rows - 1, len(self.headers) - 1)
 		self.dataChanged.emit(tl, br)
@@ -417,6 +418,7 @@ class fmgui(QtGui.QMainWindow):
 			new_data = f
 		else:
 			new_data = [x for x in f]
+		self.extent_table.sortByColumn(-1)
 		self.etm.revise(new_data)
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
