@@ -14,7 +14,7 @@ bold_font = QtGui.QFont()
 bold_font.setBold(True)
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
-	def __init__(self, data, units, hm, rows_to_show=50, parent=None, *args):
+	def __init__(self, data, units, hm, rows_to_show=100, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
