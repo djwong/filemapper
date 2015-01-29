@@ -5,6 +5,9 @@
 import sys
 from PyQt4 import QtGui, uic, QtCore
 import fmcli
+import datetime
+import fmdb
+import math
 
 null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
@@ -214,6 +217,8 @@ class fmgui(QtGui.QMainWindow):
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
 		self.highlight = HighlightModel()
+		self.fs_summary = self.fmdb.query_summary()
+		self.overview = OverviewModel(fmdb, self.overview_text)
 
 		# Set up the units menu
 		units = fmcli.units_auto
@@ -225,16 +230,10 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the overview
 		self.overview_text.selectionChanged.connect(self.select_overview)
-		self.overview_text.resizeEvent = self.resize_overview
 		self.ost = QtCore.QTimer()
 		self.ost.timeout.connect(self.run_query)
 		self.old_ostart = None
 		self.old_oend = None
-		self.overview_length = 2048
-		self.overview_zoom = 1.0
-		qfm = QtGui.QFontMetrics(self.overview_text.currentFont())
-		self.overview_font_width = qfm.width('D')
-		self.overview_font_height = qfm.height()
 
 		# Set up the views
 		self.etm = ExtentTableModel([], units, self.highlight)
@@ -274,22 +273,8 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
-	def resize_overview(self, event):
-		QtGui.QTextEdit.resizeEvent(self.overview_text, event)
-		sz = self.overview_text.viewport().size()
-		# Cheat with the textedit width/height -- use one less
-		# column than we probably could, and force wrapping at
-		# that column.
-		w = (sz.width() // self.overview_font_width) - 1
-		h = (sz.height() // self.overview_font_height) - 1
-		self.overview_text.setLineWrapColumnOrWidth(w)
-		print("overview; %f x %f = %f" % (w, h, w * h))
-		self.overview_length = w * h
-		self.do_overview()
-
 	def change_zoom(self, idx):
-		self.overview_zoom = self.zoom_levels[idx][1]
-		self.do_overview()
+		self.overview.set_zoom(self.zoom_levels[idx][1])
 
 	def enter_query(self, fn, text):
 		for x in range(0, len(self.query_types)):
@@ -312,8 +297,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def start(self):
 		# Don't call show() until you're done overriding widget methods
+		self.overview.load()
 		self.show()
-		#self.do_overview()
 		self.do_summary()
 		return
 
@@ -324,12 +309,11 @@ class fmgui(QtGui.QMainWindow):
 
 	def change_units(self, action):
 		idx = self.unit_actions.index(action)
-		res = self.fmdb.query_summary()
 		avail_units = [
 			fmcli.units_auto,
 			fmcli.units_bytes,
 			fmcli.units_sectors,
-			fmcli.units('B', 'blocks', res.block_size),
+			fmcli.units('B', 'blocks', self.fs_summary.block_size),
 			fmcli.units_kib,
 			fmcli.units_mib,
 			fmcli.units_gib,
@@ -378,8 +362,8 @@ class fmgui(QtGui.QMainWindow):
 	def query_poff(self, args):
 		def n2p(num):
 			conv = [
-				fmcli.units('%', 'percent', res.total_bytes / 100),
-				fmcli.units('B', 'blocks', res.block_size),
+				fmcli.units('%', 'percent', self.fs_summary.total_bytes / 100),
+				fmcli.units('B', 'blocks', self.fs_summary.block_size),
 				fmcli.units_bytes,
 				fmcli.units_sectors,
 				fmcli.units_kib,
@@ -393,7 +377,6 @@ class fmgui(QtGui.QMainWindow):
 			return int(num)
 
 		ranges = []
-		res = self.fmdb.query_summary()
 		for arg in args:
 			if arg == 'all':
 				self.load_extents(self.fmdb.query_poff_range([]))
@@ -435,52 +418,106 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_paths(args))
 
 	def do_summary(self):
-		res = self.fmdb.query_summary()
 		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
-			(fmcli.format_size(fmcli.units_auto, res.total_bytes - res.free_bytes), \
-			 fmcli.format_size(fmcli.units_auto, res.total_bytes), \
-			 100 * (1.0 - (res.free_bytes / res.total_bytes)), \
-			 fmcli.format_number(fmcli.units_auto, res.total_inodes - res.free_inodes), \
-			 fmcli.format_number(fmcli.units_auto, res.total_inodes), \
-			 100 * (1.0 - (res.free_inodes / res.total_inodes)), \
-			 fmcli.format_number(fmcli.units_auto, res.extents), \
-			 fmcli.format_size(fmcli.units_auto, res.block_size))
+			(fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes - self.fs_summary.free_bytes), \
+			 fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes), \
+			 100 * (1.0 - (self.fs_summary.free_bytes / self.fs_summary.total_bytes)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs_summary.total_inodes - self.fs_summary.free_inodes), \
+			 fmcli.format_number(fmcli.units_auto, self.fs_summary.total_inodes), \
+			 100 * (1.0 - (self.fs_summary.free_inodes / self.fs_summary.total_inodes)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs_summary.extents), \
+			 fmcli.format_size(fmcli.units_auto, self.fs_summary.block_size))
 		self.status_label.setText(s)
 
-	def do_overview(self):
-		def overview_to_letter(ov):
-			tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs
-			if tot == 0:
-				return '.'
-			elif ov.files == tot:
-				return 'F'
-			elif ov.dirs == tot:
-				return 'D'
-			elif ov.mappings == tot:
-				return 'E'
-			elif ov.metadata == tot:
-				return 'M'
-			elif ov.xattrs == tot:
-				return 'X'
+class OverviewModel:
+	def __init__(self, fmdb, ctl, precision = 65536):
+		self.fmdb = fmdb
+		self.fs_summary = self.fmdb.query_summary()
+		self.ctl = ctl
+		self.ctl.resizeEvent = self.resize_ctl
+		qfm = QtGui.QFontMetrics(self.ctl.currentFont())
+		self.overview_font_width = qfm.width('D')
+		self.overview_font_height = qfm.height()
+		self.length = None
+		self.zoom = 1.0
+		self.precision = precision
+		self.overview_big = None
 
-			x = ov.files
-			letter = 'f'
-			if ov.dirs > x:
-				x = ov.dirs
-				letter = 'd'
-			if ov.mappings > x:
-				x = ov.mappings
-				letter = 'e'
-			if ov.metadata > x:
-				x = ov.metadata
-				letter = 'm'
-			if ov.xattrs > x:
-				letter = 'x'
-			return letter
-		olen = int(self.overview_length * self.overview_zoom)
+	@staticmethod
+	def overview_to_letter(ov):
+		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs
+		if tot == 0:
+			return '.'
+		elif ov.files == tot:
+			return 'F'
+		elif ov.dirs == tot:
+			return 'D'
+		elif ov.mappings == tot:
+			return 'E'
+		elif ov.metadata == tot:
+			return 'M'
+		elif ov.xattrs == tot:
+			return 'X'
+
+		x = ov.files
+		letter = 'f'
+		if ov.dirs > x:
+			x = ov.dirs
+			letter = 'd'
+		if ov.mappings > x:
+			x = ov.mappings
+			letter = 'e'
+		if ov.metadata > x:
+			x = ov.metadata
+			letter = 'm'
+		if ov.xattrs > x:
+			letter = 'x'
+		return letter
+
+	def load(self):
+		olen = min(self.precision, self.fs_summary.total_bytes // self.fs_summary.block_size)
 		self.fmdb.set_overview_length(olen)
-		x = [overview_to_letter(ov) for ov in self.fmdb.query_overview()]
-		self.overview_text.setText(''.join(x))
+		self.overview_big = [ov for ov in self.fmdb.query_overview()]
+
+	def set_zoom(self, zoom):
+		self.zoom = zoom
+		self.render()
+
+	def set_length(self, length):
+		self.length = length
+		self.render()
+
+	def render(self):
+		if self.overview_big is None:
+			return
+		olen = int(self.length * self.zoom)
+		self.fmdb.set_overview_length(olen)
+		o2s = len(self.overview_big) / olen
+		ov_str = ['.' for x in range(0, olen)]
+		t0 = datetime.datetime.today()
+		for i in range(0, olen):
+			x = int(math.floor(i * o2s))
+			y = int(math.ceil((i + 1) * o2s))
+			ss = self.overview_big[x:y]
+			ovs = fmdb.overview_block()
+			for s in ss:
+				ovs.add(s)
+			ov_str[i] = self.overview_to_letter(ovs)
+		t1 = datetime.datetime.today()
+		#print("render ", t1 - t0)
+		self.ctl.setText(''.join(ov_str))
+
+	def resize_ctl(self, event):
+		QtGui.QTextEdit.resizeEvent(self.ctl, event)
+		sz = self.ctl.viewport().size()
+		# Cheat with the textedit width/height -- use one less
+		# column than we probably could, and force wrapping at
+		# that column.
+		w = (sz.width() // self.overview_font_width) - 1
+		h = (sz.height() // self.overview_font_height) - 1
+		self.ctl.setLineWrapColumnOrWidth(w)
+		#print("overview; %f x %f = %f" % (w, h, w * h))
+		self.set_length(w * h)
 
 if __name__ == '__main__':
 	app = QtGui.QApplication(sys.argv)

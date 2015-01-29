@@ -43,6 +43,13 @@ class overview_block:
 	def __init__(self):
 		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = 0
 
+	def add(self, value):
+		self.files += value.files
+		self.dirs += value.dirs
+		self.mappings += value.mappings
+		self.metadata += value.metadata
+		self.xattrs += value.xattrs
+
 class fmdb:
 	'''filemapper database'''
 	def __init__(self, fspath, dbpath):
