@@ -285,12 +285,14 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		self.ost.stop()
-		nodes = [m.internalPointer() for m in n.indexes()]
+		nodes = [m.internalPointer() for m in self.fs_tree.selectedIndexes()]
 		paths = [n.path for n in nodes]
-		self.highlight.set_highlight(None, paths)
-		if QtGui.QApplication.keyboardModifiers() == QtCore.Qt.ShiftModifier:
+		keymod = int(QtGui.QApplication.keyboardModifiers())
+		if keymod & QtCore.Qt.AltModifier:
+			self.highlight.set_highlight(None, paths)
 			p = [n.path + '*' if n.hasChildren() else n.path for n in nodes]
 		else:
+			self.highlight.set_highlight(None, None)
 			p = paths
 		self.enter_query(self.query_paths, ' '.join(p))
 		self.run_query()
