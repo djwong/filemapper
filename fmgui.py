@@ -280,11 +280,14 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		self.ost.stop()
-		nodes = [m.internalPointer() for m in self.fs_tree.selectedIndexes()]
+		nodes = {m.internalPointer() for m in self.fs_tree.selectedIndexes()}
 		paths = [n.path for n in nodes]
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		if keymod & QtCore.Qt.AltModifier:
-			self.etm.highlight_names(paths)
+			if len(paths) == 0:
+				self.etm.highlight_names(None)
+			else:
+				self.etm.highlight_names(paths)
 			p = [n.path + '*' if n.hasChildren() else n.path for n in nodes]
 		else:
 			self.etm.highlight_names(None)
@@ -531,6 +534,7 @@ class OverviewModel:
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
 		self.ctl.setText(''.join(ov_str))
+		# XXX: need to set the selection background?
 
 	def resize_ctl(self, event):
 		QtGui.QTextEdit.resizeEvent(self.ctl, event)
