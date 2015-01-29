@@ -118,6 +118,10 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def extents(self, rows):
 		'''Retrieve a range of extents.'''
+		if rows is None:
+			for r in self.__data:
+				yield r
+			return
 		for r in rows:
 			yield self.__data[r]
 
@@ -328,9 +332,10 @@ class fmgui(QtGui.QMainWindow):
 		'''Handle the selection of extent table rows.'''
 		rows = {m.row() for m in self.extent_table.selectedIndexes()}
 		if len(rows) == 0:
-			ranges = None
+			r = None
 		else:
-			ranges = [(ex.p_off, ex.p_off + ex.length) for ex in self.etm.extents(rows)]
+			r = rows
+		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(r)]
 		self.overview.highlight_ranges(ranges)
 
 	def start(self):
@@ -556,6 +561,32 @@ class OverviewModel:
 				if cell >= start and cell <= end:
 					return True
 			return False
+		def compress_ranges(ranges):
+			if len(ranges) < 50:
+				return ranges
+			max_num = None
+			rset = set()
+			for start, end in ranges:
+				if max_num is None or max_num < end:
+					max_num = end
+				for x in range(start, end + 1):
+					rset.add(x)
+			ret = []
+			start = None
+			end = None
+			for n in range(0, max_num + 1):
+				if n in rset:
+					if start is None:
+						start = n
+					end = n
+				else:
+					if start is not None:
+						ret.append((start, end))
+						start = None
+			if start is not None:
+				ret.append((start, end))
+			print(ranges, ret)
+			return ret
 
 		if self.overview_big is None:
 			return
@@ -564,7 +595,8 @@ class OverviewModel:
 		if self.range_highlight is None:
 			range_highlight = None
 		else:
-			range_highlight = {x for x in self.fmdb.pick_bytes(self.range_highlight)}
+			t = {x for x in self.fmdb.pick_bytes(self.range_highlight)}
+			range_highlight = compress_ranges(t)
 		o2s = len(self.overview_big) / olen
 		ov_str = []
 		t0 = datetime.datetime.today()
