@@ -8,10 +8,18 @@ import fmcli
 import datetime
 import fmdb
 import math
+from collections import namedtuple
 
 null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
 bold_font.setBold(True)
+
+class FmQueryType:
+	'''Retain state data about the query UI.'''
+	def __init__(self, label, query_fn, saved_state):
+		self.label = label
+		self.query_fn = query_fn
+		self.saved_state = saved_state
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
@@ -274,13 +282,21 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the query UI
 		self.query_btn.clicked.connect(self.run_query)
-		self.query_types = [
-			['Overview Cells', self.query_overview, ''],
-			['Physical Offsets', self.query_poff, ''],
-			['Inode Numbers', self.query_inodes, ''],
-			['Path', self.query_paths, ''],
+		extent_types = [
+			['File', True, 'f'],
+			['Directory', True, 'd'],
+			['Extent Map', True, 'e'],
+			['Metadata', True, 'm'],
+			['Extended Attribute', True, 'x']
 		]
-		self.querytype_combo.insertItems(0, [x[0] for x in self.query_types])
+		self.query_types = [
+			FmQueryType('Overview Cells', self.query_overview, ''),
+			FmQueryType('Physical Offsets', self.query_poff, ''),
+			FmQueryType('Inode Numbers', self.query_inodes, ''),
+			FmQueryType('Path', self.query_paths, ''),
+			FmQueryType('Extent Type', self.query_extent_type, ChecklistModel(extent_types)),
+		]
+		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
 		self.old_querytype = 0
 		self.querytype_combo.setCurrentIndex(self.old_querytype)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
@@ -292,14 +308,13 @@ class fmgui(QtGui.QMainWindow):
 		]
 		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
 		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
+		self.query_checklist.hide()
 		self.query_text.returnPressed.connect(self.run_query)
 		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
-
-		self.query_combo.setModel(ChecklistModel())
 
 	def change_zoom(self, idx):
 		'''Handle a change in the zoom selector.'''
@@ -308,7 +323,7 @@ class fmgui(QtGui.QMainWindow):
 	def enter_query(self, fn, text):
 		'''Load the query UI elements.'''
 		for x in range(0, len(self.query_types)):
-			if self.query_types[x][1] == fn:
+			if self.query_types[x].query_fn == fn:
 				self.querytype_combo.setCurrentIndex(x)
 				self.query_text.setText(text)
 				return
@@ -351,8 +366,18 @@ class fmgui(QtGui.QMainWindow):
 
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
-		self.query_types[self.old_querytype][2] = self.query_text.text()
-		self.query_text.setText(self.query_types[idx][2])
+		old_qt = self.query_types[self.old_querytype]
+		new_qt = self.query_types[idx]
+		if type(old_qt.saved_state) == str:
+			old_qt.saved_state = self.query_text.text()
+		if type(new_qt.saved_state) == str:
+			self.query_checklist.hide()
+			self.query_text.show()
+			self.query_text.setText(new_qt.saved_state)
+		elif type(new_qt.saved_state) == ChecklistModel:
+			self.query_text.hide()
+			self.query_checklist.show()
+			self.query_checklist.setModel(new_qt.saved_state)
 		self.old_querytype = idx
 
 	def change_units(self, action):
@@ -392,11 +417,20 @@ class fmgui(QtGui.QMainWindow):
 		'''Dispatch a query to populate the extent table.'''
 		self.ost.stop()
 		idx = self.querytype_combo.currentIndex()
-		args = fmcli.split_unescape(str(self.query_text.text()), ' ', ('"', "'"))
-		#print("QUERY:", self.query_types[idx][0], args)
-		fn = self.query_types[idx][1]
-		fn(args)
+		qt = self.query_types[idx]
+		if type(qt.saved_state) == str:
+			qt.saved_state = self.query_text.text()
+			args = fmcli.split_unescape(str(qt.saved_state), ' ', ('"', "'"))
+		elif type(qt.saved_state) == ChecklistModel:
+			args = qt.saved_state.items()
+		#print("QUERY:", self.query_types[idx].label, args)
+		self.query_types[idx].query_fn(args)
 		self.pick_extent_table(None, None)
+
+	def query_extent_type(self, args):
+		'''Query for extents based on the extent type code.'''
+		r = [x[2] for x in args if x[1]]
+		self.load_extents(self.fmdb.query_extent_types(r))
 
 	def query_overview(self, args):
 		'''Query for extents mapped to ranges of overview cells.'''
@@ -653,10 +687,10 @@ class OverviewModel:
 		self.render()
 
 class ChecklistModel(QtCore.QAbstractTableModel):
-	def __init__(self, parent=None, *args):
+	'''A list model for checkable items.'''
+	def __init__(self, items, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
-		self.rows = ['Physical Offset', 'Logical Offset', \
-				'Length', 'Flags', 'Type', 'Path']
+		self.rows = items
 
 	def rowCount(self, parent):
 		return len(self.rows)
@@ -670,8 +704,21 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 		if j != 0:
 			return None
 		if role == QtCore.Qt.DisplayRole:
-			return self.rows[i]
+			return self.rows[i][0]
 		elif role == QtCore.Qt.CheckStateRole:
-			return i % 2 == 0
+			return QtCore.Qt.Checked if self.rows[i][1] else QtCore.Qt.Unchecked
 		else:
 			return None
+
+	def flags(self, index):
+		return super(ChecklistModel, self).flags(index) | QtCore.Qt.ItemIsUserCheckable
+
+	def setData(self, index, value, role):
+		if role != QtCore.Qt.CheckStateRole:
+			return None
+		row = index.row()
+		self.rows[row][1] = value
+		return True
+
+	def items(self):
+		return self.rows

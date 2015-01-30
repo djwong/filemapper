@@ -123,6 +123,7 @@ class fmcli(code.InteractiveConsole):
 			('phys', 'p'): self.do_poff_to_extents,
 			('quit', 'exit', 'q'): self.do_exit,
 			('summary', 's'): self.do_summary,
+			('type', 't'): self.do_extent_type,
 			('units', 'u'): self.do_set_units,
 		}
 		self.done = False
@@ -254,13 +255,13 @@ class fmcli(code.InteractiveConsole):
 
 	def print_extent(self, ext):
 		if self.machine:
-			print("'%s',%d,%d,%d,0x%x,'%s'" % \
+			print("'%s',%d,%d,%d,'%s','%s'" % \
 				(ext.path if ext.path != '' else '/', \
 				 ext.p_off, ext.l_off, ext.length, \
 				 ext.flags_to_str(), \
 				 typecodes[ext.type]))
 			return
-		print("'%s', %s, %s, %s, 0x%x, '%s'" % \
+		print("'%s', %s, %s, %s, '%s', '%s'" % \
 			(ext.path if ext.path != '' else '/', \
 			 format_size(self.units, ext.p_off), \
 			 format_size(self.units, ext.l_off), \
@@ -402,6 +403,20 @@ class fmcli(code.InteractiveConsole):
 			else:
 				ranges.append((int(arg), int(arg)))
 		for x in self.fmdb.query_inodes(ranges):
+			self.print_extent(x)
+
+	def do_extent_type(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents with a particular type.')
+		parser.add_argument('types', nargs = '+', \
+			help = 'Type codes to look up.  Valid values are: (f)ile, (d)irectory, (e)xtent map, FS (m)etadata, and e(x)tended attributes.', \
+			choices = ['f', 'd', 'e', 'm', 'x'])
+		args = parser.parse_args(argv[1:])
+		types = set()
+		for arg in args.types:
+			for l in arg:
+				types.add(l)
+		for x in self.fmdb.query_extent_types(types):
 			self.print_extent(x)
 
 	def do_ls(self, argv):
