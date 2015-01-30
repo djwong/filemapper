@@ -326,9 +326,10 @@ class fmgui(QtGui.QMainWindow):
 			FmQueryType('Overview Cells', self.query_overview, ''),
 			FmQueryType('Physical Offsets', self.query_poff, ''),
 			FmQueryType('Inode Numbers', self.query_inodes, ''),
-			FmQueryType('Path', self.query_paths, ''),
-			FmQueryType('Extent Type', self.query_extent_type, ChecklistModel(extent_types)),
+			FmQueryType('Paths', self.query_paths, ''),
+			FmQueryType('Extent Types', self.query_extent_type, ChecklistModel(extent_types)),
 			FmQueryType('Extent Flags', self.query_extent_flags, ChecklistModel(extent_flags)),
+			FmQueryType('Extent Lengths', self.query_lengths, ''),
 		]
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
 		self.old_querytype = 0
@@ -528,6 +529,20 @@ class fmgui(QtGui.QMainWindow):
 			else:
 				ranges.append(int(arg))
 		self.load_extents(self.fmdb.query_inodes(ranges))
+
+	def query_lengths(self, args):
+		'''Query for extents based on ranges of lengths.'''
+		ranges = []
+		for arg in args:
+			if arg == 'all':
+				self.load_extents(self.fmdb.query_lengths([]))
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(fmcli.n2p(self.fs, arg))
+		self.load_extents(self.fmdb.query_lengths(ranges))
 
 	def query_paths(self, args):
 		'''Query for extents mapped to a list of FS paths.'''
