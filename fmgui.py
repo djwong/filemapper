@@ -230,14 +230,19 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if not index.isValid():
 			return None
 		node = index.internalPointer()
-		if role != QtCore.Qt.DisplayRole:
-			return None
-		node.load()
-		if index.column() == 0:
-			r = node.path.rindex(self.fs.pathsep)
-			return node.path[r + 1:]
-		else:
-			return node.ino
+		if role == QtCore.Qt.DisplayRole:
+			node.load()
+			if index.column() == 0:
+				r = node.path.rindex(self.fs.pathsep)
+				return node.path[r + 1:]
+			else:
+				return node.ino
+		elif role == QtCore.Qt.DecorationRole:
+			if node.type == 'd':
+				return QtGui.QIcon.fromTheme('folder')
+			else:
+				return QtGui.QIcon.fromTheme('text-x-generic')
+		return None
 
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and \
