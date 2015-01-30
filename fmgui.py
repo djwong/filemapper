@@ -146,6 +146,8 @@ class FsTreeNode:
 	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
 			raise Exception
+		if fs is None and parent is None:
+			raise Exception
 		self.path = path
 		self.type = type
 		self.ino = ino
@@ -250,6 +252,12 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			return self.headers[col]
 		return None
 
+def sort_dentry(dentry):
+	if dentry.type == 'd':
+		return '0' + dentry.name
+	else:
+		return '1' + dentry.name
+
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
 	def __init__(self, fmdb):
@@ -284,7 +292,7 @@ class fmgui(QtGui.QMainWindow):
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
 		root = FsTreeNode(de.name, de.ino, de.type, \
-				  lambda x: self.fmdb.query_ls([x]), \
+				  lambda x: sorted(self.fmdb.query_ls([x]), key = sort_dentry), \
 				  fs = self.fs)
 
 		self.ftm = FsTreeModel(self.fs, root)
