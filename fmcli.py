@@ -134,6 +134,7 @@ class fmcli(code.InteractiveConsole):
 		self.done = False
 		self.units = units_auto
 		self.machine = False
+		self.fs = self.fmdb.query_summary()
 
 	def init_history(self, histfile):
 		'''Initializes readline history.'''
@@ -242,7 +243,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Display a summary of the filesystem.')
 		parser.parse_args(argv[1:])
-		res = self.fmdb.query_summary()
+		res = self.fs
 		print("Summary of '%s':" % res.path)
 		print("Block size:\t%s" % format_size(units_auto, res.block_size))
 		print("Fragment size:\t%s" % format_size(units_auto, res.frag_size))
@@ -262,13 +263,13 @@ class fmcli(code.InteractiveConsole):
 		'''Pretty-print an extent.'''
 		if self.machine:
 			print("'%s',%d,%d,%d,'%s','%s'" % \
-				(ext.path if ext.path != '' else '/', \
+				(ext.path if ext.path != '' else self.fs.pathsep, \
 				 ext.p_off, ext.l_off, ext.length, \
 				 ext.flags_to_str(), \
 				 typecodes[ext.type]))
 			return
 		print("'%s', %s, %s, %s, '%s', '%s'" % \
-			(ext.path if ext.path != '' else '/', \
+			(ext.path if ext.path != '' else self.fs.pathsep, \
 			 format_size(self.units, ext.p_off), \
 			 format_size(self.units, ext.l_off), \
 			 format_size(self.units, ext.length), \
@@ -287,8 +288,8 @@ class fmcli(code.InteractiveConsole):
 	def do_poff_to_extents(self, argv):
 		def n2p(num):
 			conv = [
-				units('%', 'percent', None, res.total_bytes / 100),
-				units('B', 'blocks', None, res.block_size),
+				units('%', 'percent', None, self.fs.total_bytes / 100),
+				units('B', 'blocks', None, self.fs.block_size),
 				units_bytes,
 				units_sectors,
 				units_kib,
@@ -307,7 +308,6 @@ class fmcli(code.InteractiveConsole):
 			help = 'Physical offsets to look up.')
 		args = parser.parse_args(argv[1:])
 		ranges = []
-		res = self.fmdb.query_summary()
 		for arg in args.offsets:
 			if arg == 'all':
 				for x in self.fmdb.query_poff_range([]):
@@ -343,12 +343,11 @@ class fmcli(code.InteractiveConsole):
 			self.print_extent(x)
 
 	def do_set_units(self, argv):
-		res = self.fmdb.query_summary()
 		avail_units = [
 			units_auto,
 			units_bytes,
 			units_sectors,
-			units('B', 'blocks', res.block_size),
+			units('B', 'blocks', self.fs.block_size),
 			units_kib,
 			units_mib,
 			units_gib,
@@ -450,6 +449,6 @@ class fmcli(code.InteractiveConsole):
 			for de in self.fmdb.query_ls([]):
 				self.print_dentry(de)
 			return
-		dnames = ['' if p == '/' else p for p in args.dirnames]
+		dnames = ['' if p == self.fs.pathsep else p for p in args.dirnames]
 		for de in self.fmdb.query_ls(dnames):
 			self.print_dentry(de)

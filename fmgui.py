@@ -23,7 +23,7 @@ class FmQueryType:
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
-	def __init__(self, data, units, rows_to_show=100, parent=None, *args):
+	def __init__(self, fs, data, units, rows_to_show=100, parent=None, *args):
 		QtCore.QAbstractTableModel.__init__(self, parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
@@ -34,7 +34,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.length),
 			lambda x: x.flags_to_str(),
 			lambda x: fmcli.typecodes[x.type],
-			lambda x: x.path if x.path != '' else '/']
+			lambda x: x.path if x.path != '' else fs.pathsep]
 		self.sort_keys = [
 			lambda x: x.p_off,
 			lambda x: x.l_off,
@@ -143,7 +143,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 class FsTreeNode:
 	'''A node in the recorded filesystem.'''
-	def __init__(self, path, ino, type, load_fn = None, parent = None):
+	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
 			raise Exception
 		self.path = path
@@ -154,7 +154,10 @@ class FsTreeNode:
 			self.load_fn = load_fn
 		else:
 			self.load_fn = parent.load_fn
-
+		if fs is not None:
+			self.fs = fs
+		else:
+			self.fs = parent.fs
 		self.loaded = False
 		self.children = None
 		self.__row = None
@@ -167,7 +170,7 @@ class FsTreeNode:
 		if self.loaded:
 			return
 		self.loaded = True
-		self.children = [FsTreeNode(self.path + '/' + de.name, de.ino, de.type, parent = self) for de in self.load_fn(self.path)]
+		self.children = [FsTreeNode(self.path + self.fs.pathsep + de.name, de.ino, de.type, parent = self) for de in self.load_fn(self.path)]
 
 	def row(self):
 		if self.__row is None:
@@ -182,10 +185,11 @@ class FsTreeNode:
 
 class FsTreeModel(QtCore.QAbstractItemModel):
 	'''Model the filesystem tree recorded in the database.'''
-	def __init__(self, root, parent=None, *args):
+	def __init__(self, fs, root, parent=None, *args):
 		QtCore.QAbstractItemModel.__init__(self, parent, *args)
 		self.root = root
 		self.headers = ['Name'] #, 'Inode']
+		self.fs = fs
 
 	def index(self, row, column, parent):
 		if not parent.isValid():
@@ -230,7 +234,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			return None
 		node.load()
 		if index.column() == 0:
-			r = node.path.rindex('/')
+			r = node.path.rindex(self.fs.pathsep)
 			return node.path[r + 1:]
 		else:
 			return node.ino
@@ -248,7 +252,7 @@ class fmgui(QtGui.QMainWindow):
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
-		self.fs_summary = self.fmdb.query_summary()
+		self.fs = self.fmdb.query_summary()
 
 		# Set up the units menu
 		units = fmcli.units_auto
@@ -267,16 +271,18 @@ class fmgui(QtGui.QMainWindow):
 		self.old_oend = None
 
 		# Set up the extent view
-		self.etm = ExtentTableModel([], units)
+		self.etm = ExtentTableModel(self.fs, [], units)
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 		self.extent_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
 
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
-		root = FsTreeNode(de.name, de.ino, de.type, lambda x: self.fmdb.query_ls([x]))
+		root = FsTreeNode(de.name, de.ino, de.type, \
+				  lambda x: self.fmdb.query_ls([x]), \
+				  fs = self.fs)
 
-		self.ftm = FsTreeModel(root)
+		self.ftm = FsTreeModel(self.fs, root)
 		self.fs_tree.setModel(self.ftm)
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 
@@ -401,7 +407,7 @@ class fmgui(QtGui.QMainWindow):
 			fmcli.units_auto,
 			fmcli.units_bytes,
 			fmcli.units_sectors,
-			fmcli.units('B', 'blocks', self.fs_summary.block_size),
+			fmcli.units('B', 'blocks', self.fs.block_size),
 			fmcli.units_kib,
 			fmcli.units_mib,
 			fmcli.units_gib,
@@ -474,8 +480,8 @@ class fmgui(QtGui.QMainWindow):
 		'''Query for extents mapped to ranges of physical bytes.'''
 		def n2p(num):
 			conv = [
-				fmcli.units('%', 'percent', self.fs_summary.total_bytes / 100),
-				fmcli.units('B', 'blocks', self.fs_summary.block_size),
+				fmcli.units('%', 'percent', self.fs.total_bytes / 100),
+				fmcli.units('B', 'blocks', self.fs.block_size),
 				fmcli.units_bytes,
 				fmcli.units_sectors,
 				fmcli.units_kib,
@@ -536,21 +542,21 @@ class fmgui(QtGui.QMainWindow):
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
 		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
-			(fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes - self.fs_summary.free_bytes), \
-			 fmcli.format_size(fmcli.units_auto, self.fs_summary.total_bytes), \
-			 100 * (1.0 - (self.fs_summary.free_bytes / self.fs_summary.total_bytes)), \
-			 fmcli.format_number(fmcli.units_auto, self.fs_summary.total_inodes - self.fs_summary.free_inodes), \
-			 fmcli.format_number(fmcli.units_auto, self.fs_summary.total_inodes), \
-			 100 * (1.0 - (self.fs_summary.free_inodes / self.fs_summary.total_inodes)), \
-			 fmcli.format_number(fmcli.units_auto, self.fs_summary.extents), \
-			 fmcli.format_size(fmcli.units_auto, self.fs_summary.block_size))
+			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
+			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
+			 100 * (1.0 - (self.fs.free_bytes / self.fs.total_bytes)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes - self.fs.free_inodes), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
+			 100 * (1.0 - (self.fs.free_inodes / self.fs.total_inodes)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
+			 fmcli.format_size(fmcli.units_auto, self.fs.block_size))
 		self.status_label.setText(s)
 
 class OverviewModel:
 	'''Render the overview into a text field.'''
 	def __init__(self, fmdb, ctl, precision = 65536):
 		self.fmdb = fmdb
-		self.fs_summary = self.fmdb.query_summary()
+		self.fs = self.fmdb.query_summary()
 		self.ctl = ctl
 		self.ctl.resizeEvent = self.resize_ctl
 		qfm = QtGui.QFontMetrics(self.ctl.currentFont())
@@ -598,7 +604,7 @@ class OverviewModel:
 
 	def load(self):
 		'''Query the DB for the high-res overview data.'''
-		olen = min(self.precision, self.fs_summary.total_bytes // self.fs_summary.block_size)
+		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
 		self.fmdb.set_overview_length(olen)
 		self.overview_big = [ov for ov in self.fmdb.query_overview()]
 

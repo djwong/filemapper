@@ -23,7 +23,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'total_bytes', 'free_bytes', \
 				       'avail_bytes', 'total_inodes', \
 				       'free_inodes', 'avail_inodes',
-				       'extents'])
+				       'extents', 'pathsep'])
 
 class poff_row:
 	def __init__(self, path, p_off, l_off, length, flags, type):
@@ -78,7 +78,7 @@ DROP TABLE IF EXISTS inode_t;
 DROP TABLE IF EXISTS path_t;
 DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
-CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL);
+CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'm')));
 CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
@@ -89,7 +89,7 @@ CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_
 
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
-		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);', \
+		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);', \
 				(self.fspath, statfs.f_bsize, \
 				 statfs.f_frsize, \
 				 statfs.f_blocks * statfs.f_bsize, \
@@ -97,7 +97,8 @@ CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_
 				 statfs.f_bavail * statfs.f_bsize, \
 				 statfs.f_files, statfs.f_ffree, \
 				 statfs.f_favail, statfs.f_namemax, \
-				 str(datetime.datetime.today())))
+				 str(datetime.datetime.today()), \
+				 os.sep))
 
 	def end_update(self):
 		'''Finish updating a database.'''
@@ -216,7 +217,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		rows = cur.fetchall()
 		extents = rows[0][0]
 
-		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes FROM fs_t;')
+		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator FROM fs_t;')
 		rows = cur.fetchall()
 		assert len(rows) == 1
 		res = rows[0]
@@ -224,7 +225,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
 				 int(res[6]), int(res[7]), int(res[8]),
-				 int(extents))
+				 int(extents), res[9])
 		return self.fs
 
 	def pick_cells(self, ranges):
