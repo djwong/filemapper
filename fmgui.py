@@ -292,6 +292,7 @@ class fmgui(QtGui.QMainWindow):
 		]
 		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
 		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
+		self.query_text.returnPressed.connect(self.run_query)
 		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
