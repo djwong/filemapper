@@ -277,6 +277,7 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the overview
 		self.overview = OverviewModel(fmdb, self.overview_text)
+		self.overview.rendered.connect(self.do_summary)
 		self.overview_text.selectionChanged.connect(self.select_overview)
 		self.ost = QtCore.QTimer()
 		self.ost.timeout.connect(self.run_query)
@@ -349,6 +350,10 @@ class fmgui(QtGui.QMainWindow):
 		self.status_label = QtGui.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
+		# Here we go!
+		self.overview.load()
+		self.show()
+
 	def change_zoom(self, idx):
 		'''Handle a change in the zoom selector.'''
 		self.overview.set_zoom(self.zoom_levels[idx][1])
@@ -388,14 +393,6 @@ class fmgui(QtGui.QMainWindow):
 			r = rows
 		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(r)]
 		self.overview.highlight_ranges(ranges)
-
-	def start(self):
-		'''Load data from the database.'''
-		# Don't call show() until you're done overriding widget methods
-		self.overview.load()
-		self.show()
-		self.do_summary()
-		return
 
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
@@ -554,7 +551,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
-		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s blocks" % \
+		s = "%s of %s (%.0f%%) space used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
 			 100 * (1.0 - (self.fs.free_bytes / self.fs.total_bytes)), \
@@ -562,12 +559,16 @@ class fmgui(QtGui.QMainWindow):
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
 			 100 * (1.0 - (self.fs.free_inodes / self.fs.total_inodes)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
-			 fmcli.format_size(fmcli.units_auto, self.fs.block_size))
+			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
+			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes / self.overview.total_length()))
 		self.status_label.setText(s)
 
-class OverviewModel:
+class OverviewModel(QtCore.QObject):
 	'''Render the overview into a text field.'''
-	def __init__(self, fmdb, ctl, precision = 65536):
+	rendered = QtCore.pyqtSignal()
+
+	def __init__(self, fmdb, ctl, precision = 65536, parent = None):
+		super(OverviewModel, self).__init__(parent)
 		self.fmdb = fmdb
 		self.fs = self.fmdb.query_summary()
 		self.ctl = ctl
@@ -630,6 +631,10 @@ class OverviewModel:
 		'''Set the overview length, in characters.'''
 		self.length = length
 		self.render()
+
+	def total_length(self):
+		'''The total length of the overview.'''
+		return self.length * self.zoom
 
 	def render(self):
 		'''Render the overview into the text view.'''
@@ -697,6 +702,7 @@ class OverviewModel:
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
 		self.ctl.setText(''.join(ov_str))
+		self.rendered.emit()
 		# XXX: need to set the selection background?
 
 	def resize_ctl(self, event):
