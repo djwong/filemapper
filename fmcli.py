@@ -38,6 +38,7 @@ units_tib = units('T', 'TiB', 2 ** 40)
 units_auto = units('a', 'auto', None)
 
 def format_size(units, num):
+	'''Pretty-format a number with base-2 suffixes.'''
 	if units.factor is not None:
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num / units.factor), \
@@ -50,6 +51,7 @@ def format_size(units, num):
 	return format_size(units_scale[-1], num)
 
 def format_number(units, num):
+	'''Pretty-format a number with base-10 suffixes.'''
 	if units.factor is not None:
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num / units.factor), \
@@ -62,7 +64,7 @@ def format_number(units, num):
 	return format_number(units_scale[-1], num)
 
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
-	"""
+	"""Split a string into a an argv array, with string support.
 	>>> split_unescape('foo,bar', ',')
 	['foo', 'bar']
 	>>> split_unescape('foo$,bar', ',', '$')
@@ -106,6 +108,7 @@ def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	return ret
 
 class fmcli(code.InteractiveConsole):
+	'''Interactive command line client.'''
 	def __init__(self, fmdb, locals=None, filename="<console>", \
 		     histfile=os.path.expanduser("~/.config/fmcli-history")):
 		code.InteractiveConsole.__init__(self, locals, filename)
@@ -254,6 +257,7 @@ class fmcli(code.InteractiveConsole):
 		print("Extents:\t%s" % format_number(units_auto, res.extents))
 
 	def print_extent(self, ext):
+		'''Pretty-print an extent.'''
 		if self.machine:
 			print("'%s',%d,%d,%d,'%s','%s'" % \
 				(ext.path if ext.path != '' else '/', \
@@ -270,6 +274,7 @@ class fmcli(code.InteractiveConsole):
 			 typecodes[ext.type]))
 
 	def print_dentry(self, de):
+		'''Pretty-print a dentry.'''
 		if self.machine:
 			print("'%s',%d,'%s'" % \
 				(de.name, de.ino, de.type))
