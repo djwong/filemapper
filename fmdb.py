@@ -331,6 +331,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 
 	def query_extent_types(self, types):
 		'''Query extents given a set of type codes.'''
+		if len(types) == 0:
+			return []
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
