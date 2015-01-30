@@ -407,7 +407,7 @@ class fmcli(code.InteractiveConsole):
 				pos = arg.index('-')
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
-				ranges.append((int(arg), int(arg)))
+				ranges.append(int(arg))
 		for x in self.fmdb.query_inodes(ranges):
 			self.print_extent(x)
 

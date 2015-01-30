@@ -539,7 +539,7 @@ class fmgui(QtGui.QMainWindow):
 				pos = arg.index('-')
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
-				ranges.append((int(arg), int(arg)))
+				ranges.append(int(arg))
 		self.load_extents(self.fmdb.query_inodes(ranges))
 
 	def query_paths(self, args):
@@ -650,7 +650,11 @@ class OverviewModel(QtCore.QObject):
 				return ranges
 			max_num = None
 			rset = set()
-			for start, end in ranges:
+			for x in ranges:
+				if type(x) == int:
+					start = end = x
+				else:
+					start, end = x
 				if max_num is None or max_num < end:
 					max_num = end
 				for x in range(start, end + 1):

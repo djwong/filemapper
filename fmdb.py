@@ -236,13 +236,13 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			if type(i) == int:
 				if i > self.overview_len:
 					raise ValueError("range %d outside of overview" % i)
-				yield (i * sbc, (i + 1) * sbc - 1)
+				yield int(i * sbc)
 			else:
 				if i[0] > self.overview_len:
 					raise ValueError("range %d outside of overview" % i[0])
 				if i[1] > self.overview_len:
 					raise ValueError("range %d outside of overview" % i[1])
-				yield (i[0] * sbc, (i[1] + 1) * sbc - 1)
+				yield (int(i[0] * sbc), int((i[1] + 1) * sbc - 1))
 
 	def pick_bytes(self, ranges):
 		'''Convert ranges of bytes to ranges of cells.'''
@@ -253,7 +253,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			if type(i) == int:
 				if i > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
-				yield (int(i / sbc), int(i / sbc))
+				yield int(i / sbc)
 			else:
 				if i[0] > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
@@ -269,10 +269,16 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		qarg = []
 		cond = 'WHERE'
 		for r in ranges:
-			qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
-			cond = 'OR'
-			qarg.append(r[1])
-			qarg.append(r[0])
+			if type(r) == int:
+				qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
+				cond = 'OR'
+				qarg.append(r)
+				qarg.append(r)
+			else:
+				qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
+				cond = 'OR'
+				qarg.append(r[1])
+				qarg.append(r[0])
 		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
 		while True:
@@ -316,10 +322,15 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		qarg = []
 		cond = 'WHERE'
 		for r in ranges:
-			qstr = qstr + ' %s ino BETWEEN ? AND ?' % cond
-			cond = 'OR'
-			qarg.append(r[0])
-			qarg.append(r[1])
+			if type(r) == int:
+				qstr = qstr + ' %s ino = ?' % cond
+				cond = 'OR'
+				qarg.append(r)
+			else:
+				qstr = qstr + ' %s ino BETWEEN ? AND ?' % cond
+				cond = 'OR'
+				qarg.append(r[0])
+				qarg.append(r[1])
 		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
 		while True:
