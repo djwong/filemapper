@@ -759,7 +759,8 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 		if role != QtCore.Qt.CheckStateRole:
 			return None
 		row = index.row()
-		self.rows[row][1] = value
+		# N.B. Weird comparison because Python2 returns QVariant, not bool
+		self.rows[row][1] = not (value == False)
 		return True
 
 	def items(self):
