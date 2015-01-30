@@ -263,25 +263,37 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			dentries.append((xfile.decode('utf-8', 'replace'), fstat))
 		dir_fn(rstat, dentries)
 
+ext_flags = [
+	[FIEMAP_EXTENT_LAST, 'l'],
+	[FIEMAP_EXTENT_UNKNOWN, 'n'],
+	[FIEMAP_EXTENT_DELALLOC, 'd'],
+	[FIEMAP_EXTENT_ENCODED, 'e'],
+	[FIEMAP_EXTENT_DATA_ENCRYPTED, 'E'],
+	[FIEMAP_EXTENT_NOT_ALIGNED, 'u'],
+	[FIEMAP_EXTENT_DATA_INLINE, 'i'],
+	[FIEMAP_EXTENT_DATA_TAIL, 't'],
+	[FIEMAP_EXTENT_UNWRITTEN, 'U'],
+	[FIEMAP_EXTENT_MERGED, 'm'],
+	[FIEMAP_EXTENT_SHARED, 's'],
+]
+
 def extent_flags_to_str(flags):
-	ext_flags = [
-		[FIEMAP_EXTENT_LAST, 'l'],
-		[FIEMAP_EXTENT_UNKNOWN, '?'],
-		[FIEMAP_EXTENT_DELALLOC, 'd'],
-		[FIEMAP_EXTENT_ENCODED, 'e'],
-		[FIEMAP_EXTENT_DATA_ENCRYPTED, 'E'],
-		[FIEMAP_EXTENT_NOT_ALIGNED, 'u'],
-		[FIEMAP_EXTENT_DATA_INLINE, 'i'],
-		[FIEMAP_EXTENT_DATA_TAIL, 't'],
-		[FIEMAP_EXTENT_UNWRITTEN, 'U'],
-		[FIEMAP_EXTENT_MERGED, 'm'],
-		[FIEMAP_EXTENT_SHARED, 's'],
-	]
+	'''Convert an extent flags number into a string.'''
 	s = ''
 	for flag in ext_flags:
 		if flags & flag[0]:
 			s += flag[1]
 	return s
+
+def extent_str_to_flags(string):
+	'''Convert an extent string into a flags number.'''
+	ret = 0
+	for s in string:
+		for f in ext_flags:
+			if f[1] == s:
+				ret |= f[0]
+				break
+	return ret
 
 if __name__ == '__main__':
 	import sys

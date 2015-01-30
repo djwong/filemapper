@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1029</width>
+    <width>1057</width>
     <height>729</height>
    </rect>
   </property>
@@ -125,9 +125,6 @@
          </property>
          <property name="horizontalScrollBarPolicy">
           <enum>Qt::ScrollBarAlwaysOff</enum>
-         </property>
-         <property name="autoScroll">
-          <bool>false</bool>
          </property>
          <property name="dragDropMode">
           <enum>QAbstractItemView::NoDragDrop</enum>
@@ -279,7 +276,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1029</width>
+     <width>1057</width>
      <height>23</height>
     </rect>
    </property>

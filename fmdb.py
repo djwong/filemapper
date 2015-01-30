@@ -354,6 +354,20 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
+	def query_extent_flags(self, flags):
+		'''Query extents given a set of type codes.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v WHERE flags = ?'
+		cur.execute(qstr, [flags])
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for row in rows:
+				yield poff_row(row[0], row[1], row[2], row[3], \
+						row[4], row[5])
+
 	def query_root(self):
 		'''Retrieve a dentry for root.'''
 		cur = self.conn.cursor()

@@ -8,6 +8,7 @@ import atexit
 import os
 import argparse
 import sys
+import fiemap
 from collections import namedtuple
 
 typecodes = {
@@ -119,6 +120,7 @@ class fmcli(code.InteractiveConsole):
 			('cell', 'c'): self.do_cell_to_extents,
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
+			('flag', 'g'): self.do_extent_flag,
 			('inode', 'i'): self.do_inodes,
 			('ls', 'l'): self.do_ls,
 			('machine', 'm'): self.do_machine,
@@ -422,6 +424,19 @@ class fmcli(code.InteractiveConsole):
 			for l in arg:
 				types.add(l)
 		for x in self.fmdb.query_extent_types(types):
+			self.print_extent(x)
+
+	def do_extent_flag(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents with a particular set of flags.')
+		parser.add_argument('flags', nargs = '+', \
+			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, and (s)hared.', \
+			choices = ['n', 'd', 'e', 'E', 'u', 'i', 't', 'U', 'm', 's'])
+		args = parser.parse_args(argv[1:])
+		flags = 0
+		for arg in args.flags:
+			flags |= fiemap.extent_str_to_flags(arg)
+		for x in self.fmdb.query_extent_flags(flags):
 			self.print_extent(x)
 
 	def do_ls(self, argv):
