@@ -8,7 +8,7 @@ import fmcli
 import datetime
 import fmdb
 import math
-from collections import namedtuple
+import fiemap
 
 null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
@@ -289,12 +289,26 @@ class fmgui(QtGui.QMainWindow):
 			['Metadata', True, 'm'],
 			['Extended Attribute', True, 'x']
 		]
+		extent_flags = [
+			['Unknown', False, 'n'],
+			['Delayed Allocation', False, 'd'],
+			['Encoded', False, 'e'],
+			['Encrypted', False, 'E'],
+			['Unaligned', False, 'u'],
+			['Inline', False, 'i'],
+			['Tail-packed', False, 't'],
+			['Unwritten', False, 'U'],
+			['Merged', False, 'm'],
+			['Shared', False, 's'],
+			['Exact Match', False]
+		]
 		self.query_types = [
 			FmQueryType('Overview Cells', self.query_overview, ''),
 			FmQueryType('Physical Offsets', self.query_poff, ''),
 			FmQueryType('Inode Numbers', self.query_inodes, ''),
 			FmQueryType('Path', self.query_paths, ''),
 			FmQueryType('Extent Type', self.query_extent_type, ChecklistModel(extent_types)),
+			FmQueryType('Extent Flags', self.query_extent_flags, ChecklistModel(extent_flags)),
 		]
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
 		self.old_querytype = 0
@@ -431,6 +445,15 @@ class fmgui(QtGui.QMainWindow):
 		'''Query for extents based on the extent type code.'''
 		r = [x[2] for x in args if x[1]]
 		self.load_extents(self.fmdb.query_extent_types(r))
+
+	def query_extent_flags(self, args):
+		'''Query for extents based on the extent flag code.'''
+		exact = args[-1][1]
+		flags = 0
+		for x in args:
+			if len(x) > 2 and x[1]:
+				flags |= fiemap.extent_str_to_flags(x[2])
+		self.load_extents(self.fmdb.query_extent_flags(flags, exact))
 
 	def query_overview(self, args):
 		'''Query for extents mapped to ranges of overview cells.'''
