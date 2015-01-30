@@ -440,7 +440,10 @@ class fmgui(QtGui.QMainWindow):
 			return
 		self.old_ostart = start
 		self.old_oend = end
-		self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
+		if start + 1 == end:
+			self.enter_query(self.query_overview, "%s" % start)
+		else:
+			self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
 		self.ost.start(500)
 
 	def run_query(self):
@@ -488,22 +491,6 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_poff(self, args):
 		'''Query for extents mapped to ranges of physical bytes.'''
-		def n2p(num):
-			conv = [
-				fmcli.units('%', 'percent', self.fs.total_bytes / 100),
-				fmcli.units('B', 'blocks', self.fs.block_size),
-				fmcli.units_bytes,
-				fmcli.units_sectors,
-				fmcli.units_kib,
-				fmcli.units_mib,
-				fmcli.units_gib,
-				fmcli.units_tib,
-			]
-			for unit in conv:
-				if num[-1].lower() == unit.abbrev.lower():
-					return int(unit.factor * float(num[:-1]))
-			return int(num)
-
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -511,9 +498,9 @@ class fmgui(QtGui.QMainWindow):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((n2p(arg[:pos]), n2p(arg[pos+1:])))
+				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
 			else:
-				ranges.append((n2p(arg), n2p(arg)))
+				ranges.append(n2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_poff_range(ranges))
 
 	def load_extents(self, f):

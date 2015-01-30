@@ -64,6 +64,24 @@ def format_number(units, num):
 			return format_number(units_scale[i], num)
 	return format_number(units_scale[-1], num)
 
+def n2p(fs, num):
+	'''Convert a suffixed number to an integer.'''
+	conv = [
+		units('%', 'percent', fs.total_bytes / 100),
+		units('B', 'blocks', fs.block_size),
+		units_bytes,
+		units_sectors,
+		units_kib,
+		units_mib,
+		units_gib,
+		units_tib,
+	]
+	for unit in conv:
+		if num[-1].lower() == unit.abbrev.lower():
+			return int(unit.factor * float(num[:-1]))
+	return int(num)
+
+
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	"""Split a string into a an argv array, with string support.
 	>>> split_unescape('foo,bar', ',')
@@ -122,7 +140,8 @@ class fmcli(code.InteractiveConsole):
 			('file', 'f'): self.do_paths,
 			('flag', 'g'): self.do_extent_flag,
 			('inode', 'i'): self.do_inodes,
-			('ls', 'l'): self.do_ls,
+			('ls', ): self.do_ls,
+			('length', 'l'): self.do_lengths,
 			('machine', 'm'): self.do_machine,
 			('overview', 'o'): self.do_overview,
 			('phys', 'p'): self.do_poff_to_extents,
@@ -286,22 +305,6 @@ class fmcli(code.InteractiveConsole):
 			(de.name, format_number(units_none, de.ino), de.type))
 
 	def do_poff_to_extents(self, argv):
-		def n2p(num):
-			conv = [
-				units('%', 'percent', None, self.fs.total_bytes / 100),
-				units('B', 'blocks', None, self.fs.block_size),
-				units_bytes,
-				units_sectors,
-				units_kib,
-				units_mib,
-				units_gib,
-				units_tib,
-			]
-			for unit in conv:
-				if num[-1].lower() == unit.abbrev.lower():
-					return int(unit.factor * float(num[:-1]))
-			return int(num)
-
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of physical offsets.')
 		parser.add_argument('offsets', nargs = '+', \
@@ -315,9 +318,9 @@ class fmcli(code.InteractiveConsole):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((n2p(arg[:pos]), n2p(arg[pos+1:])))
+				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
 			else:
-				ranges.append((n2p(arg), n2p(arg)))
+				ranges.append(n2p(self.fs, arg))
 		for x in self.fmdb.query_poff_range(ranges):
 			self.print_extent(x)
 
@@ -409,6 +412,26 @@ class fmcli(code.InteractiveConsole):
 			else:
 				ranges.append(int(arg))
 		for x in self.fmdb.query_inodes(ranges):
+			self.print_extent(x)
+
+	def do_lengths(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of lengths.')
+		parser.add_argument('lengths', nargs = '+', \
+			help = 'Lengths to look up.')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.lengths:
+			if arg == 'all':
+				for x in self.fmdb.query_lengths([]):
+					self.print_extent(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(n2p(self.fs, arg))
+		for x in self.fmdb.query_lengths(ranges):
 			self.print_extent(x)
 
 	def do_extent_type(self, argv):

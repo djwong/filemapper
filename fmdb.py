@@ -236,7 +236,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			if type(i) == int:
 				if i > self.overview_len:
 					raise ValueError("range %d outside of overview" % i)
-				yield int(i * sbc)
+				yield (int(i * sbc), int((i + 1) * sbc - 1))
 			else:
 				if i[0] > self.overview_len:
 					raise ValueError("range %d outside of overview" % i[0])
@@ -328,6 +328,33 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				qarg.append(r)
 			else:
 				qstr = qstr + ' %s ino BETWEEN ? AND ?' % cond
+				cond = 'OR'
+				qarg.append(r[0])
+				qarg.append(r[1])
+		qstr = qstr + " ORDER BY path, l_off"
+		cur.execute(qstr, qarg)
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for row in rows:
+				yield poff_row(row[0], row[1], row[2], row[3], \
+						row[4], row[5])
+
+	def query_lengths(self, ranges):
+		'''Query extents given ranges of lengths.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
+		qarg = []
+		cond = 'WHERE'
+		for r in ranges:
+			if type(r) == int:
+				qstr = qstr + ' %s length = ?' % cond
+				cond = 'OR'
+				qarg.append(r)
+			else:
+				qstr = qstr + ' %s length BETWEEN ? AND ?' % cond
 				cond = 'OR'
 				qarg.append(r[0])
 				qarg.append(r[1])
