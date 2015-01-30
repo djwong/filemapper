@@ -429,9 +429,9 @@ class fmcli(code.InteractiveConsole):
 	def do_extent_flag(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents with a particular set of flags.')
-		parser.add_argument('flags', nargs = '+', \
-			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, and (s)hared.', \
-			choices = ['n', 'd', 'e', 'E', 'u', 'i', 't', 'U', 'm', 's'])
+		parser.add_argument('flags', nargs = '*', \
+			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, (s)hared, or no flag code at all.', \
+			choices = ['n', 'd', 'e', 'E', 'u', 'i', 't', 'U', 'm', 's', []])
 		args = parser.parse_args(argv[1:])
 		flags = 0
 		for arg in args.flags:
