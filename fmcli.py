@@ -432,11 +432,12 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('flags', nargs = '*', \
 			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, (s)hared, or no flag code at all.', \
 			choices = ['n', 'd', 'e', 'E', 'u', 'i', 't', 'U', 'm', 's', []])
+		parser.add_argument('-e', default = 0, action = 'count', help = 'Flags must match exactly.')
 		args = parser.parse_args(argv[1:])
 		flags = 0
 		for arg in args.flags:
 			flags |= fiemap.extent_str_to_flags(arg)
-		for x in self.fmdb.query_extent_flags(flags):
+		for x in self.fmdb.query_extent_flags(flags, args.e > 0):
 			self.print_extent(x)
 
 	def do_ls(self, argv):
