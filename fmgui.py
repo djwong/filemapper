@@ -799,7 +799,7 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 	def items(self):
 		return self.rows
 
-class FmQuery:
+class FmQuery(object):
 	'''Abstract base class to manage query context and UI.'''
 	def __init__(self, label, ctl, query_fn):
 		self.label = label
