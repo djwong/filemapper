@@ -23,7 +23,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'total_bytes', 'free_bytes', \
 				       'avail_bytes', 'total_inodes', \
 				       'free_inodes', 'avail_inodes',
-				       'extents', 'pathsep'])
+				       'extents', 'pathsep', 'inodes'])
 
 class poff_row:
 	def __init__(self, path, p_off, l_off, length, flags, type):
@@ -217,6 +217,9 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		cur.execute('SELECT COUNT(p_off) FROM extent_t;')
 		rows = cur.fetchall()
 		extents = rows[0][0]
+		cur.execute('SELECT COUNT(ino) FROM inode_t;')
+		rows = cur.fetchall()
+		inodes = rows[0][0]
 
 		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator FROM fs_t;')
 		rows = cur.fetchall()
@@ -226,7 +229,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
 				 int(res[6]), int(res[7]), int(res[8]),
-				 int(extents), res[9])
+				 int(extents), res[9], int(inodes))
 		return self.fs
 
 	def pick_cells(self, ranges):

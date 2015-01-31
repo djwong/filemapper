@@ -265,19 +265,22 @@ class fmcli(code.InteractiveConsole):
 		parser.parse_args(argv[1:])
 		res = self.fs
 		print("Summary of '%s':" % res.path)
-		print("Block size:\t%s" % format_size(units_auto, res.block_size))
-		print("Fragment size:\t%s" % format_size(units_auto, res.frag_size))
-		print("Total space:\t%s" % format_size(self.units, res.total_bytes))
-		print("Used space:\t%s (%.0f%%)" % \
+		print("Block size:\t\t%s" % format_size(units_auto, res.block_size))
+		print("Fragment size:\t\t%s" % format_size(units_auto, res.frag_size))
+		print("Total space:\t\t%s" % format_size(self.units, res.total_bytes))
+		print("Used space:\t\t%s (%.0f%%)" % \
 			(format_size(self.units, res.total_bytes - res.free_bytes), \
 			 100 * (1.0 - (res.free_bytes / res.total_bytes))))
-		print("Free space:\t%s" % format_size(self.units, res.free_bytes))
-		print("Total inodes:\t%s" % format_number(units_auto, res.total_inodes))
-		print("Used inodes:\t%s (%.0f%%)" % \
+		print("Free space:\t\t%s" % format_size(self.units, res.free_bytes))
+		print("Total inodes:\t\t%s" % format_number(units_auto, res.total_inodes))
+		print("Used inodes:\t\t%s (%.0f%%)" % \
 			(format_number(units_auto, res.total_inodes - res.free_inodes), \
 			100 * (1.0 - (res.free_inodes / res.total_inodes))))
-		print("Free inodes:\t%s" % format_number(units_auto, res.free_inodes))
-		print("Extents:\t%s" % format_number(units_auto, res.extents))
+		print("Free inodes:\t\t%s" % format_number(units_auto, res.free_inodes))
+		print("Overview cells:\t\t%s each" % format_size(units_auto, res.total_bytes / self.fmdb.overview_len))
+		print("Extents:\t\t%s" % format_number(units_auto, res.extents))
+		print("Inodes w/ extents:\t%s" % format_number(units_auto, res.inodes))
+		print("Fragmentation:\t\t%.1f%%" % ((100.0 * res.extents / res.inodes) - 100))
 
 	def print_extent(self, ext):
 		'''Pretty-print an extent.'''
