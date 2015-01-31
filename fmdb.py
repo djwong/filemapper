@@ -240,13 +240,13 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			if type(i) == int:
 				if i > self.overview_len:
 					raise ValueError("range %d outside of overview" % i)
-				yield (int(i * sbc), int((i + 1) * sbc - 1))
+				yield (i * sbc, (i + 1) * sbc - 1)
 			else:
 				if i[0] > self.overview_len:
 					raise ValueError("range %d outside of overview" % i[0])
 				if i[1] > self.overview_len:
 					raise ValueError("range %d outside of overview" % i[1])
-				yield (int(i[0] * sbc), int((i[1] + 1) * sbc - 1))
+				yield (i[0] * sbc, (i[1] + 1) * sbc - 1)
 
 	def pick_bytes(self, ranges):
 		'''Convert ranges of bytes to ranges of cells.'''
@@ -314,6 +314,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				qarg.append(r[0])
 		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
+		print(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:

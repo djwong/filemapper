@@ -16,10 +16,14 @@ bold_font.setBold(True)
 
 class FmQueryType:
 	'''Retain state data about the query UI.'''
-	def __init__(self, label, query_fn, saved_state):
+	def __init__(self, label, query_fn, crap):
 		self.label = label
 		self.query_fn = query_fn
-		self.saved_state = saved_state
+		self.saved_state = crap[0]
+		self.load_fn = crap[1]
+		self.save_fn = crap[2]
+		self.parse_fn = crap[3]
+		self.ctl = crap[4]
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
@@ -304,11 +308,11 @@ class fmgui(QtGui.QMainWindow):
 		# First, the combobox-lineedit widget weirdness
 		self.query_text.setAutoCompletion(True)
 		self.query_text.setAutoCompletionCaseSensitivity(False)
+		self.query_text.setDuplicatesEnabled(False)
 		self.xle = XLineEdit(self.query_text)
 		self.xle.returnPressed.connect(self.run_query)
 		self.query_text.setLineEdit(self.xle)
-		self.query_text.setText = self.query_text.setEditText
-		self.query_text.text = self.query_text.currentText
+		# XXX: selecting something should submit the query
 
 		# Next, the query button
 		self.query_btn.clicked.connect(self.run_query)
@@ -334,23 +338,33 @@ class fmgui(QtGui.QMainWindow):
 			['Shared', False, 's'],
 			['Exact Match', False]
 		]
+		def shm(self):
+			return (StringHistoryModel(), self.load_string_query, \
+				self.save_string_query, self.parse_string_query, \
+				self.query_text)
+		def cm(self, x):
+			return (ChecklistModel(x), self.load_checklist_query, \
+				None, self.parse_checklist_query, \
+				self.query_checklist)
 		self.query_types = [
-			FmQueryType('Overview Cells', self.query_overview, ''),
-			FmQueryType('Physical Offsets', self.query_poff, ''),
-			FmQueryType('Logical Offsets', self.query_loff, ''),
-			FmQueryType('Inode Numbers', self.query_inodes, ''),
-			FmQueryType('Paths', self.query_paths, ''),
-			FmQueryType('Extent Types', self.query_extent_type, ChecklistModel(extent_types)),
-			FmQueryType('Extent Flags', self.query_extent_flags, ChecklistModel(extent_flags)),
-			FmQueryType('Extent Lengths', self.query_lengths, ''),
+			FmQueryType('Overview Cells', self.query_overview, shm(self)),
+			FmQueryType('Physical Offsets', self.query_poff, shm(self)),
+			FmQueryType('Logical Offsets', self.query_loff, shm(self)),
+			FmQueryType('Inode Numbers', self.query_inodes, shm(self)),
+			FmQueryType('Paths', self.query_paths, shm(self)),
+			FmQueryType('Extent Types', self.query_extent_type, cm(self, extent_types)),
+			FmQueryType('Extent Flags', self.query_extent_flags, cm(self, extent_flags)),
+			FmQueryType('Extent Lengths', self.query_lengths, shm(self)),
 		]
 
-		# Then the query types
+		# Then the query type selector
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
-		self.old_querytype = 0
-		self.querytype_combo.setCurrentIndex(self.old_querytype)
+		self.old_querytype = None
+		self.querytype_combo.setCurrentIndex(0)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
-		self.query_checklist.hide()
+		for qt in self.query_types:
+			qt.ctl.hide()
+		self.change_querytype(0)
 
 		# Finally move the query UI to the toolbar
 		self.toolBar.addWidget(self.query_frame)
@@ -382,7 +396,7 @@ class fmgui(QtGui.QMainWindow):
 		for x in range(0, len(self.query_types)):
 			if self.query_types[x].query_fn == fn:
 				self.querytype_combo.setCurrentIndex(x)
-				self.query_text.setText(text)
+				self.query_text.setEditText(text)
 				return
 
 	def pick_fs_tree(self, n, o):
@@ -413,20 +427,43 @@ class fmgui(QtGui.QMainWindow):
 		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(r)]
 		self.overview.highlight_ranges(ranges)
 
+	def load_string_query(self, qt):
+		print("lsq ", qt.saved_state.edit_string)
+		self.query_text.setEditText(qt.saved_state.edit_string)
+		self.query_text.setModel(qt.saved_state)
+
+	def save_string_query(self, qt):
+		'''Save a string-query's state for later.'''
+		a = self.query_text.currentText()
+		qt.saved_state.edit_string = a
+		qt.saved_state.add_to_history(a)
+		print("ssq ", qt.saved_state.edit_string)
+
+	def parse_string_query(self, qt):
+		print("psq ", qt.saved_state.edit_string)
+		return fmcli.split_unescape(str(qt.saved_state.edit_string), ' ', ('"', "'"))
+
+	def load_checklist_query(self, qt):
+		print("lcq ", qt.saved_state.items())
+		self.query_checklist.setModel(qt.saved_state)
+
+	# no action required to save checklist state
+
+	def parse_checklist_query(self, qt):
+		print("lcq ", qt.saved_state.items())
+		return qt.saved_state.items()
+
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
-		old_qt = self.query_types[self.old_querytype]
+		if self.old_querytype is not None:
+			old_qt = self.query_types[self.old_querytype]
+			old_qt.ctl.hide()
+			if old_qt.save_fn is not None:
+				old_qt.save_fn(old_qt)
 		new_qt = self.query_types[idx]
-		if type(old_qt.saved_state) == str:
-			old_qt.saved_state = self.query_text.text()
-		if type(new_qt.saved_state) == str:
-			self.query_checklist.hide()
-			self.query_text.show()
-			self.query_text.setText(new_qt.saved_state)
-		elif type(new_qt.saved_state) == ChecklistModel:
-			self.query_text.hide()
-			self.query_checklist.show()
-			self.query_checklist.setModel(new_qt.saved_state)
+		if new_qt.load_fn is not None:
+			new_qt.load_fn(new_qt)
+		new_qt.ctl.show()
 		self.old_querytype = idx
 
 	def change_units(self, action):
@@ -470,14 +507,13 @@ class fmgui(QtGui.QMainWindow):
 		self.ost.stop()
 		idx = self.querytype_combo.currentIndex()
 		qt = self.query_types[idx]
-		if type(qt.saved_state) == str:
-			qt.saved_state = self.query_text.text()
-			args = fmcli.split_unescape(str(qt.saved_state), ' ', ('"', "'"))
-		elif type(qt.saved_state) == ChecklistModel:
-			args = qt.saved_state.items()
+		if qt.save_fn is not None:
+			qt.save_fn(qt)
+		args = qt.parse_fn(qt)
 		#print("QUERY:", self.query_types[idx].label, args)
-		self.query_types[idx].query_fn(args)
+		qt.query_fn(args)
 		self.pick_extent_table(None, None)
+		# XXX: should we clear the fs tree selection too?
 
 	def query_extent_type(self, args):
 		'''Query for extents based on the extent type code.'''
@@ -505,6 +541,7 @@ class fmgui(QtGui.QMainWindow):
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
 				ranges.append(int(arg))
+		print(ranges, [r for r in self.fmdb.pick_cells(ranges)])
 		r = self.fmdb.pick_cells(ranges)
 		self.load_extents(self.fmdb.query_poff_range(r))
 
@@ -742,7 +779,6 @@ class OverviewModel(QtCore.QObject):
 		end = cursor.selectionEnd()
 		self.ctl.setText(''.join(ov_str))
 		self.rendered.emit()
-		# XXX: need to set the selection background?
 
 	def resize_ctl(self, event):
 		'''Handle the resizing of the text view control.'''
@@ -810,6 +846,38 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 
 	def items(self):
 		return self.rows
+
+class StringHistoryModel(QtCore.QAbstractTableModel):
+	'''Store a string and its past iterations.'''
+	def __init__(self, edit_string = '', items = [], parent=None, *args):
+		QtCore.QAbstractTableModel.__init__(self, parent, *args)
+		self.rows = items
+		self.edit_string = edit_string
+
+	def rowCount(self, parent):
+		return len(self.rows)
+
+	def columnCount(self, parent):
+		return 1
+
+	def data(self, index, role):
+		i = index.row()
+		j = index.column()
+		if j != 0:
+			return None
+		if role == QtCore.Qt.DisplayRole:
+			return self.rows[i]
+		else:
+			return None
+
+	def add_to_history(self, string):
+		'''Add a string to the history.'''
+		if string in self.rows:
+			self.rows.remove(string)
+		self.rows.append(string)
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(len(self.rows) - 1, 0)
+		#XXX this alters the selection.... self.dataChanged.emit(tl, br)
 
 class XLineEdit(QtGui.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''
