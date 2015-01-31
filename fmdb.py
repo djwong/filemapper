@@ -109,6 +109,7 @@ CREATE INDEX path_ino_i ON path_t(ino);
 CREATE INDEX path_path_i ON path_t(path);
 CREATE INDEX dir_ino_i ON dir_t(dir_ino);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
+CREATE INDEX extent_loff_i ON extent_t(l_off, length);
 CREATE INDEX extent_ino_i ON extent_t(ino);
 		""")
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
@@ -261,8 +262,37 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 					raise ValueError("range %d outside of fs" % i)
 				yield (int(i[0] / sbc), int(i[1] / sbc))
 
+	def query_loff_range(self, ranges):
+		'''Query extents spanning ranges of logical bytes.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
+		qarg = []
+		cond = 'WHERE'
+		for r in ranges:
+			if type(r) == int:
+				qstr = qstr + ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				cond = 'OR'
+				qarg.append(r)
+				qarg.append(r)
+			else:
+				qstr = qstr + ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				cond = 'OR'
+				qarg.append(r[1])
+				qarg.append(r[0])
+		qstr = qstr + " ORDER BY path, l_off"
+		cur.execute(qstr, qarg)
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for row in rows:
+				yield poff_row(row[0], row[1], row[2], row[3], \
+						row[4], row[5])
+
+
 	def query_poff_range(self, ranges):
-		'''Query extents spanning ranges of bytes.'''
+		'''Query extents spanning ranges of physical bytes.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'

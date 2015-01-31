@@ -140,11 +140,12 @@ class fmcli(code.InteractiveConsole):
 			('file', 'f'): self.do_paths,
 			('flag', 'g'): self.do_extent_flag,
 			('inode', 'i'): self.do_inodes,
+			('logical', 'l'): self.do_loff_to_extents,
 			('ls', ): self.do_ls,
-			('length', 'l'): self.do_lengths,
 			('machine', 'm'): self.do_machine,
+			('length', 'n'): self.do_lengths,
 			('overview', 'o'): self.do_overview,
-			('phys', 'p'): self.do_poff_to_extents,
+			('physical', 'p'): self.do_poff_to_extents,
 			('quit', 'exit', 'q'): self.do_exit,
 			('summary', 's'): self.do_summary,
 			('type', 't'): self.do_extent_type,
@@ -303,6 +304,26 @@ class fmcli(code.InteractiveConsole):
 			return
 		print("'%s', %s, '%s'" % \
 			(de.name, format_number(units_none, de.ino), de.type))
+
+	def do_loff_to_extents(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of logical offsets.')
+		parser.add_argument('offsets', nargs = '+', \
+			help = 'Logical offsets to look up.')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.offsets:
+			if arg == 'all':
+				for x in self.fmdb.query_loff_range([]):
+					self.print_extent(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(n2p(self.fs, arg))
+		for x in self.fmdb.query_loff_range(ranges):
+			self.print_extent(x)
 
 	def do_poff_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
