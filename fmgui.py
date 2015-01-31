@@ -18,7 +18,7 @@ bold_font.setBold(True)
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
 	def __init__(self, fs, data, units, rows_to_show=100, parent=None, *args):
-		QtCore.QAbstractTableModel.__init__(self, parent, *args)
+		super(ExtentTableModel, self).__init__(parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
 				'Length', 'Flags', 'Type', 'Path']
@@ -135,7 +135,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		br = self.createIndex(self.rows - 1, len(self.headers) - 1)
 		self.dataChanged.emit(tl, br)
 
-class FsTreeNode:
+class FsTreeNode(object):
 	'''A node in the recorded filesystem.'''
 	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
@@ -182,7 +182,7 @@ class FsTreeNode:
 class FsTreeModel(QtCore.QAbstractItemModel):
 	'''Model the filesystem tree recorded in the database.'''
 	def __init__(self, fs, root, parent=None, *args):
-		QtCore.QAbstractItemModel.__init__(self, parent, *args)
+		super(FsTreeModel, self).__init__(parent, *args)
 		self.root = root
 		self.headers = ['Name'] #, 'Inode']
 		self.fs = fs
@@ -764,7 +764,7 @@ class OverviewModel(QtCore.QObject):
 class ChecklistModel(QtCore.QAbstractTableModel):
 	'''A list model for checkable items.'''
 	def __init__(self, items, parent=None, *args):
-		QtCore.QAbstractTableModel.__init__(self, parent, *args)
+		super(ChecklistModel, self).__init__(parent, *args)
 		self.rows = items
 
 	def rowCount(self, parent):
@@ -887,7 +887,7 @@ class ChecklistQuery(FmQuery):
 class XLineEdit(QtGui.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''
 	def __init__(self, parent=None):
-		QtGui.QLineEdit.__init__(self, parent)
+		super(XLineEdit, self).__init__(parent)
 		self.layout = QtGui.QHBoxLayout(self)
 		self.image = QtGui.QLabel(self)
 		self.image.setCursor(QtCore.Qt.ArrowCursor)

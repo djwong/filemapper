@@ -130,6 +130,9 @@ class fmcli(code.InteractiveConsole):
 	'''Interactive command line client.'''
 	def __init__(self, fmdb, locals=None, filename="<console>", \
 		     histfile=os.path.expanduser("~/.config/fmcli-history")):
+		# In Python 2.x this didn't inherit from object, so we're
+		# stuck with the old superclass syntax for now.
+		# super(fmcli, self).__init__(locals, filename)
 		code.InteractiveConsole.__init__(self, locals, filename)
 		self.init_history(histfile)
 		self.fmdb = fmdb

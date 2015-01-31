@@ -25,7 +25,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'free_inodes', 'avail_inodes',
 				       'extents', 'pathsep', 'inodes'])
 
-class poff_row:
+class poff_row(object):
 	def __init__(self, path, p_off, l_off, length, flags, type):
 		self.path = path
 		self.p_off = p_off
@@ -39,7 +39,7 @@ class poff_row:
 
 dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
-class overview_block:
+class overview_block(object):
 	def __init__(self):
 		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = 0
 
@@ -50,7 +50,7 @@ class overview_block:
 		self.metadata += value.metadata
 		self.xattrs += value.xattrs
 
-class fmdb:
+class fmdb(object):
 	'''filemapper database'''
 	def __init__(self, fspath, dbpath):
 		'''Initialize a database object.'''
