@@ -325,6 +325,7 @@ class fmgui(QtGui.QMainWindow):
 		self.query_types = [
 			FmQueryType('Overview Cells', self.query_overview, ''),
 			FmQueryType('Physical Offsets', self.query_poff, ''),
+			FmQueryType('Logical Offsets', self.query_loff, ''),
 			FmQueryType('Inode Numbers', self.query_inodes, ''),
 			FmQueryType('Paths', self.query_paths, ''),
 			FmQueryType('Extent Types', self.query_extent_type, ChecklistModel(extent_types)),
@@ -489,6 +490,20 @@ class fmgui(QtGui.QMainWindow):
 				ranges.append(int(arg))
 		r = self.fmdb.pick_cells(ranges)
 		self.load_extents(self.fmdb.query_poff_range(r))
+
+	def query_loff(self, args):
+		'''Query for extents mapped to ranges of logical bytes.'''
+		ranges = []
+		for arg in args:
+			if arg == 'all':
+				self.load_extents(self.fmdb.query_loff_range([]))
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(n2p(self.fs, arg))
+		self.load_extents(self.fmdb.query_loff_range(ranges))
 
 	def query_poff(self, args):
 		'''Query for extents mapped to ranges of physical bytes.'''
