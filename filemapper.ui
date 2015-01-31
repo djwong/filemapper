@@ -104,7 +104,17 @@
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="query_text"/>
+        <widget class="QComboBox" name="query_text">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="editable">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
        <item>
         <widget class="QListView" name="query_checklist">

@@ -301,7 +301,19 @@ class fmgui(QtGui.QMainWindow):
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 
 		# Set up the query UI
+		# First, the combobox-lineedit widget weirdness
+		self.query_text.setAutoCompletion(True)
+		self.query_text.setAutoCompletionCaseSensitivity(False)
+		self.xle = XLineEdit(self.query_text)
+		self.xle.returnPressed.connect(self.run_query)
+		self.query_text.setLineEdit(self.xle)
+		self.query_text.setText = self.query_text.setEditText
+		self.query_text.text = self.query_text.currentText
+
+		# Next, the query button
 		self.query_btn.clicked.connect(self.run_query)
+
+		# Then the check-list query data
 		extent_types = [
 			['File', True, 'f'],
 			['Directory', True, 'd'],
@@ -332,10 +344,18 @@ class fmgui(QtGui.QMainWindow):
 			FmQueryType('Extent Flags', self.query_extent_flags, ChecklistModel(extent_flags)),
 			FmQueryType('Extent Lengths', self.query_lengths, ''),
 		]
+
+		# Then the query types
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
 		self.old_querytype = 0
 		self.querytype_combo.setCurrentIndex(self.old_querytype)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
+		self.query_checklist.hide()
+
+		# Finally move the query UI to the toolbar
+		self.toolBar.addWidget(self.query_frame)
+
+		# Set up the zoom control
 		self.zoom_levels = [
 			['100%', 1.0],
 			['200%', 2.0],
@@ -344,9 +364,6 @@ class fmgui(QtGui.QMainWindow):
 		]
 		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
 		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
-		self.query_checklist.hide()
-		self.query_text.returnPressed.connect(self.run_query)
-		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
@@ -793,3 +810,36 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 
 	def items(self):
 		return self.rows
+
+class XLineEdit(QtGui.QLineEdit):
+	'''QLineEdit with clear button, which appears when user enters text.'''
+	def __init__(self, parent=None):
+		QtGui.QLineEdit.__init__(self, parent)
+		self.layout = QtGui.QHBoxLayout(self)
+		self.image = QtGui.QLabel(self)
+		self.image.setCursor(QtCore.Qt.ArrowCursor)
+		self.image.setFocusPolicy(QtCore.Qt.NoFocus)
+		self.image.setStyleSheet("border: none;")
+		pixmap = QtGui.QIcon.fromTheme('locationbar-erase').pixmap(16, 16)
+		self.image.setPixmap(pixmap)
+		self.image.setSizePolicy(
+			QtGui.QSizePolicy.Expanding,
+			QtGui.QSizePolicy.Expanding)
+		self.image.adjustSize()
+		self.image.setScaledContents(True)
+		self.layout.addWidget(
+			self.image, alignment=QtCore.Qt.AlignRight)
+		self.textChanged.connect(self.changed)
+		self.image.hide()
+		self.image.mouseReleaseEvent = self.clear_mouse_release
+
+	def clear_mouse_release(self, ev):
+		QtGui.QLabel.mouseReleaseEvent(self.image, ev)
+		if ev.button() == QtCore.Qt.LeftButton:
+			self.clear()
+
+	def changed(self, text):
+		if len(text) > 0:
+			self.image.show()
+		else:
+			self.image.hide()
