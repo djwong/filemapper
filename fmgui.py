@@ -9,21 +9,11 @@ import datetime
 import fmdb
 import math
 import fiemap
+from abc import ABCMeta, abstractmethod
 
 null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
 bold_font.setBold(True)
-
-class FmQueryType:
-	'''Retain state data about the query UI.'''
-	def __init__(self, label, query_fn, crap):
-		self.label = label
-		self.query_fn = query_fn
-		self.saved_state = crap[0]
-		self.load_fn = crap[1]
-		self.save_fn = crap[2]
-		self.parse_fn = crap[3]
-		self.ctl = crap[4]
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
@@ -338,23 +328,19 @@ class fmgui(QtGui.QMainWindow):
 			['Shared', False, 's'],
 			['Exact Match', False]
 		]
-		def shm(self):
-			return (StringHistoryModel(), self.load_string_query, \
-				self.save_string_query, self.parse_string_query, \
-				self.query_text)
-		def cm(self, x):
-			return (ChecklistModel(x), self.load_checklist_query, \
-				None, self.parse_checklist_query, \
-				self.query_checklist)
+		def sq(l, q):
+			return StringQuery(l, self.query_text, q)
+		def cq(l, q, x):
+			return ChecklistQuery(l, self.query_checklist, q, x)
 		self.query_types = [
-			FmQueryType('Overview Cells', self.query_overview, shm(self)),
-			FmQueryType('Physical Offsets', self.query_poff, shm(self)),
-			FmQueryType('Logical Offsets', self.query_loff, shm(self)),
-			FmQueryType('Inode Numbers', self.query_inodes, shm(self)),
-			FmQueryType('Paths', self.query_paths, shm(self)),
-			FmQueryType('Extent Types', self.query_extent_type, cm(self, extent_types)),
-			FmQueryType('Extent Flags', self.query_extent_flags, cm(self, extent_flags)),
-			FmQueryType('Extent Lengths', self.query_lengths, shm(self)),
+			sq('Overview Cells', self.query_overview),
+			sq('Physical Offsets', self.query_poff),
+			sq('Logical Offsets', self.query_loff),
+			sq('Inode Numbers', self.query_inodes),
+			sq('Paths', self.query_paths),
+			cq('Extent Types', self.query_extent_type, extent_types),
+			cq('Extent Flags', self.query_extent_flags, extent_flags),
+			sq('Extent Lengths', self.query_lengths),
 		]
 
 		# Then the query type selector
@@ -362,8 +348,8 @@ class fmgui(QtGui.QMainWindow):
 		self.old_querytype = None
 		self.querytype_combo.setCurrentIndex(0)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
-		for qt in self.query_types:
-			qt.ctl.hide()
+		self.query_checklist.hide()
+		self.query_text.hide()
 		self.change_querytype(0)
 
 		# Finally move the query UI to the toolbar
@@ -427,43 +413,13 @@ class fmgui(QtGui.QMainWindow):
 		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(r)]
 		self.overview.highlight_ranges(ranges)
 
-	def load_string_query(self, qt):
-		print("lsq ", qt.saved_state.edit_string)
-		self.query_text.setEditText(qt.saved_state.edit_string)
-		self.query_text.setModel(qt.saved_state)
-
-	def save_string_query(self, qt):
-		'''Save a string-query's state for later.'''
-		a = self.query_text.currentText()
-		qt.saved_state.edit_string = a
-		qt.saved_state.add_to_history(a)
-		print("ssq ", qt.saved_state.edit_string)
-
-	def parse_string_query(self, qt):
-		print("psq ", qt.saved_state.edit_string)
-		return fmcli.split_unescape(str(qt.saved_state.edit_string), ' ', ('"', "'"))
-
-	def load_checklist_query(self, qt):
-		print("lcq ", qt.saved_state.items())
-		self.query_checklist.setModel(qt.saved_state)
-
-	# no action required to save checklist state
-
-	def parse_checklist_query(self, qt):
-		print("lcq ", qt.saved_state.items())
-		return qt.saved_state.items()
-
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
 		if self.old_querytype is not None:
 			old_qt = self.query_types[self.old_querytype]
-			old_qt.ctl.hide()
-			if old_qt.save_fn is not None:
-				old_qt.save_fn(old_qt)
+			old_qt.save_query()
 		new_qt = self.query_types[idx]
-		if new_qt.load_fn is not None:
-			new_qt.load_fn(new_qt)
-		new_qt.ctl.show()
+		new_qt.load_query()
 		self.old_querytype = idx
 
 	def change_units(self, action):
@@ -507,11 +463,7 @@ class fmgui(QtGui.QMainWindow):
 		self.ost.stop()
 		idx = self.querytype_combo.currentIndex()
 		qt = self.query_types[idx]
-		if qt.save_fn is not None:
-			qt.save_fn(qt)
-		args = qt.parse_fn(qt)
-		#print("QUERY:", self.query_types[idx].label, args)
-		qt.query_fn(args)
+		qt.run_query()
 		self.pick_extent_table(None, None)
 		# XXX: should we clear the fs tree selection too?
 
@@ -541,7 +493,6 @@ class fmgui(QtGui.QMainWindow):
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
 				ranges.append(int(arg))
-		print(ranges, [r for r in self.fmdb.pick_cells(ranges)])
 		r = self.fmdb.pick_cells(ranges)
 		self.load_extents(self.fmdb.query_poff_range(r))
 
@@ -847,37 +798,90 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 	def items(self):
 		return self.rows
 
-class StringHistoryModel(QtCore.QAbstractTableModel):
-	'''Store a string and its past iterations.'''
-	def __init__(self, edit_string = '', items = [], parent=None, *args):
-		QtCore.QAbstractTableModel.__init__(self, parent, *args)
-		self.rows = items
+class FmQuery:
+	'''Abstract base class to manage query context and UI.'''
+	def __init__(self, label, ctl, query_fn):
+		self.label = label
+		self.ctl = ctl
+		self.query_fn = query_fn
+
+	@abstractmethod
+	def load_query(self):
+		'''Load ourselves into the UI.'''
+		pass
+
+	@abstractmethod
+	def save_query(self):
+		'''Save UI contents.'''
+		pass
+
+	@abstractmethod
+	def parse_query(self):
+		'''Parse query contents into some meaningful form.'''
+		pass
+
+	def run_query(self):
+		'''Run a query.'''
+		args = self.parse_query()
+		#print("QUERY:", self.label, args)
+		self.query_fn(args)
+
+class StringQuery(FmQuery):
+	'''Handle queries that are free-form text.'''
+	def __init__(self, label, ctl, query_fn, edit_string = '', history = None, parent=None, *args):
+		super(StringQuery, self).__init__(label, ctl, query_fn)
+		if history is None:
+			self.history = []
+		else:
+			self.history = history
 		self.edit_string = edit_string
 
-	def rowCount(self, parent):
-		return len(self.rows)
-
-	def columnCount(self, parent):
-		return 1
-
-	def data(self, index, role):
-		i = index.row()
-		j = index.column()
-		if j != 0:
-			return None
-		if role == QtCore.Qt.DisplayRole:
-			return self.rows[i]
+	def load_query(self):
+		self.ctl.clear()
+		self.ctl.addItems(self.history)
+		if self.edit_string in self.history:
+			self.ctl.setCurrentIndex(self.history.index(self.edit_string))
 		else:
-			return None
+			self.ctl.setEditText(self.edit_string)
+		self.ctl.show()
+
+	def save_query(self):
+		self.ctl.hide()
+		self.edit_string = self.ctl.currentText()
+
+	def parse_query(self):
+		a = self.ctl.currentText()
+		self.edit_string = a
+		self.add_to_history(a)
+		return fmcli.split_unescape(str(a), ' ', ('"', "'"))
 
 	def add_to_history(self, string):
 		'''Add a string to the history.'''
-		if string in self.rows:
-			self.rows.remove(string)
-		self.rows.append(string)
-		tl = self.createIndex(0, 0)
-		br = self.createIndex(len(self.rows) - 1, 0)
-		#XXX this alters the selection.... self.dataChanged.emit(tl, br)
+		if string in self.history:
+			self.history.remove(string)
+		r = self.ctl.findText(string)
+		if r >= 0:
+			self.ctl.removeItem(r)
+		self.history.append(string)
+		self.ctl.addItem(string)
+		self.ctl.setCurrentIndex(self.history.index(string))
+
+class ChecklistQuery(FmQuery):
+	'''Handle queries comprising a selection of discrete items.'''
+	def __init__(self, label, ctl, query_fn, items, parent=None, *args):
+		super(ChecklistQuery, self).__init__(label, ctl, query_fn)
+		self.items = items
+		self.model = ChecklistModel(items)
+
+	def load_query(self):
+		self.ctl.setModel(self.model)
+		self.ctl.show()
+
+	def save_query(self):
+		self.ctl.hide()
+
+	def parse_query(self):
+		return self.items
 
 class XLineEdit(QtGui.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''

@@ -314,7 +314,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				qarg.append(r[0])
 		qstr = qstr + " ORDER BY path, l_off"
 		cur.execute(qstr, qarg)
-		print(qstr, qarg)
+		#print(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
