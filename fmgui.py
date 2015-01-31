@@ -302,6 +302,7 @@ class fmgui(QtGui.QMainWindow):
 		self.xle = XLineEdit(self.query_text)
 		self.xle.returnPressed.connect(self.run_query)
 		self.query_text.setLineEdit(self.xle)
+		self.query_text.activated.connect(self.run_query)
 		# XXX: selecting something should submit the query
 
 		# Next, the query button
