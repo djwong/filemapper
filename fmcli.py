@@ -44,7 +44,7 @@ def format_size(units, num):
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num / units.factor), \
 				' ' if len(units.label) > 0 else '', units.label)
-		return "{:,.1f} {}".format(num / units.factor, units.label)
+		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
 	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
 	for i in range(0, len(units_scale) - 1):
 		if num < units_scale[i + 1].factor:
@@ -57,7 +57,7 @@ def format_number(units, num):
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num / units.factor), \
 				' ' if len(units.label) > 0 else '', units.label)
-		return "{:,.1f} {}".format(num / units.factor, units.label)
+		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
 	units_scale = [units_none, units_k, units_m, units_g, units_t]
 	for i in range(0, len(units_scale) - 1):
 		if num < units_scale[i + 1].factor:
@@ -67,7 +67,7 @@ def format_number(units, num):
 def n2p(fs, num):
 	'''Convert a suffixed number to an integer.'''
 	conv = [
-		units('%', 'percent', fs.total_bytes / 100),
+		units('%', 'percent', fs.total_bytes / 100.0),
 		units('B', 'blocks', fs.block_size),
 		units_bytes,
 		units_sectors,
@@ -273,14 +273,14 @@ class fmcli(code.InteractiveConsole):
 		print("Total space:\t\t%s" % format_size(self.units, res.total_bytes))
 		print("Used space:\t\t%s (%.0f%%)" % \
 			(format_size(self.units, res.total_bytes - res.free_bytes), \
-			 100 * (1.0 - (res.free_bytes / res.total_bytes))))
+			 100 * (1.0 - (float(res.free_bytes) / res.total_bytes))))
 		print("Free space:\t\t%s" % format_size(self.units, res.free_bytes))
 		print("Total inodes:\t\t%s" % format_number(units_auto, res.total_inodes))
 		print("Used inodes:\t\t%s (%.0f%%)" % \
 			(format_number(units_auto, res.total_inodes - res.free_inodes), \
-			100 * (1.0 - (res.free_inodes / res.total_inodes))))
+			100 * (1.0 - (float(res.free_inodes )/ res.total_inodes))))
 		print("Free inodes:\t\t%s" % format_number(units_auto, res.free_inodes))
-		print("Overview cells:\t\t%s each" % format_size(units_auto, res.total_bytes / self.fmdb.overview_len))
+		print("Overview cells:\t\t%s each" % format_size(units_auto, float(res.total_bytes) / self.fmdb.overview_len))
 		print("Extents:\t\t%s" % format_number(units_auto, res.extents))
 		print("Inodes w/ extents:\t%s" % format_number(units_auto, res.inodes))
 		print("Fragmentation:\t\t%.1f%%" % ((100.0 * res.extents / res.inodes) - 100))

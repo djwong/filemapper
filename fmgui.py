@@ -576,13 +576,13 @@ class fmgui(QtGui.QMainWindow):
 		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell; %.1f%% fragmentation" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
-			 100 * (1.0 - (self.fs.free_bytes / self.fs.total_bytes)), \
+			 100 * (1.0 - (float(self.fs.free_bytes) / self.fs.total_bytes)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes - self.fs.free_inodes), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
-			 100 * (1.0 - (self.fs.free_inodes / self.fs.total_inodes)), \
+			 100 * (1.0 - (float(self.fs.free_inodes) / self.fs.total_inodes)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
-			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes / self.overview.total_length()), \
+			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
 			 100.0 * self.fs.extents / self.fs.inodes - 100)
 		self.status_label.setText(s)
 
@@ -707,7 +707,7 @@ class OverviewModel(QtCore.QObject):
 		else:
 			t = {x for x in self.fmdb.pick_bytes(self.range_highlight)}
 			range_highlight = compress_ranges(t)
-		o2s = len(self.overview_big) / olen
+		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
 		t0 = datetime.datetime.today()
 		for i in range(0, olen):

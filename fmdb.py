@@ -257,13 +257,13 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			if type(i) == int:
 				if i > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
-				yield int(i / sbc)
+				yield int(float(i) / sbc)
 			else:
 				if i[0] > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
 				if i[1] > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
-				yield (int(i[0] / sbc), int(i[1] / sbc))
+				yield (int(float(i[0]) / sbc), int(float(i[1]) / sbc))
 
 	def query_loff_range(self, ranges):
 		'''Query extents spanning ranges of logical bytes.'''
