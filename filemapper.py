@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Generate a sqlite database of FS data via FIEMAP
+# Generate/view a sqlite database of FS data via FIEMAP or other.
 # Copyright (C) 2015 Darrick J. Wong.  All rights reserved.
 # Licensed under the GPLv2.
 
