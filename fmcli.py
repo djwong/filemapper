@@ -284,7 +284,9 @@ class fmcli(code.InteractiveConsole):
 		print("Overview cells:\t\t%s each" % format_size(units_auto, float(res.total_bytes) / self.fmdb.overview_len))
 		print("Extents:\t\t%s" % format_number(units_auto, res.extents))
 		print("Inodes w/ extents:\t%s" % format_number(units_auto, res.inodes))
-		print("Fragmentation:\t\t%.1f%%" % ((100.0 * res.extents / res.inodes) - 100))
+		inodes = res.inodes if res.inodes != 0 else 1
+		extents = res.extents if res.extents != 0 else 1
+		print("Fragmentation:\t\t%.1f%%" % ((100.0 * extents / inodes) - 100))
 
 	def print_extent(self, ext):
 		'''Pretty-print an extent.'''

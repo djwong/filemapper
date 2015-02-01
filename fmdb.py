@@ -476,6 +476,10 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		qarg = ['']
 		cur.execute(qstr, qarg)
 		rows = cur.fetchall()
+		if len(rows) > 1:
+			raise ValueError('More than one root dentry?')
+		elif len(rows) < 1:
+			raise ValueError('Less than one root dentry?')
 		return dentry('', rows[0][0], rows[0][1])
 
 	def query_ls(self, paths):
