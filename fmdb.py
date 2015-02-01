@@ -207,7 +207,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				(xstat.st_ino, xtype))
 		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
 				(path, xstat.st_ino))
-		
+
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
 		code = stmode_to_type(stat, is_xattr)
