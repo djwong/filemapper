@@ -44,6 +44,23 @@ CREATE INDEX extent_ino_i ON extent_t(ino);";
 # define dbg_printf(f, a...)
 #endif
 
+struct walk_fs_t {
+	sqlite3 *db;
+	ext2_filsys fs;
+	errcode_t err;
+	int db_err;
+	char *dirpath;
+};
+
+#define EXT2_FT_METADATA	(EXT2_FT_MAX)
+static char *type_codes[] = {
+	[EXT2_FT_DIR] = "d",
+	[EXT2_FT_REG_FILE] = "f",
+	[EXT2_FT_SYMLINK] = "s",
+	[EXT2_FT_METADATA] = "m",
+};
+
+/* Run a bunch of queries */
 static int run_batch_query(sqlite3 *db, const char *sql)
 {
 	sqlite3_stmt *stmt = NULL;
@@ -74,6 +91,7 @@ static int run_batch_query(sqlite3 *db, const char *sql)
 	return err;
 }
 
+/* Store fs statistics in the database */
 static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 {
 	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);";
@@ -143,6 +161,7 @@ out:
 	return err;
 }
 
+/* Mark the database as complete. */
 static int finalize_fs_stats(sqlite3 *db, ext2_filsys fs)
 {
 	const char *sql = "UPDATE fs_t SET finished = 1 WHERE path = ?;";
@@ -167,22 +186,7 @@ out:
 	return err;
 }
 
-struct walk_fs_t {
-	sqlite3 *db;
-	ext2_filsys fs;
-	errcode_t err;
-	int db_err;
-	char *dirpath;
-};
-
-#define EXT2_FT_METADATA	(EXT2_FT_MAX)
-static char *type_codes[] = {
-	[EXT2_FT_DIR] = "d",
-	[EXT2_FT_REG_FILE] = "f",
-	[EXT2_FT_SYMLINK] = "s",
-	[EXT2_FT_METADATA] = "m",
-};
-
+/* Insert an inode record into the inode and path tables */
 static int insert_inode(struct walk_fs_t *wf, ext2_ino_t ino, int type,
 			const char *path)
 {
@@ -235,6 +239,7 @@ out:
 	return err;
 }
 
+/* Insert a directory entry into the database. */
 static int insert_dentry(struct walk_fs_t *wf, ext2_ino_t dir_ino,
 			 const char *name, ext2_ino_t ino)
 {
@@ -268,6 +273,7 @@ out:
 	return err;
 }
 
+/* Handle a directory entry */
 static int walk_fs_helper(ext2_ino_t dir, int entry,
 			  struct ext2_dir_entry *dirent, int offset,
 			  int blocksize, char *buf, void *priv_data)
@@ -340,6 +346,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	return 0;
 }
 
+/* Walk the whole FS, looking for inodes to analyze. */
 static errcode_t walk_fs(sqlite3 *db, ext2_filsys fs, int *db_err)
 {
 	struct walk_fs_t wf;
