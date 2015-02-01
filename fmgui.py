@@ -874,17 +874,17 @@ class FmQuery(object):
 	@abstractmethod
 	def load_query(self):
 		'''Load ourselves into the UI.'''
-		pass
+		raise NotImplementedError()
 
 	@abstractmethod
 	def save_query(self):
 		'''Save UI contents.'''
-		pass
+		raise NotImplementedError()
 
 	@abstractmethod
 	def parse_query(self):
 		'''Parse query contents into some meaningful form.'''
-		pass
+		raise NotImplementedError()
 
 	def run_query(self):
 		'''Run a query.'''
@@ -895,12 +895,12 @@ class FmQuery(object):
 	@abstractmethod
 	def export_state(self):
 		'''Export state data for serializeation.'''
-		pass
+		raise NotImplementedError()
 
 	@abstractmethod
 	def import_state(self, data):
 		'''Import state data for serialization.'''
-		pass
+		raise NotImplementedError()
 
 class StringQuery(FmQuery):
 	'''Handle queries that are free-form text.'''
