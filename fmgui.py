@@ -288,6 +288,7 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 		self.extent_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
+		self.extent_table.sortByColumn(-1)
 
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
