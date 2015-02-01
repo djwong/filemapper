@@ -19,6 +19,8 @@ def stmode_to_type(xstat, is_xattr):
 		return 'f'
 	elif stat.S_ISDIR(xstat.st_mode):
 		return 'd'
+	elif stat.S_ISLNK(xstat.st_mode):
+		return 's'
 
 fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size', \
 				       'total_bytes', 'free_bytes', \
@@ -42,14 +44,51 @@ dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
 class overview_block(object):
 	def __init__(self):
-		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = 0
+		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = self.symlink = 0
 
 	def add(self, value):
+		'''Add another overview block to this one.'''
 		self.files += value.files
 		self.dirs += value.dirs
 		self.mappings += value.mappings
 		self.metadata += value.metadata
 		self.xattrs += value.xattrs
+		self.symlink += value.symlink
+
+	def to_letter(ov):
+		'''Render this overview block as a string.'''
+		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlink
+		if tot == 0:
+			return '.'
+		elif ov.files == tot:
+			return 'F'
+		elif ov.dirs == tot:
+			return 'D'
+		elif ov.mappings == tot:
+			return 'E'
+		elif ov.metadata == tot:
+			return 'M'
+		elif ov.xattrs == tot:
+			return 'X'
+		elif ov.symlink == tot:
+			return 'S'
+
+		x = ov.files
+		letter = 'f'
+		if ov.dirs > x:
+			x = ov.dirs
+			letter = 'd'
+		if ov.mappings > x:
+			x = ov.mappings
+			letter = 'e'
+		if ov.metadata > x:
+			x = ov.metadata
+			letter = 'm'
+		if ov.xattrs > x:
+			letter = 'x'
+		if ov.symlink > x:
+			letter = 's'
+		return letter
 
 class fmdb(object):
 	'''filemapper database'''
@@ -227,6 +266,9 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				elif e_type == 'x':
 					for i in range(start_cell, end_cell + 1):
 						overview[i].xattrs += 1
+				elif e_type == 's':
+					for i in range(start_cell, end_cell + 1):
+						overview[i].symlink += 1
 		t2 = datetime.datetime.today()
 		print(t2 - t1, t1 - t0)
 		self.cached_overview.append([self.overview_len, overview])

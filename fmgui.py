@@ -322,7 +322,8 @@ class fmgui(QtGui.QMainWindow):
 			['Directory', True, 'd'],
 			['Extent Map', True, 'e'],
 			['Metadata', True, 'm'],
-			['Extended Attribute', True, 'x']
+			['Extended Attribute', True, 'x'],
+			['Symbolic Link', True, 's'],
 		]
 		extent_flags = [
 			['Unknown', False, 'n'],
@@ -335,7 +336,7 @@ class fmgui(QtGui.QMainWindow):
 			['Unwritten', False, 'U'],
 			['Merged', False, 'm'],
 			['Shared', False, 's'],
-			['Exact Match', False]
+			['Exact Match', False],
 		]
 		def sq(l, q):
 			return StringQuery(l, self.query_text, q)
@@ -675,38 +676,6 @@ class OverviewModel(QtCore.QObject):
 		self.rst.timeout.connect(self.delayed_resize)
 		self.range_highlight = None
 
-	@staticmethod
-	def overview_to_letter(ov):
-		'''Convert an overview block to a letter.'''
-		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs
-		if tot == 0:
-			return '.'
-		elif ov.files == tot:
-			return 'F'
-		elif ov.dirs == tot:
-			return 'D'
-		elif ov.mappings == tot:
-			return 'E'
-		elif ov.metadata == tot:
-			return 'M'
-		elif ov.xattrs == tot:
-			return 'X'
-
-		x = ov.files
-		letter = 'f'
-		if ov.dirs > x:
-			x = ov.dirs
-			letter = 'd'
-		if ov.mappings > x:
-			x = ov.mappings
-			letter = 'e'
-		if ov.metadata > x:
-			x = ov.metadata
-			letter = 'm'
-		if ov.xattrs > x:
-			letter = 'x'
-		return letter
-
 	def load(self):
 		'''Query the DB for the high-res overview data.'''
 		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
@@ -788,7 +757,7 @@ class OverviewModel(QtCore.QObject):
 			h = is_highlighted(i)
 			if h:
 				ov_str.append('<b>')
-			ov_str.append(self.overview_to_letter(ovs))
+			ov_str.append(ovs.to_letter())
 			if h:
 				ov_str.append('</b>')
 		t1 = datetime.datetime.today()

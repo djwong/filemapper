@@ -17,6 +17,7 @@ typecodes = {
 	'e': 'file map',
 	'm': 'metadata',
 	'x': 'extended attribute',
+	's': 'symbolic link',
 }
 
 units = namedtuple('units', ['abbrev', 'label', 'factor'])
@@ -216,35 +217,6 @@ class fmcli(code.InteractiveConsole):
 				print(key[0])
 
 	def do_overview(self, argv):
-		def overview_to_letter(ov):
-			tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs
-			if tot == 0:
-				return '.'
-			elif ov.files == tot:
-				return 'F'
-			elif ov.dirs == tot:
-				return 'D'
-			elif ov.mappings == tot:
-				return 'E'
-			elif ov.metadata == tot:
-				return 'M'
-			elif ov.xattrs == tot:
-				return 'X'
-
-			x = ov.files
-			letter = 'f'
-			if ov.dirs > x:
-				x = ov.dirs
-				letter = 'd'
-			if ov.mappings > x:
-				x = ov.mappings
-				letter = 'e'
-			if ov.metadata > x:
-				x = ov.metadata
-				letter = 'm'
-			if ov.xattrs > x:
-				letter = 'x'
-			return letter
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Show the block overview.')
 		parser.add_argument('blocks', nargs='?', metavar = 'N', \
@@ -254,7 +226,7 @@ class fmcli(code.InteractiveConsole):
 		if args.blocks is not None:
 			self.fmdb.set_overview_length(args.blocks)
 		for ov in self.fmdb.query_overview():
-			sys.stdout.write(overview_to_letter(ov))
+			sys.stdout.write(ov.to_letter(ov))
 		sys.stdout.write('\n')
 
 	def do_exit(self, argv):
