@@ -379,6 +379,12 @@ class fmgui(QtGui.QMainWindow):
 		self.overview.load()
 		self.show()
 
+	def closeEvent(self, ev):
+		qt = self.query_types[self.querytype_combo.currentIndex()]
+		qt.save_query()
+		self.save_state()
+		super(fmgui, self).closeEvent(ev)
+
 	def save_state(self):
 		'''Save the state of the UI.'''
 		data = {
