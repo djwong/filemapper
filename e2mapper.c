@@ -52,6 +52,7 @@ struct walk_fs_t {
 	errcode_t err;
 	int db_err;
 	const char *dirpath;
+	ext2fs_inode_bitmap iseen;
 };
 
 static char *type_codes[] = {
@@ -59,6 +60,10 @@ static char *type_codes[] = {
 	[EXT2_FT_REG_FILE] = "f",
 	[EXT2_FT_SYMLINK] = "s",
 };
+
+#ifndef EXT4_INLINE_DATA_FL
+# define EXT4_INLINE_DATA_FL	0x10000000 /* Inode has inline data */
+#endif
 
 #define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
 #define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
@@ -372,6 +377,190 @@ out:
 	return err;
 }
 
+/* Figure out the physical offset of an inode. */
+static uint64_t inode_offset(ext2_filsys fs, ext2_ino_t ino)
+{
+	blk64_t block, block_nr;
+	unsigned long offset;
+	dgrp_t group;
+
+	group = (ino - 1) / EXT2_INODES_PER_GROUP(fs->super);
+	offset = ((ino - 1) % EXT2_INODES_PER_GROUP(fs->super)) *
+		EXT2_INODE_SIZE(fs->super);
+	block = offset >> EXT2_BLOCK_SIZE_BITS(fs->super);
+	block_nr = ext2fs_inode_table_loc(fs, group) + block;
+	offset &= (EXT2_BLOCK_SIZE(fs->super) - 1);
+
+	return (block_nr * fs->blocksize) + offset;
+}
+
+/* Walk a file's extents for extents */
+static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino)
+{
+	ext2_filsys		fs = wf->fs;
+	ext2_extent_handle_t	handle;
+	struct ext2fs_extent	extent;
+	errcode_t		retval;
+	blk64_t			last_pblk, last_lblk, last_sz;
+	int			last_flags;
+
+	retval = ext2fs_extent_open(fs, ino, &handle);
+	if (retval)
+		return retval;
+
+	retval = ext2fs_extent_get(handle, EXT2_EXTENT_ROOT, &extent);
+	if (retval)
+		goto out;
+
+	last_sz = 0;
+	do {
+		if (extent.e_flags & EXT2_EXTENT_FLAGS_SECOND_VISIT)
+			goto next;
+
+		/* Internal node */
+		if (!(extent.e_flags & EXT2_EXTENT_FLAGS_LEAF)) {
+			dbg_printf("ino=%d free=%llu bf=%llu\n", list->ino,
+					extent.e_pblk, list->blocks_freed + 1);
+			wf->db_err = insert_extent(wf, ino,
+						   extent.e_pblk * fs->blocksize,
+						   extent.e_lblk * fs->blocksize,
+						   0,
+						   0,
+						   EXT2_XT_METADATA);
+			if (wf->db_err)
+				goto out;
+			goto next;
+		}
+
+		/* Can we attach it to the previous extent? */
+		if (list->count) {
+			struct ext2fs_extent *last = list->extents +
+						     list->count - 1;
+			blk64_t end = last->e_len + extent.e_len;
+
+			if (last->e_pblk + last->e_len == extent.e_pblk &&
+			    last->e_lblk + last->e_len == extent.e_lblk &&
+			    (last->e_flags & EXT2_EXTENT_FLAGS_UNINIT) ==
+			    (extent.e_flags & EXT2_EXTENT_FLAGS_UNINIT) &&
+			    end < (1ULL << 32)) {
+				last->e_len += extent.e_len;
+#ifdef DEBUG
+				printf("R: ino=%d len=%u\n", list->ino,
+						last->e_len);
+#endif
+				goto next;
+			}
+		}
+
+		/* Do we need to expand? */
+		if (list->count == list->size) {
+			unsigned int new_size = (list->size + NUM_EXTENTS) *
+						sizeof(struct ext2fs_extent);
+			retval = ext2fs_resize_mem(0, new_size, &list->extents);
+			if (retval)
+				goto out;
+			list->size += NUM_EXTENTS;
+		}
+
+		/* Add a new extent */
+		memcpy(list->extents + list->count, &extent, sizeof(extent));
+#ifdef DEBUG
+		printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", list->ino,
+				extent.e_pblk, extent.e_lblk, extent.e_len);
+#endif
+		list->count++;
+next:
+		retval = ext2fs_extent_get(handle, EXT2_EXTENT_NEXT, &extent);
+	} while (retval == 0);
+
+out:
+	/* Ok if we run off the end */
+	if (retval == EXT2_ET_EXTENT_NO_NEXT)
+		retval = 0;
+	ext2fs_extent_free(handle);
+	return retval;
+}
+
+/* Walk a file's mappings for extents */
+static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
+				    int type)
+{
+	struct ext2_inode_large *inode;
+	struct ext2_inode *inod;
+	uint32_t *ea_magic;
+	blk64_t b;
+	uint64_t ino_offset, inode_end, ino_sz;
+	errcode_t err;
+
+	if (ext2fs_fast_test_inode_bitmap2(wf->iseen, ino))
+		return 0;
+
+	/* Read the inode */
+	ino_sz = EXT2_INODE_SIZE(wf->fs->super);
+	err = ext2fs_get_memzero(ino_sz, &inode);
+	if (err)
+		return err;
+	inod = (struct ext2_inode *)inode;
+	err = ext2fs_read_inode_full(wf->fs, ino, inod, ino_sz);
+	if (err)
+		goto out;
+
+	/* Where is this inode in the FS? */
+	ino_offset = inode_offset(wf->fs, ino);
+	inode_end = inode->i_extra_isize;
+	wf->db_err = insert_extent(wf, ino, ino_offset, 0,
+				   ino_sz,
+				   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
+				   EXT2_XT_METADATA);
+	if (wf->db_err)
+		goto out;
+
+	/* inline xattr? */
+	ea_magic = (uint32_t *)(((char *)inode) + inode_end);
+	if (ext2fs_le32_to_cpu(ea_magic) == EXT2_EXT_ATTR_MAGIC) {
+		wf->db_err = insert_extent(wf, ino,
+					   ino_offset + inode_end,
+					   0,
+					   ino_sz - inode_end,
+					   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
+					   EXT2_XT_XATTR);
+		if (wf->db_err)
+			goto out;
+	}
+
+	/* external xattr? */
+	b = ext2fs_file_acl_block(wf->fs, inod);
+	if (b) {
+		wf->db_err = insert_extent(wf, ino, b * wf->fs->blocksize,
+					   0, wf->fs->blocksize, 0,
+					   EXT2_XT_XATTR);
+		if (wf->db_err)
+			goto out;
+	}
+
+	/* inline data file or symlink? */
+	if (inode->i_flags & EXT4_INLINE_DATA_FL ||
+	    type == EXT2_FT_SYMLINK) {
+		size_t sz = EXT2_I_SIZE(inode);
+		wf->db_err = insert_extent(wf, ino,
+					   ino_offset + offsetof(struct ext2_inode, i_block),
+					   0, sz > 60 ? 60 : sz,
+					   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
+					   type);
+		if (wf->db_err)
+			goto out;
+	}
+
+	/* extent file */
+	if (inode->i_flags & EXT4_EXTENT_FL) {
+	}
+
+out:
+	ext2fs_free_mem(&inode);
+	ext2fs_fast_mark_inode_bitmap2(wf->iseen, ino);
+	return err;
+}
+
 /* Handle a directory entry */
 static int walk_fs_helper(ext2_ino_t dir, int entry,
 			  struct ext2_dir_entry *dirent, int offset,
@@ -455,8 +644,18 @@ static errcode_t walk_fs(sqlite3 *db, ext2_filsys fs, int *db_err)
 	wf.fs = fs;
 	wf.dirpath = "";
 
+	wf.err = ext2fs_allocate_inode_bitmap(fs, "visited inodes", &wf.iseen);
+	if (wf.err)
+		goto out;
+
 	wf.db_err = insert_inode(&wf, EXT2_ROOT_INO, EXT2_FT_DIR, wf.dirpath);
 	if (wf.db_err)
+		goto out;
+
+	err = walk_file_mappings(&wf, EXT2_ROOT_INO, EXT2_FT_DIR);
+	if (!wf.err)
+		wf.err = err;
+	if (wf.err || wf.db_err)
 		goto out;
 
 	err = ext2fs_dir_iterate2(fs, EXT2_ROOT_INO, 0, NULL, walk_fs_helper,
@@ -464,6 +663,7 @@ static errcode_t walk_fs(sqlite3 *db, ext2_filsys fs, int *db_err)
 	if (!wf.err)
 		wf.err = err;
 out:
+	ext2fs_free_inode_bitmap(wf.iseen);
 	*db_err = wf.db_err;
 	return wf.err;
 }
