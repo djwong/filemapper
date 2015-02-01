@@ -9,6 +9,8 @@ import datetime
 import fmdb
 import math
 import fiemap
+import os.path
+import json
 from abc import ABCMeta, abstractmethod
 
 null_model = QtCore.QModelIndex()
@@ -254,12 +256,15 @@ def sort_dentry(dentry):
 
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
-	def __init__(self, fmdb):
+	def __init__(self, fmdb, histfile=os.path.join(os.path.expanduser('~'), \
+						'.config', 'fmgui-history')):
 		super(fmgui, self).__init__()
+		self.json_version = 1
 		self.fmdb = fmdb
 		uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
 		self.fs = self.fmdb.query_summary()
+		self.histfile = histfile
 
 		# Set up the units menu
 		units = fmcli.units_auto
@@ -345,12 +350,10 @@ class fmgui(QtGui.QMainWindow):
 
 		# Then the query type selector
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
-		self.old_querytype = None
-		self.querytype_combo.setCurrentIndex(0)
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 		self.query_checklist.hide()
 		self.query_text.hide()
-		self.change_querytype(0)
+		self.old_querytype = None
 
 		# Finally move the query UI to the toolbar
 		self.toolBar.addWidget(self.query_frame)
@@ -370,8 +373,58 @@ class fmgui(QtGui.QMainWindow):
 		self.status_bar.addWidget(self.status_label)
 
 		# Here we go!
+		self.load_state()
+
 		self.overview.load()
 		self.show()
+
+	def save_state(self):
+		'''Save the state of the UI.'''
+		data = {
+			'version': self.json_version,
+			'zoom': self.zoom_levels[self.zoom_combo.currentIndex()][1],
+			'query_type': self.query_types[self.querytype_combo.currentIndex()].label,
+			'units': self.etm.units.label,
+		}
+		qtdata = {}
+		for qt in self.query_types:
+			qtdata[qt.label] = qt.export_state()
+		data['query_data'] = qtdata
+		with open(self.histfile, 'w') as fd:
+			json.dump(data, fd, indent = 4)
+
+	def load_state(self):
+		'''Load the state of the UI.'''
+		failed = False
+		try:
+			fd = open(self.histfile, 'r')
+			data = json.load(fd)
+			if data['version'] != self.json_version:
+				raise Exception('Invalid version.')
+			x = 0
+			for zl in self.zoom_levels:
+				if zl[1] == data['zoom']:
+					self.zoom_combo.setCurrentIndex(x)
+					break
+				x += 1
+			x = 0
+			for qt in self.query_types:
+				try:
+					qt.import_state(data['query_data'][qt.label])
+				except:
+					failed = True
+				if qt.label == data['query_type']:
+					self.querytype_combo.setCurrentIndex(x)
+				x += 1
+		except Exception as e:
+			failed = True
+		if failed:
+			try:
+				os.unlink(self.histfile)
+			except:
+				pass
+		if self.querytype_combo.currentIndex() == 0:
+			self.change_querytype(0)
 
 	def change_zoom(self, idx):
 		'''Handle a change in the zoom selector.'''
@@ -466,6 +519,7 @@ class fmgui(QtGui.QMainWindow):
 		qt.run_query()
 		self.pick_extent_table(None, None)
 		# XXX: should we clear the fs tree selection too?
+		self.save_state()
 
 	def query_extent_type(self, args):
 		'''Query for extents based on the extent type code.'''
@@ -826,6 +880,16 @@ class FmQuery(object):
 		#print("QUERY:", self.label, args)
 		self.query_fn(args)
 
+	@abstractmethod
+	def export_state(self):
+		'''Export state data for serializeation.'''
+		pass
+
+	@abstractmethod
+	def import_state(self, data):
+		'''Import state data for serialization.'''
+		pass
+
 class StringQuery(FmQuery):
 	'''Handle queries that are free-form text.'''
 	def __init__(self, label, ctl, query_fn, edit_string = '', history = None, parent=None, *args):
@@ -866,6 +930,13 @@ class StringQuery(FmQuery):
 		self.ctl.addItem(string)
 		self.ctl.setCurrentIndex(self.history.index(string))
 
+	def export_state(self):
+		return {'edit_string': self.edit_string, 'history': self.history}
+
+	def import_state(self, data):
+		self.edit_string = data['edit_string']
+		self.history = data['history']
+
 class ChecklistQuery(FmQuery):
 	'''Handle queries comprising a selection of discrete items.'''
 	def __init__(self, label, ctl, query_fn, items, parent=None, *args):
@@ -882,6 +953,16 @@ class ChecklistQuery(FmQuery):
 
 	def parse_query(self):
 		return self.items
+
+	def export_state(self):
+		return [{'label': x[0], 'state': x[1]} for x in self.items]
+
+	def import_state(self, data):
+		for d in data:
+			for i in self.items:
+				if i[0] == d['label']:
+					i[1] = d['state']
+					break
 
 class XLineEdit(QtGui.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''
