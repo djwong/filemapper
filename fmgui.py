@@ -11,6 +11,7 @@ import math
 import fiemap
 import os.path
 import json
+import base64
 from abc import ABCMeta, abstractmethod
 
 null_model = QtCore.QModelIndex()
@@ -392,6 +393,8 @@ class fmgui(QtGui.QMainWindow):
 			'zoom': self.zoom_levels[self.zoom_combo.currentIndex()][1],
 			'query_type': self.query_types[self.querytype_combo.currentIndex()].label,
 			'units': self.etm.units.label,
+			'window_state': base64.b64encode(self.saveState()).decode('utf-8'),
+			'window_geometry': base64.b64encode(self.saveGeometry()).decode('utf-8'),
 		}
 		qtdata = {}
 		for qt in self.query_types:
@@ -425,6 +428,8 @@ class fmgui(QtGui.QMainWindow):
 				x += 1
 		except Exception as e:
 			failed = True
+		a = self.restoreState(base64.b64decode(data['window_state'].encode('utf-8')))
+		b = self.restoreGeometry(base64.b64decode(data['window_geometry'].encode('utf-8')))
 		if failed:
 			try:
 				os.unlink(self.histfile)
@@ -918,10 +923,10 @@ class StringQuery(FmQuery):
 
 	def save_query(self):
 		self.ctl.hide()
-		self.edit_string = self.ctl.currentText()
+		self.edit_string = str(self.ctl.currentText())
 
 	def parse_query(self):
-		a = self.ctl.currentText()
+		a = str(self.ctl.currentText())
 		self.edit_string = a
 		self.add_to_history(a)
 		return fmcli.split_unescape(str(a), ' ', ('"', "'"))
@@ -938,7 +943,7 @@ class StringQuery(FmQuery):
 		self.ctl.setCurrentIndex(self.history.index(string))
 
 	def export_state(self):
-		return {'edit_string': self.edit_string, 'history': self.history}
+		return {'edit_string': str(self.edit_string), 'history': self.history}
 
 	def import_state(self, data):
 		self.edit_string = data['edit_string']
