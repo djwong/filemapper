@@ -1,6 +1,7 @@
 CFLAGS=-Wall -O3 -g
+LDLIBS=-lsqlite3 -lext2fs -lcom_err
 
-all: filemapper
+all: e2mapper filemapper
 
 clean:;
-	rm -rf filemapper
+	rm -rf filemapper e2mapper
