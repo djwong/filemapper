@@ -62,7 +62,11 @@ class fmdb(object):
 		else:
 			db = 'file:%s' % dbpath
 		self.conn = None
-		self.conn = sqlite3.connect(db, uri = True)
+		try:
+			self.conn = sqlite3.connect(db, uri = True)
+		except TypeError:
+			# In Python 2.6 there's no uri parameter support
+			self.conn = sqlite3.connect(dbpath)
 		self.fs = None
 		self.overview_len = None
 		self.cached_overview = []
