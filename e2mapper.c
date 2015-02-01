@@ -12,6 +12,14 @@
 #include <sqlite3.h>
 #include <ext2fs/ext2fs.h>
 
+#undef DEBUG
+
+#ifdef DEBUG
+# define dbg_printf(f, a...)  do {printf(f, ## a); fflush(stdout); } while (0)
+#else
+# define dbg_printf(f, a...)
+#endif
+
 static char *dbschema = "PRAGMA cache_size = 65536;\
 PRAGMA page_size = 4096;\
 DROP VIEW IF EXISTS dentry_t;\
@@ -38,20 +46,12 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);\
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);\
 CREATE INDEX extent_ino_i ON extent_t(ino);";
 
-#define DEBUG
-
-#ifdef DEBUG
-# define dbg_printf(f, a...)  do {printf(f, ## a); fflush(stdout); } while (0)
-#else
-# define dbg_printf(f, a...)
-#endif
-
 struct walk_fs_t {
 	sqlite3 *db;
 	ext2_filsys fs;
 	errcode_t err;
 	int db_err;
-	char *dirpath;
+	const char *dirpath;
 };
 
 static char *type_codes[] = {
@@ -379,7 +379,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 {
 	char path[PATH_MAX + 1];
 	char name[EXT2_NAME_LEN + 1];
-	char *old_dirpath;
+	const char *old_dirpath;
 	int type;
 	struct ext2_dir_entry_2 *de2 = (struct ext2_dir_entry_2 *)dirent;
 	struct walk_fs_t *wf = priv_data;
@@ -429,12 +429,10 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 		errcode_t err;
 		old_dirpath = wf->dirpath;
 		wf->dirpath = path;
-#if 0
 		err = ext2fs_dir_iterate2(wf->fs, dirent->inode, 0, NULL,
 					  walk_fs_helper, wf);
 		if (!wf->err)
 			wf->err = err;
-#endif
 
 		wf->dirpath = old_dirpath;
 	}
@@ -595,7 +593,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 
 		/* Record the superblock */
 		if (s || group == 0) {
-			ext2fs_fast_mark_block_bitmap(sb_bmap, s);
+			ext2fs_fast_mark_block_bitmap2(sb_bmap, s);
 			INJECT_METADATA(group_ino, path, ino, "superblock",
 					EXT2_FT_REG_FILE);
 			wf.db_err = insert_extent(&wf, ino, s * fs->blocksize,
@@ -638,7 +636,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 
 		/* Record block bitmap */
 		s = ext2fs_block_bitmap_loc(fs, group);
-		ext2fs_fast_mark_block_bitmap(sb_bbitmap, s);
+		ext2fs_fast_mark_block_bitmap2(sb_bbitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "block_bitmap",
 				EXT2_FT_REG_FILE);
 		wf.db_err = insert_extent(&wf, ino, s * fs->blocksize,
@@ -651,7 +649,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 
 		/* Record inode bitmap */
 		s = ext2fs_inode_bitmap_loc(fs, group);
-		ext2fs_fast_mark_block_bitmap(sb_ibitmap, s);
+		ext2fs_fast_mark_block_bitmap2(sb_ibitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "inode_bitmap",
 				EXT2_FT_REG_FILE);
 		wf.db_err = insert_extent(&wf, ino, s * fs->blocksize,
