@@ -426,10 +426,10 @@ class fmgui(QtGui.QMainWindow):
 				if qt.label == data['query_type']:
 					self.querytype_combo.setCurrentIndex(x)
 				x += 1
+			self.restoreState(base64.b64decode(data['window_state'].encode('utf-8')))
+			self.restoreGeometry(base64.b64decode(data['window_geometry'].encode('utf-8')))
 		except Exception as e:
 			failed = True
-		a = self.restoreState(base64.b64decode(data['window_state'].encode('utf-8')))
-		b = self.restoreGeometry(base64.b64decode(data['window_geometry'].encode('utf-8')))
 		if failed:
 			try:
 				os.unlink(self.histfile)
