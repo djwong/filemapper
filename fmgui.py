@@ -193,6 +193,8 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 	def index(self, row, column, parent):
 		if not parent.isValid():
 			self.root.load()
+			if len(self.root.children) == 0:
+				return self.createIndex(-1, -1)
 			return self.createIndex(row, column, self.root.children[row])
 		parent = parent.internalPointer()
 		parent.load()
