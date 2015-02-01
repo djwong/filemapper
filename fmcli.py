@@ -316,7 +316,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of logical offsets.')
 		parser.add_argument('offsets', nargs = '+', \
-			help = 'Logical offsets to look up.')
+			help = 'Logical offsets to look up.  This can be a single number or a range (e.g. 0-10m).')
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.offsets:
@@ -336,7 +336,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of physical offsets.')
 		parser.add_argument('offsets', nargs = '+', \
-			help = 'Physical offsets to look up.')
+			help = 'Physical offsets to look up.  This can be a single number or a range (e.g. 0-10k).')
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.offsets:
@@ -356,7 +356,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of overview cells.')
 		parser.add_argument('cells', nargs = '+', \
-			help = 'Cell ranges to look up.')
+			help = 'Cell ranges to look up.  This can be a single number or a range (e.g. 0-10).')
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.cells:
@@ -386,8 +386,10 @@ class fmcli(code.InteractiveConsole):
 		]
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Set display units.')
+		unit_list = [x[1] for x in avail_units]
 		parser.add_argument('units', \
-			help = 'Units for display output.  Default is bytes.')
+			help = 'Units for display output.  Default is bytes.', \
+			choices = [x[1] for x in avail_units])
 		args = parser.parse_args(argv[1:])
 		for u in avail_units:
 			if args.units.lower() == u.abbrev.lower() or \
@@ -396,7 +398,7 @@ class fmcli(code.InteractiveConsole):
 				print("Units set to '%s'." % self.units.label)
 				return
 		print("Unrecognized unit '%s'.  Available units:" % args.units)
-		print(', '.join([x[1] for x in avail_units]))
+		print(', '.join(unit_list))
 
 	def do_paths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -426,7 +428,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of inodes.')
 		parser.add_argument('inodes', nargs = '+', \
-			help = 'Inodes to look up.')
+			help = 'Inodes to look up.  This can be a single number or a range (e.g. 0-10).')
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.inodes:
@@ -446,7 +448,7 @@ class fmcli(code.InteractiveConsole):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given range of lengths.')
 		parser.add_argument('lengths', nargs = '+', \
-			help = 'Lengths to look up.')
+			help = 'Lengths to look up.  This can be a single number or a range (e.g. 0-16k).')
 		args = parser.parse_args(argv[1:])
 		ranges = []
 		for arg in args.lengths:

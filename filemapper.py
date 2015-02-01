@@ -10,45 +10,32 @@ import fmcli
 import sys
 import argparse
 
-class fiemap_db(fmdb.fmdb):
-	def regenerate(self, force = False):
-		'''Regenerate the database.'''
-		if not force and not self.must_regenerate():
-			return
-		self.start_update()
-		fiemap.walk_fs(self.fspath,
-			self.insert_dir,
-			self.insert_inode,
-			self.insert_extent)
-		self.end_update()
-
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(prog = sys.argv[0],
 		description = 'Display an overview of commands.')
-	parser.add_argument('-m', default = 0, action = 'count', help = 'Enable machine-friendly outputs.')
-	parser.add_argument('-l', default = 2048, type = int, help = 'Initial overview length.')
-	parser.add_argument('-d', default = '/tmp/test.db', help = 'Database file.')
-	parser.add_argument('-r', default = 0, action = 'count', help = 'Regenerate the database.')
-	parser.add_argument('-g', default = 0, action = 'count', help = 'Run the GUI.')
-	parser.add_argument('fspath', help = 'Filesystem path to examine.')
+	parser.add_argument('-m', action = 'store_true', help = 'Enable machine-friendly outputs (CLI).')
+	parser.add_argument('-l', default = 2048, metavar = 'length', type = int, help = 'Initial overview length (CLI).')
+	parser.add_argument('-r', nargs = 1, metavar = 'fspath', help = 'Analyze a filesystem using the FIEMAP backend.')
+	parser.add_argument('-g', action = 'store_true', help = 'Run the GUI.')
+	parser.add_argument('database', help = 'Database file to store snapshots.')
 	parser.add_argument('commands', nargs = '*', \
-		help = 'Commands to run up.')
+		help = 'Commands to run (CLI).')
 	args = parser.parse_args(sys.argv[1:])
-	fmdb = fiemap_db(args.fspath, args.d)
-	f = False
-	if args.r > 0:
-		f = True
-	fmdb.regenerate(f)
-	fmdb.set_overview_length(args.l)
 
-	if args.g > 0:
+	if args.r is not None:
+		fmdb = fiemap.fiemap_db(args.r[0], args.database)
+		fmdb.analyze(True)
+	else:
+		fmdb = fmdb.fmdb(None, args.database)
+
+	if args.g:
 		import fmgui
 		from PyQt4 import QtGui, uic
 		app = QtGui.QApplication([])
 		fmgui = fmgui.fmgui(fmdb)
 		sys.exit(app.exec_())
 	else:
+		fmdb.set_overview_length(args.l)
 		fmcli = fmcli.fmcli(fmdb)
-		if args.m > 0:
-			fmcli.machine = True
+		fmcli.machine = args.m
 		fmcli.interact('filemapper v0.5')

@@ -10,6 +10,7 @@ import os
 import errno
 import stat
 import itertools
+import fmdb
 
 # From linux/fiemap.h
 FIEMAP_FLAG_SYNC = 0x0001
@@ -294,6 +295,40 @@ def extent_str_to_flags(string):
 				ret |= f[0]
 				break
 	return ret
+
+class fiemap_db(fmdb.fmdb):
+	'''FileMapper database based on FIEMAP.'''
+	def __init__(self, fspath, dbpath):
+		if fspath is None:
+			raise ValueError('Please specify a FS path.')
+		super(fiemap_db, self).__init__(fspath, dbpath)
+
+	def is_stale(self):
+		'''Decide if the FS should be re-analyzed.'''
+		if self.fspath == None:
+			return False
+		try:
+			cur = self.conn.cursor()
+			cur.execute('SELECT path, finished FROM fs_t WHERE path = ?', (self.fspath,))
+			results = cur.fetchall()
+			if len(results) != 1:
+				return True
+			if results[0][1] == 0:
+				return True
+			return False
+		except:
+			return True
+
+	def analyze(self, force = False):
+		'''Regenerate the database.'''
+		if not force and not self.must_regenerate():
+			return
+		self.start_update()
+		walk_fs(self.fspath,
+			self.insert_dir,
+			self.insert_inode,
+			self.insert_extent)
+		self.end_update()
 
 if __name__ == '__main__':
 	import sys

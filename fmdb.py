@@ -9,6 +9,7 @@ import stat
 import array
 import fiemap
 from collections import namedtuple
+from abc import ABCMeta, abstractmethod
 
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''
@@ -54,20 +55,43 @@ class fmdb(object):
 	'''filemapper database'''
 	def __init__(self, fspath, dbpath):
 		'''Initialize a database object.'''
-		self.fspath = fspath
-		self.conn = sqlite3.connect(dbpath)
+		if dbpath == ':memory:':
+			db = dbpath
+		elif fspath is None:
+			db = 'file:%s?mode=ro' % dbpath
+		else:
+			db = 'file:%s' % dbpath
+		self.conn = None
+		self.conn = sqlite3.connect(db, uri = True)
 		self.fs = None
 		self.overview_len = None
 		self.cached_overview = []
 		self.result_batch_size = 512
 		self.conn.execute("PRAGMA cache_size = 65536")
+		if fspath is None:
+			cur = self.conn.cursor()
+			try:
+				cur.execute('SELECT path, finished FROM fs_t')
+			except:
+				raise ValueError('Database is empty.')
+			results = cur.fetchall()
+			if len(results) != 1:
+				raise ValueError('Database is empty.')
+			if results[0][1] == 0:
+				raise ValueError('Database is incomplete.')
+			self.fspath = results[0][0]
+		else:
+			self.fspath = fspath
 
 	def __del__(self):
 		'''Destroy database object.'''
-		self.conn.close()
+		if self.conn is not None:
+			self.conn.close()
 
 	def start_update(self):
 		'''Prepare a database for new data.'''
+		if self.fspath is None:
+			raise ValueError('fspath must be specified.')
 		self.conn.executescript("""
 PRAGMA page_size = 4096;
 DROP VIEW IF EXISTS dentry_t;
@@ -115,19 +139,15 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
 		self.conn.commit()
 
-	def must_regenerate(self):
-		'''Decide if we need to regenerate the database.'''
-		try:
-			cur = self.conn.cursor()
-			cur.execute('SELECT path, finished FROM fs_t WHERE path = ?', (self.fspath,))
-			results = cur.fetchall()
-			if len(results) != 1:
-				return True
-			if results[0][1] == 0:
-				return True
-			return False
-		except:
-			return True
+	@abstractmethod
+	def analyze(self, force = False):
+		'''Analyze the filesystem.'''
+		raise NotImplementedError()
+
+	@abstractmethod
+	def is_stale(self):
+		'''Decide if we need to reanalyze the database.'''
+		raise NotImplementedError()
 
 	def insert_dir(self, root, dentries):
 		'''Insert a directory record into the database.'''
