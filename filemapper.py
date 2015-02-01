@@ -7,7 +7,6 @@ import os
 import fiemap
 import fmdb
 import fmcli
-import fmgui
 import sys
 import argparse
 
@@ -43,6 +42,7 @@ if __name__ == "__main__":
 	fmdb.set_overview_length(args.l)
 
 	if args.g > 0:
+		import fmgui
 		from PyQt4 import QtGui, uic
 		app = QtGui.QApplication([])
 		fmgui = fmgui.fmgui(fmdb)

@@ -129,7 +129,8 @@ def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 class fmcli(code.InteractiveConsole):
 	'''Interactive command line client.'''
 	def __init__(self, fmdb, locals=None, filename="<console>", \
-		     histfile=os.path.expanduser("~/.config/fmcli-history")):
+		     histfile=os.path.join(os.path.expanduser('~'), '.config', \
+					   'fmcli-history')):
 		# In Python 2.x this didn't inherit from object, so we're
 		# stuck with the old superclass syntax for now.
 		# super(fmcli, self).__init__(locals, filename)
