@@ -197,6 +197,10 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		parent.load()
 		return self.createIndex(row, column, parent.children[row])
 
+	def root_index(self):
+		'''Return the index of the root of the model.'''
+		return self.createIndex(0, 0, self.root)
+
 	def parent(self, index):
 		'''Create an index for the parent of an indexed cell, from 
 		   the perspective of the grandparent node.'''
@@ -301,6 +305,7 @@ class fmgui(QtGui.QMainWindow):
 		self.fs_tree.setModel(self.ftm)
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 		self.fs_tree.setRootIsDecorated(False)
+		self.fs_tree.expand(self.ftm.root_index())
 
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
@@ -454,7 +459,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		'''Handle the selection of a FS tree nodes.'''
-		def n(n):
+		def np(n):
 			p = n.path
 			if p == '':
 				p = '/'
@@ -470,7 +475,7 @@ class fmgui(QtGui.QMainWindow):
 				self.etm.highlight_names(None)
 			else:
 				self.etm.highlight_names(paths)
-			p = [n(n) for n in nodes]
+			p = [np(n) for n in nodes]
 		else:
 			self.etm.highlight_names(None)
 			p = paths
