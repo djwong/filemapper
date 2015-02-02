@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Terminal=false
+Icon=%libdir%/filemapper.png
+Type=Application
+Categories=Administration
+Exec=filemapper -g %f
+Name=FileMapper
+GenericName=Filesystem Analysis
+Comment=Analyze, visualize, and query the physical layout of a filesystem.
+StartupNotify=true
+Keywords=Filesystem;SQL;
+InitialPreference=5
+X-KDE-Protocols=file

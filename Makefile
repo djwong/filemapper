@@ -9,16 +9,20 @@ libdir = ${exec_prefix}/lib
 fmlibdir = ${libdir}/filemapper
 mandir = ${exec_prefix}/man
 man1dir = ${mandir}/man1
+appdir = ${exec_prefix}/share/applications
 
-all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz
+all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop
 
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
 clean:;
-	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz
+	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop
 
 filemapper: filemapper.in
+	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
+
+filemapper.desktop: filemapper.desktop.in
 	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
 
 install: all
@@ -30,6 +34,8 @@ install: all
 	install -m 0644 filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 	install -d $(DESTDIR)$(man1dir)
 	install -m 0644 e2mapper.1.gz filemapper.1.gz $(DESTDIR)$(man1dir)
+	install -d $(DESTDIR)$(appdir)
+	install -m 0644 filemapper.desktop $(DESTDIR)$(appdir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
