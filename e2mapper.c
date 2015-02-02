@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <sqlite3.h>
 #include <ext2fs/ext2fs.h>
 
@@ -1080,7 +1081,7 @@ int main(int argc, char *argv[])
 	sqlite3 *db = NULL;
 	ext2_filsys fs = NULL;
 	int db_err = 0;
-	errcode_t err, err2;
+	errcode_t err = 0, err2;
 
 	if (argc != 3) {
 		printf("Usage: %s dbfile fsdevice\n", argv[0]);
@@ -1090,6 +1091,12 @@ int main(int argc, char *argv[])
 	/* Open things */
 	dbfile = argv[1];
 	fsdev = argv[2];
+
+	db_err = truncate(dbfile, 0);
+	if (db_err) {
+		com_err(fsdev, errno, "while truncating database.");
+		goto out;
+	}
 
 	err = ext2fs_open2(fsdev, NULL, EXT2_FLAG_64BITS | EXT2_FLAG_SKIP_MMP,
 			   0, 0, unix_io_manager, &fs);
@@ -1159,10 +1166,12 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 out:
-	err = sqlite3_close(db);
-	if (err)
+	err2 = sqlite3_close(db);
+	if (err2)
 		com_err(dbfile, 0, "%s while closing database",
-			sqlite3_errstr(err));
+			sqlite3_errstr(err2));
+	if (!err && err2)
+		err = err2;
 
 	err2 = fs ? ext2fs_close_free(&fs) : 0;
 	if (err2)
