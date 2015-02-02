@@ -280,7 +280,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			return self.fs
 
 		cur = self.conn.cursor()
-		cur.execute('SELECT COUNT(p_off) FROM extent_t;')
+		cur.execute('SELECT COUNT(p_off) FROM extent_t WHERE type IN ("f", "d", "x", "s");')
 		rows = cur.fetchall()
 		extents = rows[0][0]
 		cur.execute('SELECT COUNT(ino) FROM inode_t;')
