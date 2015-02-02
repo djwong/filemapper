@@ -1,1 +1,4 @@
-filemapper
+*.swp
+__pycache__
+*.pyc
+e2mapper
