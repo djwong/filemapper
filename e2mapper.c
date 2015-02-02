@@ -1098,7 +1098,7 @@ int main(int argc, char *argv[])
 	fsdev = argv[2];
 
 	db_err = truncate(dbfile, 0);
-	if (db_err) {
+	if (db_err && errno != ENOENT) {
 		com_err(fsdev, errno, "while truncating database.");
 		goto out;
 	}
