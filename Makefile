@@ -21,8 +21,8 @@ install: all
 	install -s e2mapper $(DESTDIR)$(bindir)
 	install filemapper $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(fmlibdir)
-	install fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
-	install filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
+	install -m 0644 fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
+	install -m 0644 filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
