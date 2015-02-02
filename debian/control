@@ -1,0 +1,16 @@
+Source: filemapper
+Section: admin
+Priority: optional
+Maintainer: Darrick J. Wong <djwong@djwong.org>
+Build-Depends: debhelper (>= 9.0.0), python3
+Standards-Version: 3.9.5
+Homepage: http://djwong.org/
+#Vcs-Git: git://git.debian.org/collab-maint/filemapper.git
+#Vcs-Browser: http://git.debian.org/?p=collab-maint/filemapper.git;a=summary
+
+Package: filemapper
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends}, python3-pyqt4
+Description: Explore the physical layout of a filesystem
+ This program snapshots the extent metadata of a filesystem for later
+ display and analysis in a graphical program.
