@@ -2,6 +2,10 @@ CFLAGS=-Wall -O3 -g
 LDLIBS=-lsqlite3 -lext2fs -lcom_err
 VERSION=0.5
 
+prefix = /usr
+exec_prefix = ${prefix}
+bindir = ${exec_prefix}/bin
+
 all: e2mapper
 
 clean:;
