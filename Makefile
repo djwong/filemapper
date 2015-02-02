@@ -6,22 +6,23 @@ prefix = /usr
 exec_prefix = ${prefix}
 bindir = ${exec_prefix}/bin
 libdir = ${exec_prefix}/lib
-sharedir = ${exec_prefix}/share
 fmlibdir = ${libdir}/filemapper
-fmsharedir = ${sharedir}/filemapper
 
-all: e2mapper
+all: e2mapper filemapper
 
 clean:;
 	rm -rf e2mapper *.pyc __pycache__
 
+filemapper: filemapper.in
+	sed -e "s/libdir/${fmlibdir}/g" < $< > $@
+
 install: all
 	install -d $(DESTDIR)$(bindir)
 	install -s e2mapper $(DESTDIR)$(bindir)
+	install filemapper $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(fmlibdir)
 	install fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
-	install -d $(DESTDIR)$(fmsharedir)
-	install filemapper.png filemapper.ui $(DESTDIR)$(fmsharedir)
+	install filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
