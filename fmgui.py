@@ -653,17 +653,29 @@ class fmgui(QtGui.QMainWindow):
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
+		tb = self.fs.total_bytes
+		fb = self.fs.free_bytes
+		if tb == 0:
+			fb = 1
+			tb = 1
+		ti = self.fs.total_inodes
+		fi = self.fs.free_inodes
+		if ti == 0:
+			fi = 1
+			ti = 1
+		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
+		extents = self.fs.extents if self.fs.extents != 0 else 1
 		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell; %.1f%% fragmentation" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
-			 100 * (1.0 - (float(self.fs.free_bytes) / self.fs.total_bytes)), \
+			 100 * (1.0 - (float(fb) / tb)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes - self.fs.free_inodes), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
-			 100 * (1.0 - (float(self.fs.free_inodes) / self.fs.total_inodes)), \
+			 100 * (1.0 - (float(fi) / ti)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
 			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
-			 100.0 * self.fs.extents / self.fs.inodes - 100)
+			 100.0 * extents / inodes - 100)
 		self.status_label.setText(s)
 
 class OverviewModel(QtCore.QObject):
