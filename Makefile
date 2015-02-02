@@ -5,6 +5,8 @@ VERSION=0.5
 prefix = /usr
 exec_prefix = ${prefix}
 bindir = ${exec_prefix}/bin
+libdir = ${exec_prefix}/lib
+fmdir = ${libdir}/filemapper
 
 all: e2mapper
 
@@ -13,7 +15,10 @@ clean:;
 
 install: all
 	mkdir -p $(DESTDIR)$(bindir)
-	install e2mapper $(DESTDIR)$(bindir)
+	install -s e2mapper $(DESTDIR)$(bindir)
+	install -d $(DESTDIR)$(fmdir)
+	install fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmdir)
+	install filemapper.png filemapper.ui $(DESTDIR)$(fmdir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
