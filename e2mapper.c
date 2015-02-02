@@ -53,6 +53,9 @@ struct walk_fs_t {
 	int db_err;
 	const char *dirpath;
 	ext2fs_inode_bitmap iseen;
+	ext2_ino_t ino;
+	struct ext2fs_extent last;
+	int type;
 };
 
 static char *type_codes[] = {
@@ -438,6 +441,63 @@ static uint64_t inode_offset(ext2_filsys fs, ext2_ino_t ino)
 	return (block_nr * fs->blocksize) + offset;
 }
 
+/* Help find extents... */
+static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
+		       blk64_t ref_blk, int ref_offset, void *priv_data)
+{
+	struct walk_fs_t *wf = priv_data;
+
+	/* Internal node? */
+	if (blockcnt < 0) {
+		dbg_printf("ino=%d free=%llu\n", list->ino,
+			   extent.e_pblk);
+		wf->db_err = insert_extent(wf, wf->ino,
+					   *blocknr * fs->blocksize,
+					   blockcnt * fs->blocksize, fs->blocksize, 0,
+					   EXT2_XT_EXTENT);
+		if (wf->db_err)
+			goto out;
+		return 0;
+	}
+
+	/* Can we attach it to the previous extent? */
+	if (wf->last.e_len) {
+		blk64_t end = wf->last.e_len + 1;
+
+		if (wf->last.e_pblk + wf->last.e_len == *blocknr &&
+		    end < (1ULL << 32)) {
+			wf->last.e_len++;
+			dbg_printf("R: ino=%d len=%u\n", wf->ino,
+				   wf->last.e_len);
+			return 0;
+		}
+
+		/* Insert the extent */
+		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino,
+			   *blocknr, blockcnt, 1);
+		wf->db_err = insert_extent(wf, wf->ino,
+				   wf->last.e_pblk * fs->blocksize,
+				   wf->last.e_lblk * fs->blocksize,
+				   wf->last.e_len * fs->blocksize,
+				   0,
+				   wf->type);
+		if (wf->db_err)
+			goto out;
+	}
+
+	/* Set up the next extent */
+	wf->last.e_pblk = *blocknr;
+	wf->last.e_lblk = blockcnt;
+	wf->last.e_len = 1;
+	dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino, *blocknr,
+		   blockcnt, 1);
+
+out:
+	if (wf->db_err)
+		return BLOCK_ABORT;
+	return 0;
+}
+
 /* Walk a file's extents for extents */
 static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 {
@@ -462,12 +522,12 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 
 		/* Internal node */
 		if (!(extent.e_flags & EXT2_EXTENT_FLAGS_LEAF)) {
-			dbg_printf("ino=%d free=%llu bf=%llu\n", list->ino,
-					extent.e_pblk, list->blocks_freed + 1);
+			dbg_printf("ino=%d free=%llu\n", list->ino,
+				   extent.e_pblk);
 			wf->db_err = insert_extent(wf, ino,
 						   extent.e_pblk * fs->blocksize,
 						   extent.e_lblk * fs->blocksize,
-						   0,
+						   fs->blocksize,
 						   0,
 						   EXT2_XT_EXTENT);
 			if (wf->db_err)
@@ -488,12 +548,10 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 					   last.e_len);
 				goto next;
 			}
-		}
 
-		/* Insert the extent */
-		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ino,
-			   extent.e_pblk, extent.e_lblk, extent.e_len);
-		if (last.e_len) {
+			/* Insert the extent */
+			dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ino,
+				   extent.e_pblk, extent.e_lblk, extent.e_len);
 			flags = 0;
 			if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
 				flags |= EXTENT_UNWRITTEN;
@@ -506,6 +564,8 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 			if (wf->db_err)
 				goto out;
 		}
+
+		/* Start recording extents */
 		last = extent;
 next:
 		retval = ext2fs_extent_get(handle, EXT2_EXTENT_NEXT, &extent);
@@ -608,6 +668,12 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 	} else if (inode->i_flags & EXT4_EXTENTS_FL) {
 		/* extent file */
 		err = walk_extents(wf, ino, type);
+	} else {
+		wf->last.e_len = 0;
+		wf->ino = ino;
+		wf->type = type;
+		err = ext2fs_block_iterate3(wf->fs, ino, BLOCK_FLAG_READ_ONLY,
+					    0, find_blocks, wf);
 	}
 
 out:
