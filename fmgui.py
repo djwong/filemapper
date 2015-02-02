@@ -267,7 +267,10 @@ class fmgui(QtGui.QMainWindow):
 		super(fmgui, self).__init__()
 		self.json_version = 1
 		self.fmdb = fmdb
-		uic.loadUi('filemapper.ui', self)
+		try:
+			uic.loadUi('%s/filemapper.ui' % os.environ['FM_LIB_DIR'], self)
+		except:
+			uic.loadUi('filemapper.ui', self)
 		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
