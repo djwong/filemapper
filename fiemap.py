@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Python wrapper of FIEMAP/FIBMAP ioctls.
 # Copyright (C) 2015 Darrick J. Wong.  All rights reserved.
 # Licensed under the GPLv2.

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # filemapper CLI
 # Copyright (C) 2015 Darrick J. Wong
 # Licensed under GPLv2.
