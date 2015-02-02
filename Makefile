@@ -16,4 +16,4 @@ dist:
 		echo 'Update VERSION in the Makefile before running "make dist".' ; \
 		exit 1 ; \
 	fi
-	git archive --format=tar --prefix=filemapper-$(VERSION)/ HEAD^{tree} | gzip -9 > filemapper-$(VERSION).tar.gz
+	git archive --format=tar --prefix=filemapper-$(VERSION)/ HEAD^{tree} | xz -9 > filemapper_$(VERSION).orig.tar.xz
