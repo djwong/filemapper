@@ -397,6 +397,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		qarg = []
 		cond = 'WHERE'
 		for p in paths:
+			if p == self.fs.pathsep:
+				p = ''
 			if '*' in p:
 				op = 'LIKE'
 			else:

@@ -454,16 +454,23 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		'''Handle the selection of a FS tree nodes.'''
+		def n(n):
+			p = n.path
+			if p == '':
+				p = '/'
+			if n.hasChildren():
+				return p + '*'
+			return p
 		self.ost.stop()
 		nodes = {m.internalPointer() for m in self.fs_tree.selectedIndexes()}
-		paths = [n.path for n in nodes]
+		paths = [n.path if n.path != '' else '/' for n in nodes]
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		if keymod & QtCore.Qt.AltModifier:
 			if len(paths) == 0:
 				self.etm.highlight_names(None)
 			else:
 				self.etm.highlight_names(paths)
-			p = [n.path + '*' if n.hasChildren() else n.path for n in nodes]
+			p = [n(n) for n in nodes]
 		else:
 			self.etm.highlight_names(None)
 			p = paths
@@ -734,6 +741,7 @@ class OverviewModel(QtCore.QObject):
 				ret.append((start, end))
 			return ret
 
+		t0 = datetime.datetime.today()
 		if self.overview_big is None:
 			return
 		olen = int(self.length * self.zoom)
@@ -745,7 +753,7 @@ class OverviewModel(QtCore.QObject):
 			range_highlight = compress_ranges(t)
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
-		t0 = datetime.datetime.today()
+		t1 = datetime.datetime.today()
 		for i in range(0, olen):
 			x = int(math.floor(i * o2s))
 			y = int(math.ceil((i + 1) * o2s))
@@ -759,8 +767,8 @@ class OverviewModel(QtCore.QObject):
 			ov_str.append(ovs.to_letter())
 			if h:
 				ov_str.append('</b>')
-		t1 = datetime.datetime.today()
-		#print("render ", t1 - t0)
+		t2 = datetime.datetime.today()
+		#print("render ", t1 - t0, t2 - t1)
 		cursor = self.ctl.textCursor()
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
