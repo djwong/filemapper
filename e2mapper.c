@@ -606,6 +606,7 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 	uint32_t *ea_magic;
 	blk64_t b;
 	uint64_t ino_offset, inode_end, ino_sz;
+	int ib_sz = sizeof(uint32_t) * EXT2_N_BLOCKS;
 	errcode_t err;
 
 	if (ext2fs_fast_test_inode_bitmap2(wf->iseen, ino))
@@ -659,10 +660,22 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 		/* inline data file or symlink? */
 		size_t sz = EXT2_I_SIZE(inode);
 		wf->db_err = insert_extent(wf, ino,
-					   ino_offset + offsetof(struct ext2_inode, i_block),
-					   0, sz > 60 ? 60 : sz,
-					   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
-					   type);
+				   ino_offset + offsetof(struct ext2_inode, i_block),
+				   0, sz > ib_sz ? ib_sz : sz,
+				   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
+				   type);
+		if (wf->db_err)
+			goto out;
+
+		/* inline data in xattr? */
+		if (sz <= ib_sz)
+			goto out;
+		wf->db_err = insert_extent(wf, ino,
+				   ino_offset + inode_end,
+				   0,
+				   ino_sz - inode_end,
+				   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
+				   type);
 		if (wf->db_err)
 			goto out;
 	} else if (inode->i_flags & EXT4_EXTENTS_FL) {
