@@ -100,6 +100,7 @@ static char *extent_codes[] = {
 #define EXTENT_SHARED		0x00002000 /* Space shared with other
 					    * files. */
 
+/* Fake inodes for FS metadata */
 #define INO_METADATA_DIR	(-1)
 #define STR_METADATA_DIR	"$metadata"
 #define INO_SB_FILE		(-2)
@@ -112,9 +113,52 @@ static char *extent_codes[] = {
 #define STR_IBITMAP_FILE	"inode_bitmaps"
 #define INO_ITABLE_FILE		(-6)
 #define STR_ITABLE_FILE		"inodes"
+#define INO_HIDDEN_DIR		(-7)
+#define STR_HIDDEN_DIR		"hidden_files"
 /* This must come last */
-#define INO_GROUPS_DIR		(-7)
+#define INO_GROUPS_DIR		(-8)
 #define STR_GROUPS_DIR		"groups"
+
+/* Hidden inode paths */
+#define INO_BADBLOCKS_FILE	EXT2_BAD_INO
+#define STR_BADBLOCKS_FILE	"badblocks"
+#define INO_USR_QUOTA_FILE	EXT4_USR_QUOTA_INO
+#define STR_USR_QUOTA_FILE	"user_quota"
+#define INO_GRP_QUOTA_FILE	EXT4_GRP_QUOTA_INO
+#define STR_GRP_QUOTA_FILE	"group_quota"
+#define INO_BOOTLOADER_FILE	EXT2_BOOT_LOADER_INO
+#define STR_BOOTLOADER_FILE	"bootloader"
+#define INO_UNDELETE_DIR	EXT2_UNDEL_DIR_INO
+#define STR_UNDELETE_DIR	"undelete"
+#define INO_RESIZE_FILE		EXT2_RESIZE_INO
+#define STR_RESIZE_FILE		"resize"
+#define INO_JOURNAL_FILE	EXT2_JOURNAL_INO
+#define STR_JOURNAL_FILE	"journal"
+#define INO_EXCLUDE_FILE	EXT2_EXCLUDE_INO
+#define STR_EXCLUDE_FILE	"exclude"
+#define INO_REPLICA_FILE	EXT4_REPLICA_INO
+#define STR_REPLICA_FILE	"replica"
+
+struct hidden_file {
+	ext2_ino_t ino;
+	const char *name;
+	int type;
+};
+
+#define H(name, type) {INO_##name, STR_##name, EXT2_FT_##type}
+static struct hidden_file hidden_inodes[] = {
+	H(BADBLOCKS_FILE, REG_FILE),
+	H(USR_QUOTA_FILE, REG_FILE),
+	H(GRP_QUOTA_FILE, REG_FILE),
+	H(BOOTLOADER_FILE, REG_FILE),
+	H(UNDELETE_DIR, DIR),
+	H(RESIZE_FILE, REG_FILE),
+	H(JOURNAL_FILE, REG_FILE),
+	H(EXCLUDE_FILE, REG_FILE),
+	H(REPLICA_FILE, REG_FILE),
+	{},
+};
+#undef H
 
 /* Run a bunch of queries */
 static int run_batch_query(sqlite3 *db, const char *sql)
@@ -760,8 +804,11 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	int64_t ino, group_ino;
 	blk64_t s, o, n;
 	blk_t u;
+	struct ext2_inode inode;
 	char path[PATH_MAX + 1];
+	uint32_t zero_buf[EXT2_N_BLOCKS];
 	ext2fs_block_bitmap sb_bmap, sb_gdt, sb_bbitmap, sb_ibitmap, sb_itable;
+	struct hidden_file *hf;
 
 	memset(&wf, 0, sizeof(wf));
 	wf.db = db;
@@ -775,6 +822,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	INJECT_ROOT_METADATA(IBITMAP_FILE, EXT2_FT_REG_FILE);
 	INJECT_ROOT_METADATA(ITABLE_FILE, EXT2_FT_REG_FILE);
 	INJECT_ROOT_METADATA(GROUPS_DIR, EXT2_FT_DIR);
+	INJECT_ROOT_METADATA(HIDDEN_DIR, EXT2_FT_DIR);
 
 	wf.err = ext2fs_allocate_block_bitmap(fs, "superblock", &sb_bmap);
 	if (wf.err)
@@ -909,6 +957,33 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	if (wf.err || wf.db_err)
 		goto out;
 
+	/* Now go for the hidden files */
+	memset(zero_buf, 0, sizeof(zero_buf));
+	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);
+	for (hf = hidden_inodes; hf->ino != 0; hf++) {
+		errcode_t err;
+
+		wf.err = ext2fs_read_inode(wf.fs, hf->ino, &inode);
+		if (wf.err)
+			goto out;
+		if (!memcmp(zero_buf, inode.i_block, sizeof(zero_buf)))
+			continue;
+		INJECT_METADATA(INO_HIDDEN_DIR, path, hf->ino, hf->name,
+				hf->type);
+
+		err = walk_file_mappings(&wf, hf->ino, hf->type);
+		if (!wf.err)
+			wf.err = err;
+		if (wf.err || wf.db_err)
+			goto out;
+
+		if (hf->type == EXT2_FT_DIR) {
+			err = ext2fs_dir_iterate2(fs, hf->ino, 0, NULL,
+						  walk_fs_helper, &wf);
+			if (!wf.err)
+				wf.err = err;
+		}
+	}
 out:
 	ext2fs_free_block_bitmap(sb_itable);
 	ext2fs_free_block_bitmap(sb_ibitmap);
