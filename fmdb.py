@@ -199,6 +199,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 
 	def insert_inode(self, xstat, path):
 		'''Insert an inode record into the database.'''
+		if path == '/':
+			raise ValueError("'/' is an invalid path.  Check code.")
 		if stat.S_ISDIR(xstat.st_mode):
 			xtype = 'd'
 		else:

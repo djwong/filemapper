@@ -225,12 +225,16 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	# Strip out the trailing / so that root is ''
 	if path != os.sep and path[-1] == os.sep:
 		path = path[:-1]
-	prefix_len = len(path)
+	prefix_len = 0 if path == os.sep else len(path)
 	dev = os.lstat(path).st_dev
 	flags = FIEMAP_FLAG_SYNC
 	for root, dirs, files in os.walk(path.encode('utf-8', 'surrogateescape')):
 		rstat = os.lstat(root)
-		ino_fn(rstat, root[prefix_len:].decode('utf-8', 'replace'))
+		if root.decode('utf-8', 'replace') == os.sep:
+			plen = 1
+		else:
+			plen = prefix_len
+		ino_fn(rstat, root[plen:].decode('utf-8', 'replace'))
 		do_map(rstat, root)
 		dentries = []
 		for xdir in dirs:
