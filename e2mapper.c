@@ -454,7 +454,7 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 			   extent.e_pblk);
 		wf->db_err = insert_extent(wf, wf->ino,
 					   *blocknr * fs->blocksize,
-					   blockcnt * fs->blocksize, fs->blocksize, 0,
+					   0, fs->blocksize, 0,
 					   EXT2_XT_EXTENT);
 		if (wf->db_err)
 			goto out;
@@ -889,6 +889,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	uint32_t zero_buf[EXT2_N_BLOCKS];
 	ext2fs_block_bitmap sb_bmap, sb_gdt, sb_bbitmap, sb_ibitmap, sb_itable;
 	struct hidden_file *hf;
+	int w;
 
 	memset(&wf, 0, sizeof(wf));
 	wf.db = db;
@@ -925,16 +926,18 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 		goto out;
 
 	ino = INO_GROUPS_DIR - 1;
+	snprintf(path, PATH_MAX, "%d", fs->group_desc_count);
+	w = strlen(path);
 	for (group = 0; group < fs->group_desc_count; group++) {
-		snprintf(path, PATH_MAX, "%d", group);
+		snprintf(path, PATH_MAX, "%0*d", w, group);
 		group_ino = ino;
 		ino--;
 		INJECT_GROUP(group_ino, path, EXT2_FT_DIR);
 		wf.err = ext2fs_super_and_bgd_loc2(fs, group, &s, &o, &n, &u);
 		if (wf.err)
 			goto out;
-		snprintf(path, PATH_MAX, "/%s/%s/%d", STR_METADATA_DIR,
-			 STR_GROUPS_DIR, group);
+		snprintf(path, PATH_MAX, "/%s/%s/%0*d", STR_METADATA_DIR,
+			 STR_GROUPS_DIR, w, group);
 
 		/* Record the superblock */
 		if (s || group == 0) {
