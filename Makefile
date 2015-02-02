@@ -4,4 +4,4 @@ LDLIBS=-lsqlite3 -lext2fs -lcom_err
 all: e2mapper
 
 clean:;
-	rm -rf e2mapper
+	rm -rf e2mapper *.pyc __pycache__
