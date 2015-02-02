@@ -11,7 +11,7 @@ fmlibdir = ${libdir}/filemapper
 all: e2mapper filemapper
 
 clean:;
-	rm -rf e2mapper *.pyc __pycache__
+	rm -rf e2mapper *.pyc __pycache__ filemapper
 
 filemapper: filemapper.in
 	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
