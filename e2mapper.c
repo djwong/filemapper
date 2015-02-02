@@ -1106,7 +1106,9 @@ int main(int argc, char *argv[])
 	}
 	fs->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
 
-	err = sqlite3_open(dbfile, &db);
+	err = sqlite3_open_v2(dbfile, &db,
+			      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+			      "unix-excl");
 	if (err) {
 		com_err(dbfile, 0, "%s while opening database",
 			sqlite3_errstr(err));
