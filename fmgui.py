@@ -192,10 +192,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 
 	def index(self, row, column, parent):
 		if not parent.isValid():
-			self.root.load()
-			if len(self.root.children) == 0:
-				return self.createIndex(-1, -1)
-			return self.createIndex(row, column, self.root.children[row])
+			return self.createIndex(row, column, self.root)
 		parent = parent.internalPointer()
 		parent.load()
 		return self.createIndex(row, column, parent.children[row])
@@ -212,14 +209,13 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 
 	def hasChildren(self, parent):
 		if not parent.isValid():
-			return self.root.hasChildren()
+			return True
 		node = parent.internalPointer()
 		return node.hasChildren()
 
 	def rowCount(self, parent):
 		if not parent.isValid():
-			self.root.load()
-			return len(self.root.children)
+			return 1
 		node = parent.internalPointer()
 		node.load()
 		return len(node.children)
@@ -234,6 +230,8 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if role == QtCore.Qt.DisplayRole:
 			node.load()
 			if index.column() == 0:
+				if len(node.path) == 0:
+					return '/'
 				r = node.path.rindex(self.fs.pathsep)
 				return node.path[r + 1:]
 			else:
@@ -302,6 +300,7 @@ class fmgui(QtGui.QMainWindow):
 		self.ftm = FsTreeModel(self.fs, root)
 		self.fs_tree.setModel(self.ftm)
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
+		self.fs_tree.setRootIsDecorated(False)
 
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
