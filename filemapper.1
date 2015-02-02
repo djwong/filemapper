@@ -1,0 +1,64 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" (C) Copyright 2015 Darrick J. Wong <djwong@unknown>,
+.\"
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH FILEMAPPER 1 "February  1, 2015"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+filemapper \- Analyze, query, and display the physical layout of a filesystem.
+.SH SYNOPSIS
+.B filemapper
+.I
+.RI [ options ]
+.RI database
+.RI commands...
+.SH DESCRIPTION
+This manual page documents briefly the
+.B filemapper
+command.
+.PP
+.\" TeX users may be more comfortable with the \fB<whatever>\fP and
+.\" \fI<whatever>\fP escape sequences to invode bold face and italics,
+.\" respectively.
+\fBfilemapper\fP analyzes a filesystem's physical layout, which allows
+the user to graphically explore and query the positioning of all data
+within the filesystem.  Its builtin analysis module can use FIEMAP for
+realtime analysis; see the
+.B e2mapper
+program to obtain more details for ext[234] filesystems.
+.SH OPTIONS
+These programs follow the usual GNU command line syntax, with long
+options starting with two dashes (`-').
+A summary of options is included below.
+.TP
+.B \-h, \-\-help
+Show summary of options.
+.TP
+.B \-m
+Enable machine-friendly CSV output in the CLI.
+.TP
+.B \-l length
+Set the overview to be this many characters long.  CLI only.
+.TP
+.B \-r fspath
+Perform a live analysis of the filesystem mounted at a given path via FIEMAP.
+This will erase all database contents.
+.TP
+.B \-g
+Start up the GUI.
+.SH SEE ALSO
+.BR e2mapper (1).
+.br
