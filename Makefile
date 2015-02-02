@@ -14,7 +14,7 @@ clean:;
 	rm -rf e2mapper *.pyc __pycache__
 
 filemapper: filemapper.in
-	sed -e "s/libdir/${fmlibdir}/g" < $< > $@
+	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
 
 install: all
 	install -d $(DESTDIR)$(bindir)

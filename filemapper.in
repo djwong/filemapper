@@ -1,3 +1,4 @@
 #!/bin/sh
 
-exec python3 /usr/lib/filemapper/filemapper.py "$@"
+FM_LIB_DIR=%libdir%
+exec python3 %libdir%/filemapper.py "$@"
