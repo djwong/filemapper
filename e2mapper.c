@@ -21,8 +21,10 @@
 # define dbg_printf(f, a...)
 #endif
 
-static char *dbschema = "PRAGMA cache_size = 65536;\
-PRAGMA page_size = 4096;\
+static char *dbschema = "PRAGMA page_size = 4096;\
+PRAGMA cache_size = 65536;\
+PRAGMA synchronous = OFF;\
+PRAGMA threads = 8;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
 DROP TABLE IF EXISTS dentry_t;\

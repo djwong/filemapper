@@ -112,6 +112,7 @@ class fmdb(object):
 		self.cached_overview = []
 		self.result_batch_size = 512
 		self.conn.execute("PRAGMA cache_size = 65536")
+		self.conn.execute("PRAGMA threads = 8")
 		if fspath is None:
 			cur = self.conn.cursor()
 			try:
@@ -137,6 +138,7 @@ class fmdb(object):
 		if self.fspath is None:
 			raise ValueError('fspath must be specified.')
 		self.conn.executescript("""
+PRAGMA synchronous = OFF;
 PRAGMA page_size = 4096;
 DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
