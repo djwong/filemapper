@@ -395,14 +395,13 @@ static uint64_t inode_offset(ext2_filsys fs, ext2_ino_t ino)
 }
 
 /* Walk a file's extents for extents */
-static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino)
+static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 {
 	ext2_filsys		fs = wf->fs;
 	ext2_extent_handle_t	handle;
-	struct ext2fs_extent	extent;
+	struct ext2fs_extent	extent, last;
+	int			flags;
 	errcode_t		retval;
-	blk64_t			last_pblk, last_lblk, last_sz;
-	int			last_flags;
 
 	retval = ext2fs_extent_open(fs, ino, &handle);
 	if (retval)
@@ -412,7 +411,7 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino)
 	if (retval)
 		goto out;
 
-	last_sz = 0;
+	memset(&last, 0, sizeof(last));
 	do {
 		if (extent.e_flags & EXT2_EXTENT_FLAGS_SECOND_VISIT)
 			goto next;
@@ -426,49 +425,44 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino)
 						   extent.e_lblk * fs->blocksize,
 						   0,
 						   0,
-						   EXT2_XT_METADATA);
+						   EXT2_XT_EXTENT);
 			if (wf->db_err)
 				goto out;
 			goto next;
 		}
 
 		/* Can we attach it to the previous extent? */
-		if (list->count) {
-			struct ext2fs_extent *last = list->extents +
-						     list->count - 1;
-			blk64_t end = last->e_len + extent.e_len;
-
-			if (last->e_pblk + last->e_len == extent.e_pblk &&
-			    last->e_lblk + last->e_len == extent.e_lblk &&
-			    (last->e_flags & EXT2_EXTENT_FLAGS_UNINIT) ==
+		if (last.e_len) {
+			blk64_t end = last.e_len + extent.e_len;
+			if (last.e_pblk + last.e_len == extent.e_pblk &&
+			    last.e_lblk + last.e_len == extent.e_lblk &&
+			    (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT) ==
 			    (extent.e_flags & EXT2_EXTENT_FLAGS_UNINIT) &&
 			    end < (1ULL << 32)) {
-				last->e_len += extent.e_len;
-#ifdef DEBUG
-				printf("R: ino=%d len=%u\n", list->ino,
-						last->e_len);
-#endif
+				last.e_len += extent.e_len;
+				dbg_printf("R: ino=%d len=%u\n", ino,
+					   last.e_len);
 				goto next;
 			}
 		}
 
-		/* Do we need to expand? */
-		if (list->count == list->size) {
-			unsigned int new_size = (list->size + NUM_EXTENTS) *
-						sizeof(struct ext2fs_extent);
-			retval = ext2fs_resize_mem(0, new_size, &list->extents);
-			if (retval)
+		/* Insert the extent */
+		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ino,
+			   extent.e_pblk, extent.e_lblk, extent.e_len);
+		if (last.e_len) {
+			flags = 0;
+			if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
+				flags |= EXTENT_UNWRITTEN;
+			wf->db_err = insert_extent(wf, ino,
+						   last.e_pblk * fs->blocksize,
+						   last.e_lblk * fs->blocksize,
+						   last.e_len * fs->blocksize,
+						   flags,
+						   type);
+			if (wf->db_err)
 				goto out;
-			list->size += NUM_EXTENTS;
 		}
-
-		/* Add a new extent */
-		memcpy(list->extents + list->count, &extent, sizeof(extent));
-#ifdef DEBUG
-		printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", list->ino,
-				extent.e_pblk, extent.e_lblk, extent.e_len);
-#endif
-		list->count++;
+		last = extent;
 next:
 		retval = ext2fs_extent_get(handle, EXT2_EXTENT_NEXT, &extent);
 	} while (retval == 0);
@@ -477,6 +471,24 @@ out:
 	/* Ok if we run off the end */
 	if (retval == EXT2_ET_EXTENT_NO_NEXT)
 		retval = 0;
+
+	/* Insert the last extent */
+	if (!retval && last.e_len) {
+		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ino,
+			   last.e_pblk, last.e_lblk, last.e_len);
+		flags = 0;
+		if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
+			flags |= EXTENT_UNWRITTEN;
+		wf->db_err = insert_extent(wf, ino,
+					   last.e_pblk * fs->blocksize,
+					   last.e_lblk * fs->blocksize,
+					   last.e_len * fs->blocksize,
+					   flags,
+					   type);
+		if (wf->db_err)
+			goto out;
+	}
+
 	ext2fs_extent_free(handle);
 	return retval;
 }
@@ -538,9 +550,9 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 			goto out;
 	}
 
-	/* inline data file or symlink? */
 	if (inode->i_flags & EXT4_INLINE_DATA_FL ||
 	    type == EXT2_FT_SYMLINK) {
+		/* inline data file or symlink? */
 		size_t sz = EXT2_I_SIZE(inode);
 		wf->db_err = insert_extent(wf, ino,
 					   ino_offset + offsetof(struct ext2_inode, i_block),
@@ -549,10 +561,9 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 					   type);
 		if (wf->db_err)
 			goto out;
-	}
-
-	/* extent file */
-	if (inode->i_flags & EXT4_EXTENT_FL) {
+	} else if (inode->i_flags & EXT4_EXTENTS_FL) {
+		/* extent file */
+		err = walk_extents(wf, ino, type);
 	}
 
 out:
@@ -573,6 +584,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	struct ext2_dir_entry_2 *de2 = (struct ext2_dir_entry_2 *)dirent;
 	struct walk_fs_t *wf = priv_data;
 	struct ext2_inode inode;
+	errcode_t err;
 
 	if (!strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."))
 		return 0;
@@ -614,8 +626,13 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	if (wf->db_err)
 		return DIRENT_ABORT;
 
+	err = walk_file_mappings(wf, dirent->inode, type);
+	if (!wf->err)
+		wf->err = err;
+	if (wf->err || wf->db_err)
+		return DIRENT_ABORT;
+
 	if (type == EXT2_FT_DIR) {
-		errcode_t err;
 		old_dirpath = wf->dirpath;
 		wf->dirpath = path;
 		err = ext2fs_dir_iterate2(wf->fs, dirent->inode, 0, NULL,
