@@ -237,7 +237,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 		length = int(length)
 		self.query_summary()
 		if length > self.fs.total_bytes or length < 1:
-			length = total_bytes
+			length = self.fs.total_bytes
 		if self.overview_len == length:
 			return
 		self.overview_len = length

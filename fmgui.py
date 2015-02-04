@@ -282,6 +282,7 @@ class fmgui(QtGui.QMainWindow):
 		for u in self.unit_actions:
 			u.setActionGroup(ag)
 		ag.triggered.connect(self.change_units)
+		self.actionChangeFont.triggered.connect(self.change_font)
 
 		# Set up the overview
 		self.overview = OverviewModel(fmdb, self.overview_text)
@@ -387,9 +388,21 @@ class fmgui(QtGui.QMainWindow):
 
 		# Here we go!
 		self.load_state()
-
 		self.overview.load()
 		self.show()
+
+	def change_font(self):
+		'''Change the overview font.'''
+		y = self.overview_text.document().defaultFont()
+		if y.family() == 'Source Code Pro,monospace':
+			y.setFamily('monospace')
+		(f, x) = QtGui.QFontDialog.getFont(y)
+		if x:
+			y.setFamily(f.family())
+			y.setPointSizeF(f.pointSizeF())
+			self.overview_text.document().setDefaultFont(y)
+			self.overview.font_changed()
+		self.save_state()
 
 	def closeEvent(self, ev):
 		qt = self.query_types[self.querytype_combo.currentIndex()]
@@ -399,6 +412,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def save_state(self):
 		'''Save the state of the UI.'''
+		of = self.overview_text.document().defaultFont()
 		data = {
 			'version': self.json_version,
 			'zoom': self.zoom_levels[self.zoom_combo.currentIndex()][1],
@@ -406,6 +420,8 @@ class fmgui(QtGui.QMainWindow):
 			'units': self.etm.units.label,
 			'window_state': base64.b64encode(self.saveState()).decode('utf-8'),
 			'window_geometry': base64.b64encode(self.saveGeometry()).decode('utf-8'),
+			'overview_font_family': of.family(),
+			'overview_font_points': of.pointSizeF(),
 		}
 		qtdata = {}
 		for qt in self.query_types:
@@ -439,7 +455,12 @@ class fmgui(QtGui.QMainWindow):
 				x += 1
 			self.restoreState(base64.b64decode(data['window_state'].encode('utf-8')))
 			self.restoreGeometry(base64.b64decode(data['window_geometry'].encode('utf-8')))
-		except Exception as e:
+			of = self.overview_text.document().defaultFont()
+			of.setFamily(data['overview_font_family'])
+			of.setPointSizeF(data['overview_font_points'])
+			self.overview_text.document().setDefaultFont(of)
+			self.overview.font_changed()
+		except MooException as e:
 			failed = True
 		if failed:
 			try:
@@ -699,9 +720,6 @@ class OverviewModel(QtCore.QObject):
 		self.fs = self.fmdb.query_summary()
 		self.ctl = ctl
 		self.ctl.resizeEvent = self.resize_ctl
-		qfm = QtGui.QFontMetrics(self.ctl.currentFont())
-		self.overview_font_width = qfm.width('D')
-		self.overview_font_height = qfm.height()
 		self.length = None
 		self.zoom = 1.0
 		self.precision = precision
@@ -709,6 +727,7 @@ class OverviewModel(QtCore.QObject):
 		self.rst = QtCore.QTimer()
 		self.rst.timeout.connect(self.delayed_resize)
 		self.range_highlight = None
+		self.__do_resize()
 
 	def load(self):
 		'''Query the DB for the high-res overview data.'''
@@ -719,11 +738,6 @@ class OverviewModel(QtCore.QObject):
 	def set_zoom(self, zoom):
 		'''Set the zoom factor for the overview.'''
 		self.zoom = zoom
-		self.render()
-
-	def set_length(self, length):
-		'''Set the overview length, in characters.'''
-		self.length = length
 		self.render()
 
 	def total_length(self):
@@ -773,6 +787,7 @@ class OverviewModel(QtCore.QObject):
 		if self.overview_big is None:
 			return
 		olen = int(self.length * self.zoom)
+		#print(self.length, self.zoom)
 		self.fmdb.set_overview_length(olen)
 		if self.range_highlight is None:
 			range_highlight = None
@@ -820,16 +835,28 @@ class OverviewModel(QtCore.QObject):
 	def resize_ctl(self, event):
 		'''Handle the resizing of the text view control.'''
 		QtGui.QTextEdit.resizeEvent(self.ctl, event)
+		self.__do_resize()
+		self.rst.start(40)
+
+	def font_changed(self):
+		'''Call this if the font changes.'''
+		self.__do_resize()
+		self.render()
+
+	def __do_resize(self):
+		'''Recalculate the overview size.'''
 		sz = self.ctl.viewport().size()
+		qfm = QtGui.QFontMetrics(self.ctl.document().defaultFont())
+		overview_font_width = qfm.width('M')
+		overview_font_height = qfm.height()
 		# Cheat with the textedit width/height -- use one less
 		# column than we probably could, and force wrapping at
 		# that column.
-		w = (sz.width() // self.overview_font_width) - 1
-		h = (sz.height() // self.overview_font_height) - 1
+		w = (sz.width() // overview_font_width) - 1
+		h = (sz.height() // overview_font_height) - 1
 		self.ctl.setLineWrapColumnOrWidth(w)
 		#print("overview; %f x %f = %f" % (w, h, w * h))
 		self.length = w * h
-		self.rst.start(40)
 
 	def delayed_resize(self):
 		self.rst.stop()
