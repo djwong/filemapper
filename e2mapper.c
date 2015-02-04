@@ -170,6 +170,40 @@ static struct hidden_file hidden_inodes[] = {
 };
 #undef H
 
+/* Convert a directory pathname */
+static int icvt(char *in, size_t inl, char *out, size_t outl)
+{
+	size_t x;
+
+	while (inl) {
+		x = iconv(iconv_ctl, &in, &inl, &out, &outl);
+		if (x == -1) {
+			if (errno == EILSEQ || errno == EINVAL) {
+				if (outl < 3)
+					return -1;
+				*out = 0xEF;
+				out++;
+				*out = 0xBF;
+				out++;
+				*out = 0xBD;
+				out++;
+				outl += 3;
+				in++;
+				inl--;
+			} else {
+				return -1;
+			}
+		}
+	}
+
+	if (outl < 1) {
+		errno = EFBIG;
+		return -1;
+	}
+	*out = 0;
+	return 0;
+}
+
 /* Run a bunch of queries */
 static int run_batch_query(sqlite3 *db, const char *sql)
 {
@@ -205,7 +239,7 @@ static int run_batch_query(sqlite3 *db, const char *sql)
 static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 {
 	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);";
-	char stime[256];
+	char stime[PATH_MAX + 1];
 	sqlite3_uint64 x;
 	sqlite3_stmt *stmt;
 	time_t t;
@@ -215,8 +249,10 @@ static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 	err = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
 	if (err)
 		return err;
-	err = sqlite3_bind_text(stmt, col++, fs->device_name, -1,
-				SQLITE_STATIC);
+	err = icvt(fs->device_name, strlen(fs->device_name), stime, PATH_MAX);
+	if (err)
+		goto out;
+	err = sqlite3_bind_text(stmt, col++, stime, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
 	err = sqlite3_bind_int(stmt, col++, fs->blocksize);
@@ -253,7 +289,7 @@ static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 	t = time(NULL);
 	tmp = gmtime(&t);
 	/* 2015-01-23 01:14:00.792473 */
-	strftime(stime, 256, "%F %T", tmp);
+	strftime(stime, PATH_MAX, "%F %T", tmp);
 	err = sqlite3_bind_text(stmt, col++, stime, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
@@ -275,14 +311,17 @@ out:
 static int finalize_fs_stats(sqlite3 *db, ext2_filsys fs)
 {
 	const char *sql = "UPDATE fs_t SET finished = 1 WHERE path = ?;";
+	char p[PATH_MAX + 1];
 	sqlite3_stmt *stmt;
 	int err, err2, col = 1;
 
 	err = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
 	if (err)
 		return err;
-	err = sqlite3_bind_text(stmt, col++, fs->device_name, -1,
-				SQLITE_STATIC);
+	err = icvt(fs->device_name, strlen(fs->device_name), p, PATH_MAX);
+	if (err)
+		goto out;
+	err = sqlite3_bind_text(stmt, col++, p, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
 	err = sqlite3_step(stmt);
@@ -699,40 +738,6 @@ out:
 	ext2fs_free_mem(&inode);
 	ext2fs_fast_mark_inode_bitmap2(wf->iseen, ino);
 	return err;
-}
-
-/* Convert a directory pathname */
-static int icvt(char *in, size_t inl, char *out, size_t outl)
-{
-	size_t x;
-
-	while (inl) {
-		x = iconv(iconv_ctl, &in, &inl, &out, &outl);
-		if (x == -1) {
-			if (errno == EILSEQ || errno == EINVAL) {
-				if (outl < 3)
-					return -1;
-				*out = 0xEF;
-				out++;
-				*out = 0xBF;
-				out++;
-				*out = 0xBD;
-				out++;
-				outl += 3;
-				in++;
-				inl--;
-			} else {
-				return -1;
-			}
-		}
-	}
-
-	if (outl < 1) {
-		errno = EFBIG;
-		return -1;
-	}
-	*out = 0;
-	return 0;
 }
 
 /* Handle a directory entry */
