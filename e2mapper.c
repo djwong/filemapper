@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <iconv.h>
 #include <sqlite3.h>
 #include <ext2fs/ext2fs.h>
 
@@ -20,6 +21,8 @@
 #else
 # define dbg_printf(f, a...)
 #endif
+
+static iconv_t iconv_ctl;
 
 static char *dbschema = "PRAGMA page_size = 4096;\
 PRAGMA cache_size = 65536;\
@@ -452,8 +455,7 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 
 	/* Internal node? */
 	if (blockcnt < 0) {
-		dbg_printf("ino=%d free=%llu\n", list->ino,
-			   extent.e_pblk);
+		dbg_printf("ino=%d free=%llu\n", wf->ino, *blocknr);
 		wf->db_err = insert_extent(wf, wf->ino,
 					   *blocknr * fs->blocksize,
 					   0, fs->blocksize, 0,
@@ -525,7 +527,7 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 
 		/* Internal node */
 		if (!(extent.e_flags & EXT2_EXTENT_FLAGS_LEAF)) {
-			dbg_printf("ino=%d free=%llu\n", list->ino,
+			dbg_printf("ino=%d free=%llu\n", wf->ino,
 				   extent.e_pblk);
 			wf->db_err = insert_extent(wf, ino,
 						   extent.e_pblk * fs->blocksize,
@@ -698,6 +700,40 @@ out:
 	return err;
 }
 
+/* Convert a directory pathname */
+static int icvt(char *in, size_t inl, char *out, size_t outl)
+{
+	size_t x;
+
+	while (inl) {
+		x = iconv(iconv_ctl, &in, &inl, &out, &outl);
+		if (x == -1) {
+			if (errno == EILSEQ || errno == EINVAL) {
+				if (outl < 3)
+					return -1;
+				*out = 0xEF;
+				out++;
+				*out = 0xBF;
+				out++;
+				*out = 0xBD;
+				out++;
+				outl += 3;
+				in++;
+				inl--;
+			} else {
+				return -1;
+			}
+		}
+	}
+
+	if (outl < 1) {
+		errno = EFBIG;
+		return -1;
+	}
+	*out = 0;
+	return 0;
+}
+
 /* Handle a directory entry */
 static int walk_fs_helper(ext2_ino_t dir, int entry,
 			  struct ext2_dir_entry *dirent, int offset,
@@ -706,7 +742,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	char path[PATH_MAX + 1];
 	char name[EXT2_NAME_LEN + 1];
 	const char *old_dirpath;
-	int type;
+	int type, sz;
 	struct ext2_dir_entry_2 *de2 = (struct ext2_dir_entry_2 *)dirent;
 	struct walk_fs_t *wf = priv_data;
 	struct ext2_inode inode;
@@ -714,9 +750,10 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 
 	if (!strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."))
 		return 0;
-	memcpy(name, dirent->name, dirent->name_len & 0xFF);
-	name[dirent->name_len & 0xFF] = 0;
 
+	sz = icvt(dirent->name, dirent->name_len & 0xFF, name, EXT2_NAME_LEN);
+	if (sz < 0)
+		return DIRENT_ABORT;
 	dbg_printf("dir=%d name=%s/%s ino=%d type=%d\n", dir, wf->dirpath, name,
 		   dirent->inode, de2->file_type);
 
@@ -1120,6 +1157,8 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
+	iconv_ctl = iconv_open("UTF-8", "UTF-8");
+
 	/* Prepare and clean out database. */
 	err = run_batch_query(db, dbschema);
 	if (err) {
@@ -1173,6 +1212,8 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 out:
+	iconv_close(iconv_ctl);
+
 	err2 = sqlite3_close(db);
 	if (err2)
 		com_err(dbfile, 0, "%s while closing database",
