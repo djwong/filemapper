@@ -165,7 +165,10 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 	end_block = (end + block_size - 1) // block_size
 
 	if flags & FIEMAP_FLAG_SYNC:
-		os.fsync(fd)
+		try:
+			os.fsync(fd)
+		except:
+			pass
 
 	block = start_block
 	fe_pblk = None
