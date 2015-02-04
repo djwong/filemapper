@@ -460,7 +460,7 @@ class fmgui(QtGui.QMainWindow):
 			of.setPointSizeF(data['overview_font_points'])
 			self.overview_text.document().setDefaultFont(of)
 			self.overview.font_changed()
-		except MooException as e:
+		except Exception as e:
 			failed = True
 		if failed:
 			try:

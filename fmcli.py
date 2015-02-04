@@ -227,7 +227,7 @@ class fmcli(code.InteractiveConsole):
 		if args.blocks is not None:
 			self.fmdb.set_overview_length(args.blocks)
 		for ov in self.fmdb.query_overview():
-			sys.stdout.write(ov.to_letter(ov))
+			sys.stdout.write(ov.to_letter())
 		sys.stdout.write('\n')
 
 	def do_exit(self, argv):
