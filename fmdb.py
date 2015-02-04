@@ -47,6 +47,58 @@ def stmode_to_type(xstat, is_xattr):
 	elif stat.S_ISLNK(xstat.st_mode):
 		return EXT_TYPE_SYMLINK
 
+# Extent flags
+EXT_FLAG_UNKNOWN = fiemap.FIEMAP_EXTENT_UNKNOWN
+EXT_FLAG_DELALLOC = fiemap.FIEMAP_EXTENT_DELALLOC
+EXT_FLAG_ENCODED = fiemap.FIEMAP_EXTENT_ENCODED
+EXT_FLAG_DATA_ENCRYPTED = fiemap.FIEMAP_EXTENT_DATA_ENCRYPTED
+EXT_FLAG_NOT_ALIGNED = fiemap.FIEMAP_EXTENT_NOT_ALIGNED
+EXT_FLAG_DATA_INLINE = fiemap.FIEMAP_EXTENT_DATA_INLINE
+EXT_FLAG_DATA_TAIL = fiemap.FIEMAP_EXTENT_DATA_TAIL
+EXT_FLAG_UNWRITTEN = fiemap.FIEMAP_EXTENT_UNWRITTEN
+EXT_FLAG_MERGED = fiemap.FIEMAP_EXTENT_MERGED
+EXT_FLAG_SHARED = fiemap.FIEMAP_EXTENT_SHARED
+
+extent_flags = {
+	EXT_FLAG_UNKNOWN:		'n',
+	EXT_FLAG_DELALLOC:		'd',
+	EXT_FLAG_ENCODED:		'c',
+	EXT_FLAG_DATA_ENCRYPTED:	'E',
+	EXT_FLAG_NOT_ALIGNED:		'a',
+	EXT_FLAG_DATA_INLINE:		'i',
+	EXT_FLAG_DATA_TAIL:		't',
+	EXT_FLAG_UNWRITTEN:		'U',
+	EXT_FLAG_MERGED:		'm',
+	EXT_FLAG_SHARED:		's',
+}
+
+extent_flags_long = {
+	EXT_FLAG_UNKNOWN:		'U(n)known',
+	EXT_FLAG_DELALLOC:		'Not Allocate(d)',
+	EXT_FLAG_ENCODED:		'(C)ompressed',
+	EXT_FLAG_DATA_ENCRYPTED:	'(E)ncrypted',
+	EXT_FLAG_NOT_ALIGNED:		'Un(a)ligned',
+	EXT_FLAG_DATA_INLINE:		'(I)nline',
+	EXT_FLAG_DATA_TAIL:		'(T)ail-Packed',
+	EXT_FLAG_UNWRITTEN:		'(U)nwritten',
+	EXT_FLAG_MERGED:		'(M)erged',
+	EXT_FLAG_SHARED:		'(S)hared',
+}
+
+extent_strings = {extent_flags[i] for i in extent_flags}
+extent_strings_long = {extent_flags_long[i] for i in extent_flags_long}
+
+def extent_flags_to_str(flags):
+	'''Convert an extent flags number into a string.'''
+	return ''.join([extent_flags[f] for f in extent_flags if flags & f > 0])
+
+def extent_str_to_flags(string):
+	'''Convert an extent string into a flags number.'''
+	ret = 0
+	for s in string:
+		ret |= extent_strings[s]
+	return ret
+
 # An extent
 class poff_row(object):
 	def __init__(self, path, p_off, l_off, length, flags, type):
@@ -57,8 +109,8 @@ class poff_row(object):
 		self.flags = flags
 		self.type = type
 
-	def flags_to_str(self):
-		return fiemap.extent_flags_to_str(self.flags)
+	def flagstr(self):
+		return extent_flags_to_str(self.flags)
 
 	def typestr(self):
 		return extent_types[self.type]
@@ -95,7 +147,9 @@ DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
 DROP TABLE IF EXISTS dentry_t;
 DROP TABLE IF EXISTS extent_t;
+DROP TABLE IF EXISTS extent_type_t;
 DROP TABLE IF EXISTS inode_t;
+DROP TABLE IF EXISTS inode_type_t;
 DROP TABLE IF EXISTS path_t;
 DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
@@ -269,9 +323,9 @@ class fmdb(object):
 		if path == '/':
 			raise ValueError("'/' is an invalid path.  Check code.")
 		if stat.S_ISDIR(xstat.st_mode):
-			xtype = 'd'
+			xtype = INO_TYPE_DIR
 		else:
-			xtype = 'f'
+			xtype = INO_TYPE_FILE
 		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?);', \
 				(xstat.st_ino, xtype))
 		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
@@ -628,4 +682,38 @@ class fmdb(object):
 				break
 			for row in rows:
 				yield dentry(row[0], row[1], row[2])
+
+class fiemap_db(fmdb):
+	'''FileMapper database based on FIEMAP.'''
+	def __init__(self, fspath, dbpath):
+		if fspath is None:
+			raise ValueError('Please specify a FS path.')
+		super(fiemap_db, self).__init__(fspath, dbpath)
+
+	def is_stale(self):
+		'''Decide if the FS should be re-analyzed.'''
+		if self.fspath == None:
+			return False
+		try:
+			cur = self.conn.cursor()
+			cur.execute('SELECT path, finished FROM fs_t WHERE path = ?', (self.fspath,))
+			results = cur.fetchall()
+			if len(results) != 1:
+				return True
+			if results[0][1] == 0:
+				return True
+			return False
+		except:
+			return True
+
+	def analyze(self, force = False):
+		'''Regenerate the database.'''
+		if not force and not self.must_regenerate():
+			return
+		self.start_update()
+		fiemap.walk_fs(self.fspath,
+			self.insert_dir,
+			self.insert_inode,
+			self.insert_extent)
+		self.end_update()
 

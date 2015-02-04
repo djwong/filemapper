@@ -9,7 +9,6 @@ import atexit
 import os
 import argparse
 import sys
-import fiemap
 import fmdb
 from collections import namedtuple
 
@@ -269,7 +268,7 @@ class fmcli(code.InteractiveConsole):
 			print("'%s',%d,%d,%d,'%s','%s'" % \
 				(ext.path if ext.path != '' else self.fs.pathsep, \
 				 ext.p_off, ext.l_off, ext.length, \
-				 ext.flags_to_str(), \
+				 ext.flagstr(), \
 				 ext.typestr()))
 			return
 		print("'%s', %s, %s, %s, '%s', '%s'" % \
@@ -277,7 +276,7 @@ class fmcli(code.InteractiveConsole):
 			 format_size(self.units, ext.p_off), \
 			 format_size(self.units, ext.l_off), \
 			 format_size(self.units, ext.length), \
-			 ext.flags_to_str(), \
+			 ext.flagstr(), \
 			 ext.typestr()))
 
 	def print_dentry(self, de):
@@ -467,13 +466,13 @@ class fmcli(code.InteractiveConsole):
 			description = 'Look up extents with a particular set of flags.')
 		parser.add_argument('flags', nargs = '*', \
 			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, (s)hared, or no flag code at all.', \
-			choices = ['n', 'd', 'e', 'E', 'u', 'i', 't', 'U', 'm', 's', []])
-		parser.add_argument('-e', default = 0, action = 'count', help = 'Flags must match exactly.')
+			choices = [x for x in sorted(fmdb.extent_strings.keys())])
+		parser.add_argument('-e', action = 'store_true', help = 'Flags must match exactly.')
 		args = parser.parse_args(argv[1:])
 		flags = 0
 		for arg in args.flags:
-			flags |= fiemap.extent_str_to_flags(arg)
-		for x in self.fmdb.query_extent_flags(flags, args.e > 0):
+			flags |= fmdb.extent_strings[arg]
+		for x in self.fmdb.query_extent_flags(flags, args.e):
 			self.print_extent(x)
 
 	def do_ls(self, argv):

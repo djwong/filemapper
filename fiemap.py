@@ -11,7 +11,6 @@ import os
 import errno
 import stat
 import itertools
-import fmdb
 
 # From linux/fiemap.h
 FIEMAP_FLAG_SYNC = 0x0001
@@ -274,72 +273,6 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			do_map(fstat, fname)
 			dentries.append((xfile.decode('utf-8', 'replace'), fstat))
 		dir_fn(rstat, dentries)
-
-ext_flags = [
-	[FIEMAP_EXTENT_LAST, 'l'],
-	[FIEMAP_EXTENT_UNKNOWN, 'n'],
-	[FIEMAP_EXTENT_DELALLOC, 'd'],
-	[FIEMAP_EXTENT_ENCODED, 'e'],
-	[FIEMAP_EXTENT_DATA_ENCRYPTED, 'E'],
-	[FIEMAP_EXTENT_NOT_ALIGNED, 'u'],
-	[FIEMAP_EXTENT_DATA_INLINE, 'i'],
-	[FIEMAP_EXTENT_DATA_TAIL, 't'],
-	[FIEMAP_EXTENT_UNWRITTEN, 'U'],
-	[FIEMAP_EXTENT_MERGED, 'm'],
-	[FIEMAP_EXTENT_SHARED, 's'],
-]
-
-def extent_flags_to_str(flags):
-	'''Convert an extent flags number into a string.'''
-	s = ''
-	for flag in ext_flags:
-		if flags & flag[0]:
-			s += flag[1]
-	return s
-
-def extent_str_to_flags(string):
-	'''Convert an extent string into a flags number.'''
-	ret = 0
-	for s in string:
-		for f in ext_flags:
-			if f[1] == s:
-				ret |= f[0]
-				break
-	return ret
-
-class fiemap_db(fmdb.fmdb):
-	'''FileMapper database based on FIEMAP.'''
-	def __init__(self, fspath, dbpath):
-		if fspath is None:
-			raise ValueError('Please specify a FS path.')
-		super(fiemap_db, self).__init__(fspath, dbpath)
-
-	def is_stale(self):
-		'''Decide if the FS should be re-analyzed.'''
-		if self.fspath == None:
-			return False
-		try:
-			cur = self.conn.cursor()
-			cur.execute('SELECT path, finished FROM fs_t WHERE path = ?', (self.fspath,))
-			results = cur.fetchall()
-			if len(results) != 1:
-				return True
-			if results[0][1] == 0:
-				return True
-			return False
-		except:
-			return True
-
-	def analyze(self, force = False):
-		'''Regenerate the database.'''
-		if not force and not self.must_regenerate():
-			return
-		self.start_update()
-		walk_fs(self.fspath,
-			self.insert_dir,
-			self.insert_inode,
-			self.insert_extent)
-		self.end_update()
 
 if __name__ == '__main__':
 	import sys

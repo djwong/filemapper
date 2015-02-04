@@ -4,7 +4,6 @@
 # Licensed under the GPLv2.
 
 import os
-import fiemap
 import fmdb
 import fmcli
 import sys
@@ -29,7 +28,7 @@ if __name__ == "__main__":
 		print(fmdb.generate_index_sql())
 
 	if args.r is not None:
-		fmdb = fiemap.fiemap_db(args.r[0], args.database)
+		fmdb = fmdb.fiemap_db(args.r[0], args.database)
 		fmdb.analyze(True)
 		if args.q:
 			sys.exit(0)

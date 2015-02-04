@@ -9,7 +9,6 @@ import fmcli
 import datetime
 import fmdb
 import math
-import fiemap
 import os.path
 import json
 import base64
@@ -61,14 +60,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.p_off),
 			lambda x: fmcli.format_size(self.units, x.l_off),
 			lambda x: fmcli.format_size(self.units, x.length),
-			lambda x: x.flags_to_str(),
+			lambda x: x.flagstr(),
 			lambda x: x.typestr(),
 			lambda x: x.path if x.path != '' else fs.pathsep]
 		self.sort_keys = [
 			lambda x: x.p_off,
 			lambda x: x.l_off,
 			lambda x: x.length,
-			lambda x: x.flags_to_str(),
+			lambda x: x.flagstr(),
 			lambda x: x.typestr(),
 			lambda x: x.path,
 		]
@@ -367,18 +366,9 @@ class fmgui(QtGui.QMainWindow):
 			[fmdb.extent_types[x], True, x] for x in sorted(fmdb.extent_types.keys())
 		]
 		extent_flags = [
-			['Unknown', False, 'n'],
-			['Delayed Allocation', False, 'd'],
-			['Encoded', False, 'e'],
-			['Encrypted', False, 'E'],
-			['Unaligned', False, 'u'],
-			['Inline', False, 'i'],
-			['Tail-packed', False, 't'],
-			['Unwritten', False, 'U'],
-			['Merged', False, 'm'],
-			['Shared', False, 's'],
-			['Exact Match', False],
+			[fmdb.extent_flags_long[x], False, x] for x in sorted(fmdb.extent_flags_long.keys())
 		]
+		extent_flags.append(['Exact Match', False])
 		def sq(l, q):
 			return StringQuery(l, self.query_text, q)
 		def cq(l, q, x):
@@ -639,7 +629,7 @@ class fmgui(QtGui.QMainWindow):
 		flags = 0
 		for x in args:
 			if len(x) > 2 and x[1]:
-				flags |= fiemap.extent_str_to_flags(x[2])
+				flags |= x[2]
 		self.load_extents(self.fmdb.query_extent_flags(flags, exact))
 
 	def query_overview(self, args):
@@ -738,7 +728,7 @@ class fmgui(QtGui.QMainWindow):
 					fd.write("'%s',%d,%d,%d,'%s','%s'\n" % \
 						(ext.path if ext.path != '' else self.fs.pathsep, \
 						 ext.p_off, ext.l_off, ext.length, \
-						 ext.flags_to_str(), \
+						 ext.flagstr(), \
 						 ext.typestr()))
 					if n > 1000:
 						self.mp.pump()
