@@ -600,6 +600,7 @@ class fmgui(QtGui.QMainWindow):
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
 				ranges.append(int(arg))
+		self.fmdb.set_overview_length(self.overview.total_length())
 		r = self.fmdb.pick_cells(ranges)
 		self.load_extents(self.fmdb.query_poff_range(r))
 
@@ -763,47 +764,12 @@ class OverviewModel(QtCore.QObject):
 				if cell >= start and cell <= end:
 					return True
 			return False
-		def compress_ranges(ranges):
-			if len(ranges) < 50:
-				return ranges
-			max_num = None
-			rset = set()
-			for x in ranges:
-				if type(x) == int:
-					start = end = x
-				else:
-					start, end = x
-				if max_num is None or max_num < end:
-					max_num = end
-				for x in range(start, end + 1):
-					rset.add(x)
-			ret = []
-			start = None
-			end = None
-			for n in range(0, max_num + 1):
-				if n in rset:
-					if start is None:
-						start = n
-					end = n
-				else:
-					if start is not None:
-						ret.append((start, end))
-						start = None
-			if start is not None:
-				ret.append((start, end))
-			return ret
 
 		t0 = datetime.datetime.today()
 		if self.overview_big is None:
 			return
 		olen = int(self.length * self.zoom)
 		#print(self.length, self.zoom)
-		self.fmdb.set_overview_length(olen)
-		if self.range_highlight is None:
-			range_highlight = None
-		else:
-			t = {x for x in self.fmdb.pick_bytes(self.range_highlight)}
-			range_highlight = compress_ranges(t)
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
 		t1 = datetime.datetime.today()
@@ -812,10 +778,11 @@ class OverviewModel(QtCore.QObject):
 			x = int(round(i * o2s))
 			y = int(round((i + 1) * o2s))
 			ss = self.overview_big[x:y]
+			rh = self.range_highlight[x:y] if self.range_highlight is not None else [0]
 			ovs = fmdb.overview_block()
 			for s in ss:
 				ovs.add(s)
-			if is_highlighted(i):
+			if sum(rh) > 0:
 				if not h:
 					ov_str.append('<span style="background: #e0e0e0; font-weight: bold;">')
 				h = True
@@ -835,6 +802,8 @@ class OverviewModel(QtCore.QObject):
 		old_v = vs.value()
 		old_max = vs.maximum()
 		self.ctl.setText(''.join(ov_str))
+		#if self.range_highlight is not None:
+		#	self.ctl.setText(''.join([str(x) for x in self.range_highlight]))
 		if old_max > 0:
 			if vs.maximum() == old_max:
 				vs.setValue(old_v)
@@ -874,11 +843,23 @@ class OverviewModel(QtCore.QObject):
 
 	def highlight_ranges(self, ranges):
 		'''Highlight a range of physical extents in the overview.'''
+		def compress_ranges(ranges):
+			def e(x):
+				return 1 if x in rset else 0
+			rset = set()
+			for x in ranges:
+				if type(x) == int:
+					start = end = x
+				else:
+					start, end = x
+				for x in range(start, end + 1):
+					rset.add(x)
+			return [e(n) for n in range(0, olen)]
 		old_highlight = self.range_highlight
-		if ranges is None:
-			self.range_highlight = None
-		else:
-			self.range_highlight = {x for x in ranges}
+		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
+		self.fmdb.set_overview_length(olen)
+		t = {x for x in self.fmdb.pick_bytes(ranges)}
+		self.range_highlight = compress_ranges(t)
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
