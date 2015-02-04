@@ -37,10 +37,22 @@ DROP TABLE IF EXISTS path_t;\
 DROP TABLE IF EXISTS dir_t;\
 DROP TABLE IF EXISTS fs_t;\
 CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);\
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'm', 's')));\
-CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);\
-CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));\
-CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x', 's')), p_end INTEGER NOT NULL);\
+CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);\
+INSERT INTO inode_type_t VALUES (0, 'f');\
+INSERT INTO inode_type_t VALUES (1, 'd');\
+INSERT INTO inode_type_t VALUES (2, 'm');\
+INSERT INTO inode_type_t VALUES (3, 's');\
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, FOREIGN KEY(type) REFERENCES inode_type_t(id));\
+CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));\
+CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));\
+CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);\
+INSERT INTO extent_type_t VALUES (0, 'f');\
+INSERT INTO extent_type_t VALUES (1, 'd');\
+INSERT INTO extent_type_t VALUES (2, 'e');\
+INSERT INTO extent_type_t VALUES (3, 'm');\
+INSERT INTO extent_type_t VALUES (4, 'x');\
+INSERT INTO extent_type_t VALUES (5, 's');\
+CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));\
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;\
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;";
 
@@ -65,10 +77,10 @@ struct walk_fs_t {
 	int type;
 };
 
-static char *type_codes[] = {
-	[EXT2_FT_DIR] = "d",
-	[EXT2_FT_REG_FILE] = "f",
-	[EXT2_FT_SYMLINK] = "s",
+static int type_codes[] = {
+	[EXT2_FT_REG_FILE]	= 0,
+	[EXT2_FT_DIR]		= 1,
+	[EXT2_FT_SYMLINK]	= 3,
 };
 
 #ifndef EXT4_INLINE_DATA_FL
@@ -78,13 +90,13 @@ static char *type_codes[] = {
 #define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
 #define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
 #define EXT2_XT_XATTR		(EXT2_FT_MAX + 18)
-static char *extent_codes[] = {
-	[EXT2_FT_REG_FILE] = "f",
-	[EXT2_FT_DIR] = "d",
-	[EXT2_XT_EXTENT] = "e",
-	[EXT2_XT_METADATA] = "m",
-	[EXT2_XT_XATTR] = "x",
-	[EXT2_FT_SYMLINK] = "s",
+static int extent_codes[] = {
+	[EXT2_FT_REG_FILE]	= 0,
+	[EXT2_FT_DIR]		= 1,
+	[EXT2_XT_EXTENT]	= 2,
+	[EXT2_XT_METADATA]	= 3,
+	[EXT2_XT_XATTR]		= 4,
+	[EXT2_FT_SYMLINK]	= 5,
 };
 
 /* Extent flags.  Yes, these are the FIEMAP flags. */
@@ -230,7 +242,7 @@ static int run_batch_query(sqlite3 *db, const char *sql)
 		err = err2;
 
 	if (err)
-		dbg_printf("err=%d p=%s\n", err, p);
+		dbg_printf("err=%d p=%s\n", err, tail);
 
 	return err;
 }
@@ -239,7 +251,8 @@ static int run_batch_query(sqlite3 *db, const char *sql)
 static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 {
 	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);";
-	char stime[PATH_MAX + 1];
+	char p[PATH_MAX + 1];
+	char stime[256];
 	sqlite3_uint64 x;
 	sqlite3_stmt *stmt;
 	time_t t;
@@ -249,10 +262,10 @@ static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 	err = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
 	if (err)
 		return err;
-	err = icvt(fs->device_name, strlen(fs->device_name), stime, PATH_MAX);
+	err = icvt(fs->device_name, strlen(fs->device_name), p, PATH_MAX);
 	if (err)
 		goto out;
-	err = sqlite3_bind_text(stmt, col++, stime, -1, SQLITE_STATIC);
+	err = sqlite3_bind_text(stmt, col++, p, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
 	err = sqlite3_bind_int(stmt, col++, fs->blocksize);
@@ -289,7 +302,7 @@ static int collect_fs_stats(sqlite3 *db, ext2_filsys fs)
 	t = time(NULL);
 	tmp = gmtime(&t);
 	/* 2015-01-23 01:14:00.792473 */
-	strftime(stime, PATH_MAX, "%F %T", tmp);
+	strftime(stime, 256, "%F %T", tmp);
 	err = sqlite3_bind_text(stmt, col++, stime, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
@@ -344,7 +357,7 @@ static int insert_inode(struct walk_fs_t *wf, int64_t ino, int type,
 	sqlite3_stmt *stmt = NULL;
 	int err, err2, col = 1;
 
-	dbg_printf("%s: ino=%"PRId64" type=%s path=%s\n", __func__, ino,
+	dbg_printf("%s: ino=%"PRId64" type=%d path=%s\n", __func__, ino,
 		   type_codes[type], path);
 
 	/* Update the inode table */
@@ -354,8 +367,7 @@ static int insert_inode(struct walk_fs_t *wf, int64_t ino, int type,
 	err = sqlite3_bind_int64(stmt, col++, ino);
 	if (err)
 		goto out;
-	err = sqlite3_bind_text(stmt, col++, type_codes[type], -1,
-				SQLITE_STATIC);
+	err = sqlite3_bind_int(stmt, col++, type_codes[type]);
 	if (err)
 		goto out;
 	err = sqlite3_step(stmt);
@@ -431,7 +443,7 @@ static int insert_extent(struct walk_fs_t *wf, int64_t ino, uint64_t physical,
 	sqlite3_stmt *stmt = NULL;
 	int err, err2, col = 1;
 
-	dbg_printf("%s: ino=%"PRId64" phys=%"PRIu64" logical=%"PRIu64" len=%"PRIu64" flags=0x%x type=%s\n", __func__,
+	dbg_printf("%s: ino=%"PRId64" phys=%"PRIu64" logical=%"PRIu64" len=%"PRIu64" flags=0x%x type=%d\n", __func__,
 		   ino, physical, logical, length, flags, extent_codes[type]);
 
 	/* Update the dentry table */
@@ -453,7 +465,7 @@ static int insert_extent(struct walk_fs_t *wf, int64_t ino, uint64_t physical,
 	err = sqlite3_bind_int64(stmt, col++, length);
 	if (err)
 		goto out;
-	err = sqlite3_bind_text(stmt, col++, extent_codes[type], -1, SQLITE_STATIC);
+	err = sqlite3_bind_int(stmt, col++, extent_codes[type]);
 	if (err)
 		goto out;
 	err = sqlite3_bind_int64(stmt, col++, physical + length - 1);

@@ -18,10 +18,15 @@ if __name__ == "__main__":
 	parser.add_argument('-r', nargs = 1, metavar = 'fspath', help = 'Analyze a filesystem using the FIEMAP backend.')
 	parser.add_argument('-q', action = 'store_true', help = 'If -r is specified, exit after analyzing.')
 	parser.add_argument('-g', action = 'store_true', help = 'Start the GUI.')
+	parser.add_argument('-s', action = 'store_true', help = 'Generate SQL schemas and index definitions.')
 	parser.add_argument('database', help = 'Database file to store snapshots.')
 	parser.add_argument('commands', nargs = '*', \
 		help = 'Commands to run (CLI).  -g cannot be specified.')
 	args = parser.parse_args(sys.argv[1:])
+
+	if args.s:
+		print(fmdb.generate_schema_sql())
+		print(fmdb.generate_index_sql())
 
 	if args.r is not None:
 		fmdb = fiemap.fiemap_db(args.r[0], args.database)

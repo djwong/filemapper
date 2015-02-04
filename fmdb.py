@@ -12,17 +12,6 @@ import fiemap
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 
-def stmode_to_type(xstat, is_xattr):
-	'''Convert a stat mode to a type code.'''
-	if is_xattr:
-		return 'x'
-	elif stat.S_ISREG(xstat.st_mode):
-		return 'f'
-	elif stat.S_ISDIR(xstat.st_mode):
-		return 'd'
-	elif stat.S_ISLNK(xstat.st_mode):
-		return 's'
-
 fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'total_bytes', 'free_bytes',
 				       'avail_bytes', 'total_inodes',
@@ -30,6 +19,35 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
+# Extent types
+EXT_TYPE_FILE		= 0
+EXT_TYPE_DIR		= 1
+EXT_TYPE_EXTENT		= 2
+EXT_TYPE_METADATA	= 3
+EXT_TYPE_XATTR		= 4
+EXT_TYPE_SYMLINK	= 5
+
+extent_types = {
+	EXT_TYPE_FILE:		'File',
+	EXT_TYPE_DIR:		'Directory',
+	EXT_TYPE_EXTENT:	'Extent Map',
+	EXT_TYPE_METADATA:	'Metadata',
+	EXT_TYPE_XATTR:		'Extended Attribute',
+	EXT_TYPE_SYMLINK:	'Symbolic Link',
+}
+
+def stmode_to_type(xstat, is_xattr):
+	'''Convert a stat mode to a type code.'''
+	if is_xattr:
+		return EXT_TYPE_XATTR
+	elif stat.S_ISREG(xstat.st_mode):
+		return EXT_TYPE_FILE
+	elif stat.S_ISDIR(xstat.st_mode):
+		return EXT_TYPE_DIR
+	elif stat.S_ISLNK(xstat.st_mode):
+		return EXT_TYPE_SYMLINK
+
+# An extent
 class poff_row(object):
 	def __init__(self, path, p_off, l_off, length, flags, type):
 		self.path = path
@@ -42,7 +60,69 @@ class poff_row(object):
 	def flags_to_str(self):
 		return fiemap.extent_flags_to_str(self.flags)
 
-dentry = namedtuple('dentry', ['name', 'ino', 'type'])
+	def typestr(self):
+		return extent_types[self.type]
+
+# Inode type codes
+INO_TYPE_FILE		= 0
+INO_TYPE_DIR		= 1
+INO_TYPE_METADATA	= 2
+INO_TYPE_SYMLINK	= 3
+
+inode_types = {
+	INO_TYPE_FILE:		'file',
+	INO_TYPE_DIR:		'directory',
+	INO_TYPE_METADATA:	'metadata',
+	INO_TYPE_SYMLINK:	'symbolic link',
+}
+
+# Directory entry
+class dentry(object):
+	'''Directory entry.'''
+	def __init__(self, name, ino, type):
+		self.name = name
+		self.ino = ino
+		self.type = type
+
+	def typestr(self):
+		return inode_types[self.type]
+
+def generate_schema_sql():
+	'''Generate the database schema.'''
+	x = ['''PRAGMA synchronous = OFF;
+PRAGMA page_size = 4096;
+DROP VIEW IF EXISTS dentry_t;
+DROP VIEW IF EXISTS path_extent_v;
+DROP TABLE IF EXISTS dentry_t;
+DROP TABLE IF EXISTS extent_t;
+DROP TABLE IF EXISTS inode_t;
+DROP TABLE IF EXISTS path_t;
+DROP TABLE IF EXISTS dir_t;
+DROP TABLE IF EXISTS fs_t;
+CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
+CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, FOREIGN KEY(type) REFERENCES inode_type_t(id));
+CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));
+CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
+CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
+CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
+CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
+CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''']
+	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
+	z = ["INSERT INTO extent_type_t VALUES (%d, '%s');" % (x, extent_types[x]) for x in sorted(extent_types.keys())]
+	return '\n'.join(x + y + z)
+
+def generate_index_sql():
+	'''Generate SQL for the indexes.'''
+	return '''CREATE INDEX inode_i ON inode_t(ino);
+CREATE INDEX path_ino_i ON path_t(ino);
+CREATE INDEX path_path_i ON path_t(path);
+CREATE INDEX dir_ino_i ON dir_t(dir_ino);
+CREATE INDEX dir_nino_i ON dir_t(name_ino);
+CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
+CREATE INDEX extent_loff_i ON extent_t(l_off, length);
+CREATE INDEX extent_ino_i ON extent_t(ino);
+'''
 
 def print_times(label, times):
 	'''Print some profiling data.'''
@@ -92,8 +172,10 @@ class overview_block(object):
 			x = ov.metadata
 			letter = 'm'
 		if ov.xattrs > x:
+			x = ov.xattrs
 			letter = 'x'
 		if ov.symlink > x:
+			x = ov.symlink
 			letter = 's'
 		return letter
 
@@ -146,25 +228,7 @@ class fmdb(object):
 		'''Prepare a database for new data.'''
 		if self.fspath is None:
 			raise ValueError('fspath must be specified.')
-		self.conn.executescript("""
-PRAGMA synchronous = OFF;
-PRAGMA page_size = 4096;
-DROP VIEW IF EXISTS dentry_t;
-DROP VIEW IF EXISTS path_extent_v;
-DROP TABLE IF EXISTS dentry_t;
-DROP TABLE IF EXISTS extent_t;
-DROP TABLE IF EXISTS inode_t;
-DROP TABLE IF EXISTS path_t;
-DROP TABLE IF EXISTS dir_t;
-DROP TABLE IF EXISTS fs_t;
-CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'm', 's')));
-CREATE TABLE dir_t(dir_ino INTEGER REFERENCES inode_t(ino) NOT NULL, name TEXT NOT NULL, name_ino INTEGER REFERENCES inode_t(ino) NOT NULL);
-CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER REFERENCES inode_t(ino));
-CREATE TABLE extent_t(ino INTEGER REFERENCES inode_t(ino), p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type TEXT NOT NULL CHECK (type in ('f', 'd', 'e', 'm', 'x', 's')), p_end INTEGER NOT NULL);
-CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
-CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;
-		""")
+		self.conn.executescript(generate_schema_sql())
 
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
@@ -181,17 +245,7 @@ CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_
 
 	def end_update(self):
 		'''Finish updating a database.'''
-
-		self.conn.executescript("""
-CREATE INDEX inode_i ON inode_t(ino);
-CREATE INDEX path_ino_i ON path_t(ino);
-CREATE INDEX path_path_i ON path_t(path);
-CREATE INDEX dir_ino_i ON dir_t(dir_ino);
-CREATE INDEX dir_nino_i ON dir_t(name_ino);
-CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
-CREATE INDEX extent_loff_i ON extent_t(l_off, length);
-CREATE INDEX extent_ino_i ON extent_t(ino);
-		""")
+		self.conn.executescript(generate_index_sql())
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
 		self.conn.commit()
 
@@ -266,22 +320,22 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			for (e_p_off, e_len, e_type) in rows:
 				start_cell = int(e_p_off // self.bytes_per_cell)
 				end_cell = int((e_p_off + e_len - 1) // self.bytes_per_cell)
-				if e_type == 'f':
+				if e_type == EXT_TYPE_FILE:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].files += 1
-				elif e_type == 'd':
+				elif e_type == EXT_TYPE_DIR:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].dirs += 1
-				elif e_type == 'e':
+				elif e_type == EXT_TYPE_EXTENT:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].mappings += 1
-				elif e_type == 'm':
+				elif e_type == EXT_TYPE_METADATA:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].metadata += 1
-				elif e_type == 'x':
+				elif e_type == EXT_TYPE_XATTR:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].xattrs += 1
-				elif e_type == 's':
+				elif e_type == EXT_TYPE_SYMLINK:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].symlink += 1
 		t2 = datetime.datetime.today()
@@ -295,7 +349,9 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			return self.fs
 
 		cur = self.conn.cursor()
-		cur.execute('SELECT COUNT(p_off) FROM extent_t WHERE type IN ("f", "d", "x", "s");')
+		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
+		qstr = 'SELECT COUNT(p_off) FROM extent_t WHERE type IN (%s);' % etypes
+		cur.execute(qstr)
 		rows = cur.fetchall()
 		extents = rows[0][0]
 		cur.execute('SELECT COUNT(ino) FROM inode_t;')

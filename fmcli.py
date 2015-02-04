@@ -10,16 +10,8 @@ import os
 import argparse
 import sys
 import fiemap
+import fmdb
 from collections import namedtuple
-
-typecodes = {
-	'f': 'file',
-	'd': 'directory',
-	'e': 'file map',
-	'm': 'metadata',
-	'x': 'extended attribute',
-	's': 'symbolic link',
-}
 
 units = namedtuple('units', ['abbrev', 'label', 'factor'])
 
@@ -278,7 +270,7 @@ class fmcli(code.InteractiveConsole):
 				(ext.path if ext.path != '' else self.fs.pathsep, \
 				 ext.p_off, ext.l_off, ext.length, \
 				 ext.flags_to_str(), \
-				 typecodes[ext.type]))
+				 ext.typestr()))
 			return
 		print("'%s', %s, %s, %s, '%s', '%s'" % \
 			(ext.path if ext.path != '' else self.fs.pathsep, \
@@ -286,16 +278,16 @@ class fmcli(code.InteractiveConsole):
 			 format_size(self.units, ext.l_off), \
 			 format_size(self.units, ext.length), \
 			 ext.flags_to_str(), \
-			 typecodes[ext.type]))
+			 ext.typestr()))
 
 	def print_dentry(self, de):
 		'''Pretty-print a dentry.'''
 		if self.machine:
 			print("'%s',%d,'%s'" % \
-				(de.name, de.ino, de.type))
+				(de.name, de.ino, de.typestr()))
 			return
 		print("'%s', %s, '%s'" % \
-			(de.name, format_number(units_none, de.ino), de.type))
+			(de.name, format_number(units_none, de.ino), de.typestr()))
 
 	def do_loff_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -450,16 +442,23 @@ class fmcli(code.InteractiveConsole):
 			self.print_extent(x)
 
 	def do_extent_type(self, argv):
+		t = {
+			'f': fmdb.EXT_TYPE_FILE,
+			'd': fmdb.EXT_TYPE_DIR,
+			'e': fmdb.EXT_TYPE_EXTENT,
+			'm': fmdb.EXT_TYPE_METADATA,
+			'x': fmdb.EXT_TYPE_XATTR,
+			's': fmdb.EXT_TYPE_SYMLINK,
+		}
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents with a particular type.')
 		parser.add_argument('types', nargs = '+', \
-			help = 'Type codes to look up.  Valid values are: (f)ile, (d)irectory, (e)xtent map, FS (m)etadata, and e(x)tended attributes.', \
-			choices = ['f', 'd', 'e', 'm', 'x'])
+			help = 'Type codes to look up.  Valid values are: (d)irectory, (e)xtent map, (f)ile, FS (m)etadata, (s)ymbolic links, and e(x)tended attributes.', \
+			choices = [x for x in sorted(t.keys())])
 		args = parser.parse_args(argv[1:])
 		types = set()
 		for arg in args.types:
-			for l in arg:
-				types.add(l)
+			types.add(t[arg])
 		for x in self.fmdb.query_extent_types(types):
 			self.print_extent(x)
 

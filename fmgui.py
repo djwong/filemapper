@@ -62,14 +62,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.l_off),
 			lambda x: fmcli.format_size(self.units, x.length),
 			lambda x: x.flags_to_str(),
-			lambda x: fmcli.typecodes[x.type],
+			lambda x: x.typestr(),
 			lambda x: x.path if x.path != '' else fs.pathsep]
 		self.sort_keys = [
 			lambda x: x.p_off,
 			lambda x: x.l_off,
 			lambda x: x.length,
 			lambda x: x.flags_to_str(),
-			lambda x: fmcli.typecodes[x.type],
+			lambda x: x.typestr(),
 			lambda x: x.path,
 		]
 		self.units = units
@@ -192,7 +192,7 @@ class FsTreeNode(object):
 		self.loaded = False
 		self.children = None
 		self.__row = None
-		if self.type != 'd':
+		if self.type != fmdb.INO_TYPE_DIR:
 			self.loaded = True
 			self.children = []
 
@@ -212,14 +212,14 @@ class FsTreeNode(object):
 		return self.__row
 
 	def hasChildren(self):
-		return self.type == 'd'
+		return self.type == fmdb.INO_TYPE_DIR
 
 class FsTreeModel(QtCore.QAbstractItemModel):
 	'''Model the filesystem tree recorded in the database.'''
 	def __init__(self, fs, root, parent=None, *args):
 		super(FsTreeModel, self).__init__(parent, *args)
 		self.root = root
-		self.headers = ['Name'] #, 'Inode']
+		self.headers = ['Name']
 		self.fs = fs
 
 	def index(self, row, column, parent):
@@ -273,7 +273,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			else:
 				return node.ino
 		elif role == QtCore.Qt.DecorationRole:
-			if node.type == 'd':
+			if node.type == fmdb.INO_TYPE_DIR:
 				return QtGui.QIcon.fromTheme('folder')
 			else:
 				return QtGui.QIcon.fromTheme('text-x-generic')
@@ -286,18 +286,18 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		return None
 
 def sort_dentry(dentry):
-	if dentry.type == 'd':
+	if dentry.type == fmdb.INO_TYPE_DIR:
 		return '0' + dentry.name
 	else:
 		return '1' + dentry.name
 
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
-	def __init__(self, fmdb, histfile=os.path.join(os.path.expanduser('~'), \
+	def __init__(self, fmdbX, histfile=os.path.join(os.path.expanduser('~'), \
 						'.config', 'fmgui-history')):
 		super(fmgui, self).__init__()
 		self.json_version = 1
-		self.fmdb = fmdb
+		self.fmdb = fmdbX
 		try:
 			uic.loadUi('%s/filemapper.ui' % os.environ['FM_LIB_DIR'], self)
 		except:
@@ -321,7 +321,7 @@ class fmgui(QtGui.QMainWindow):
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
 
 		# Set up the overview
-		self.overview = OverviewModel(fmdb, self.overview_text, yield_fn = self.mp.pump)
+		self.overview = OverviewModel(self.fmdb, self.overview_text, yield_fn = self.mp.pump)
 		self.overview.rendered.connect(self.do_summary)
 		self.overview_text.selectionChanged.connect(self.select_overview)
 		self.ost = QtCore.QTimer()
@@ -364,12 +364,7 @@ class fmgui(QtGui.QMainWindow):
 
 		# Then the check-list query data
 		extent_types = [
-			['File', True, 'f'],
-			['Directory', True, 'd'],
-			['Extent Map', True, 'e'],
-			['Metadata', True, 'm'],
-			['Extended Attribute', True, 'x'],
-			['Symbolic Link', True, 's'],
+			[fmdb.extent_types[x], True, x] for x in sorted(fmdb.extent_types.keys())
 		]
 		extent_flags = [
 			['Unknown', False, 'n'],
@@ -744,7 +739,7 @@ class fmgui(QtGui.QMainWindow):
 						(ext.path if ext.path != '' else self.fs.pathsep, \
 						 ext.p_off, ext.l_off, ext.length, \
 						 ext.flags_to_str(), \
-						 fmcli.typecodes[ext.type]))
+						 ext.typestr()))
 					if n > 1000:
 						self.mp.pump()
 						n = 0
