@@ -565,11 +565,16 @@ class fmgui(QtGui.QMainWindow):
 	def run_query(self):
 		'''Dispatch a query to populate the extent table.'''
 		self.ost.stop()
-		idx = self.querytype_combo.currentIndex()
-		qt = self.query_types[idx]
-		qt.run_query()
-		self.pick_extent_table(None, None)
-		# XXX: should we clear the fs tree selection too?
+		try:
+			self.setEnabled(False)
+			QtGui.QApplication.processEvents()
+			idx = self.querytype_combo.currentIndex()
+			qt = self.query_types[idx]
+			qt.run_query()
+			self.pick_extent_table(None, None)
+			# XXX: should we clear the fs tree and extent selection too?
+		finally:
+			self.setEnabled(True)
 		self.save_state()
 
 	def query_extent_type(self, args):
@@ -638,11 +643,22 @@ class fmgui(QtGui.QMainWindow):
 
 	def load_extents(self, f):
 		'''Populate the extent table.'''
+		def g(n):
+			now = datetime.datetime.today()
+			if now > c.last_eventloop + c.loop_interval:
+				QtGui.QApplication.processEvents()
+				c.last_eventloop = now
+			return n
 		t0 = datetime.datetime.today()
 		if isinstance(f, list):
 			new_data = f
 		else:
-			new_data = [x for x in f]
+			class crap:
+				pass
+			c = crap()
+			c.loop_interval = datetime.timedelta(milliseconds = 100)
+			c.last_eventloop = datetime.datetime.today()
+			new_data = [g(x) for x in f]
 		t1 = datetime.datetime.today()
 		self.extent_table.sortByColumn(-1)
 		t2 = datetime.datetime.today()
@@ -802,8 +818,6 @@ class OverviewModel(QtCore.QObject):
 		old_v = vs.value()
 		old_max = vs.maximum()
 		self.ctl.setText(''.join(ov_str))
-		#if self.range_highlight is not None:
-		#	self.ctl.setText(''.join([str(x) for x in self.range_highlight]))
 		if old_max > 0:
 			if vs.maximum() == old_max:
 				vs.setValue(old_v)
