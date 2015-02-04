@@ -21,7 +21,7 @@ bold_font.setBold(True)
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
-	def __init__(self, fs, data, units, rows_to_show=100, parent=None, *args):
+	def __init__(self, fs, data, units, rows_to_show=500, parent=None, *args):
 		super(ExtentTableModel, self).__init__(parent, *args)
 		self.__data = data
 		self.headers = ['Physical Offset', 'Logical Offset', \
@@ -124,7 +124,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 	def extents(self, rows):
 		'''Retrieve a range of extents.'''
-		if rows is None:
+		if rows is None or len(rows) == 0:
 			for r in self.__data:
 				yield r
 			return
@@ -488,13 +488,13 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_extent_table(self, n, o):
 		'''Handle the selection of extent table rows.'''
+		t0 = datetime.datetime.today()
 		rows = {m.row() for m in self.extent_table.selectedIndexes()}
-		if len(rows) == 0:
-			r = None
-		else:
-			r = rows
-		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(r)]
+		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(rows)]
+		t1 = datetime.datetime.today()
 		self.overview.highlight_ranges(ranges)
+		t2 = datetime.datetime.today()
+		fmdb.print_times('pick_ex', [t0, t1, t2])
 
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
@@ -610,15 +610,22 @@ class fmgui(QtGui.QMainWindow):
 
 	def load_extents(self, f):
 		'''Populate the extent table.'''
+		t0 = datetime.datetime.today()
 		if isinstance(f, list):
 			new_data = f
 		else:
 			new_data = [x for x in f]
+		t1 = datetime.datetime.today()
 		self.extent_table.sortByColumn(-1)
+		t2 = datetime.datetime.today()
 		self.etm.revise(new_data)
+		t3 = datetime.datetime.today()
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
+		t4 = datetime.datetime.today()
 		self.extent_dock.setWindowTitle('Extents (%s)' % fmcli.format_number(fmcli.units_none, len(new_data)))
+		t5 = datetime.datetime.today()
+		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
 
 	def query_inodes(self, args):
 		'''Query for extents mapped to ranges of inodes.'''
@@ -775,25 +782,39 @@ class OverviewModel(QtCore.QObject):
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
 		t1 = datetime.datetime.today()
+		h = False
 		for i in range(0, olen):
-			x = int(math.floor(i * o2s))
-			y = int(math.ceil((i + 1) * o2s))
+			x = int(round(i * o2s))
+			y = int(round((i + 1) * o2s))
 			ss = self.overview_big[x:y]
 			ovs = fmdb.overview_block()
 			for s in ss:
 				ovs.add(s)
-			h = is_highlighted(i)
-			if h:
-				ov_str.append('<b>')
+			if is_highlighted(i):
+				if not h:
+					ov_str.append('<span style="background: #e0e0e0; font-weight: bold;">')
+				h = True
+			else:
+				if h:
+					ov_str.append('</span>')
+				h = False
 			ov_str.append(ovs.to_letter())
-			if h:
-				ov_str.append('</b>')
+		if h:
+			ov_str.append('</b>')
 		t2 = datetime.datetime.today()
-		#print("render ", t1 - t0, t2 - t1)
+		fmdb.print_times('render', [t0, t1, t2])
 		cursor = self.ctl.textCursor()
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
+		vs = self.ctl.verticalScrollBar()
+		old_v = vs.value()
+		old_max = vs.maximum()
 		self.ctl.setText(''.join(ov_str))
+		if old_max > 0:
+			if vs.maximum() == old_max:
+				vs.setValue(old_v)
+			else:
+				vs.setValue(int(vs.maximum() * float(old_v) / old_max))
 		self.rendered.emit()
 
 	def resize_ctl(self, event):
@@ -932,6 +953,8 @@ class StringQuery(FmQuery):
 
 	def add_to_history(self, string):
 		'''Add a string to the history.'''
+		if len(self.history) > 0 and self.history[-1] == string:
+			return
 		if string in self.history:
 			self.history.remove(string)
 		r = self.ctl.findText(string)

@@ -43,6 +43,11 @@ class poff_row(object):
 
 dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
+def print_times(label, times):
+	'''Print some profiling data.'''
+	l = [str(times[i] - times[i - 1]) for i in range(1, len(times))]
+	print('%s: %s' % (label, ', '.join(l)))
+
 class overview_block(object):
 	def __init__(self):
 		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = self.symlink = 0
@@ -90,6 +95,9 @@ class overview_block(object):
 		if ov.symlink > x:
 			letter = 's'
 		return letter
+
+	def __str__(ov):
+		return '(f:%d d:%d e:%d m:%d x:%d s:%d)' % (ov.files, ov.dirs, ov.mappings, ov.metadata, ov.xattrs, ov.symlink)
 
 class fmdb(object):
 	'''filemapper database'''
@@ -275,7 +283,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 					for i in range(start_cell, end_cell + 1):
 						overview[i].symlink += 1
 		t2 = datetime.datetime.today()
-		print(t2 - t1, t1 - t0)
+		print_times('overview', [t0, t1, t2])
 		self.cached_overview.append([self.overview_len, overview])
 		return overview
 
@@ -384,8 +392,10 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				qarg.append(r[1])
 				qarg.append(r[0])
 		qstr = qstr + " ORDER BY path, l_off"
+		print(qstr, qarg)
+		t0 = datetime.datetime.today()
 		cur.execute(qstr, qarg)
-		#print(qstr, qarg)
+		t1 = datetime.datetime.today()
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
@@ -393,6 +403,8 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 			for row in rows:
 				yield poff_row(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
+		t2 = datetime.datetime.today()
+		print_times('poff_range', [t0, t1, t2])
 
 	def query_paths(self, paths):
 		'''Query extents used by a given path.'''
