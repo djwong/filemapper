@@ -392,7 +392,7 @@ CREATE INDEX extent_ino_i ON extent_t(ino);
 				qarg.append(r[1])
 				qarg.append(r[0])
 		qstr = qstr + " ORDER BY path, l_off"
-		print(qstr, qarg)
+		#print(qstr, qarg)
 		t0 = datetime.datetime.today()
 		cur.execute(qstr, qarg)
 		t1 = datetime.datetime.today()

@@ -271,7 +271,7 @@ class fmgui(QtGui.QMainWindow):
 			uic.loadUi('%s/filemapper.ui' % os.environ['FM_LIB_DIR'], self)
 		except:
 			uic.loadUi('filemapper.ui', self)
-		self.setWindowTitle('%s - QFileMapper' % self.fmdb.fspath)
+		self.setWindowTitle('%s - FileMapper' % self.fmdb.fspath)
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
 
@@ -588,6 +588,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_overview(self, args):
 		'''Query for extents mapped to ranges of overview cells.'''
+		if len(args) == 0:
+			return self.load_extents([])
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -603,6 +605,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_loff(self, args):
 		'''Query for extents mapped to ranges of logical bytes.'''
+		if len(args) == 0:
+			return self.load_extents([])
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -617,6 +621,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_poff(self, args):
 		'''Query for extents mapped to ranges of physical bytes.'''
+		if len(args) == 0:
+			return self.load_extents([])
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -650,6 +656,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_inodes(self, args):
 		'''Query for extents mapped to ranges of inodes.'''
+		if len(args) == 0:
+			return self.load_extents([])
 		ranges = []
 		for arg in args:
 			if arg == 'all':
@@ -664,6 +672,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_lengths(self, args):
 		'''Query for extents based on ranges of lengths.'''
+		if len(args) == 0:
+			return self.load_extents([])
 		ranges = []
 		for arg in args:
 			if arg == 'all':
