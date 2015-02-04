@@ -1049,7 +1049,7 @@ class StringQuery(FmQuery):
 		self.ctl.setCurrentIndex(self.history.index(string))
 
 	def export_state(self):
-		return {'edit_string': str(self.edit_string), 'history': self.history}
+		return {'edit_string': str(self.edit_string), 'history': self.history[-100:]}
 
 	def import_state(self, data):
 		self.edit_string = data['edit_string']
