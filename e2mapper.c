@@ -48,6 +48,7 @@ static char *dbindex = "CREATE INDEX inode_i ON inode_t(ino);\
 CREATE INDEX path_ino_i ON path_t(ino);\
 CREATE INDEX path_path_i ON path_t(path);\
 CREATE INDEX dir_ino_i ON dir_t(dir_ino);\
+CREATE INDEX dir_nino_i ON dir_t(name_ino);\
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);\
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);\
 CREATE INDEX extent_ino_i ON extent_t(ino);";
