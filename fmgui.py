@@ -19,6 +19,37 @@ null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
 bold_font.setBold(True)
 
+class MessagePump(object):
+	'''Helper class to prime the QT message queue periodically.'''
+	def __init__(self, on_fn, off_fn):
+		self.last = None
+		self.interval = None
+		self.i_start = datetime.timedelta(seconds = 1)
+		self.i_run = datetime.timedelta(milliseconds = 50)
+		self.on_fn = on_fn
+		self.off_fn = off_fn
+
+	def start(self):
+		'''Set ourselves up for periodic message pumping.'''
+		self.last = datetime.datetime.today()
+		self.interval = self.i_start
+
+	def pump(self):
+		'''Actually pump messages.'''
+		now = datetime.datetime.today()
+		if now > self.last + self.interval:
+			if self.interval == self.i_start:
+				self.on_fn()
+			self.interval = self.i_run
+			QtGui.QApplication.processEvents()
+			self.last = now
+
+	def stop(self):
+		'''Tear down message pumping.'''
+		self.off_fn()
+		self.last = None
+		self.interval = None
+
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
 	def __init__(self, fs, data, units, rows_to_show=500, parent=None, *args):
@@ -275,6 +306,8 @@ class fmgui(QtGui.QMainWindow):
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
 
+		self.mp = MessagePump(self.mp_start, self.mp_stop)
+
 		# Set up the units menu
 		units = fmcli.units_auto
 		self.unit_actions = self.menuUnits.actions()
@@ -285,7 +318,7 @@ class fmgui(QtGui.QMainWindow):
 		self.actionChangeFont.triggered.connect(self.change_font)
 
 		# Set up the overview
-		self.overview = OverviewModel(fmdb, self.overview_text)
+		self.overview = OverviewModel(fmdb, self.overview_text, yield_fn = self.mp.pump)
 		self.overview.rendered.connect(self.do_summary)
 		self.overview_text.selectionChanged.connect(self.select_overview)
 		self.ost = QtCore.QTimer()
@@ -390,6 +423,18 @@ class fmgui(QtGui.QMainWindow):
 		self.load_state()
 		self.overview.load()
 		self.show()
+
+	def mp_start(self):
+		'''Disable UI elements during message pumping.'''
+		self.query_frame.setEnabled(False)
+		self.overview_text.setEnabled(False)
+		self.fs_tree.setEnabled(False)
+
+	def mp_stop(self):
+		'''Enable UI elements after message pumping.'''
+		self.query_frame.setEnabled(True)
+		self.overview_text.setEnabled(True)
+		self.fs_tree.setEnabled(True)
 
 	def change_font(self):
 		'''Change the overview font.'''
@@ -509,6 +554,14 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_extent_table(self, n, o):
 		'''Handle the selection of extent table rows.'''
+		self.mp.start()
+		try:
+			self.__pick_extents()
+		finally:
+			self.mp.stop()
+
+	def __pick_extents(self):
+		'''Tell the overview to highlight the selected extents.'''
 		t0 = datetime.datetime.today()
 		rows = {m.row() for m in self.extent_table.selectedIndexes()}
 		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(rows)]
@@ -565,15 +618,15 @@ class fmgui(QtGui.QMainWindow):
 	def run_query(self):
 		'''Dispatch a query to populate the extent table.'''
 		self.ost.stop()
+		self.mp.start()
+		idx = self.querytype_combo.currentIndex()
+		qt = self.query_types[idx]
 		try:
-			QtGui.QApplication.processEvents()
-			idx = self.querytype_combo.currentIndex()
-			qt = self.query_types[idx]
 			qt.run_query()
-			self.pick_extent_table(None, None)
+			self.__pick_extents()
 			# XXX: should we clear the fs tree and extent selection too?
 		finally:
-			self.setEnabled(True)
+			self.mp.stop()
 		self.save_state()
 
 	def query_extent_type(self, args):
@@ -642,24 +695,18 @@ class fmgui(QtGui.QMainWindow):
 
 	def load_extents(self, f):
 		'''Populate the extent table.'''
-		def g(n):
-			now = datetime.datetime.today()
-			if now > c.last_eventloop + c.loop_interval:
-				self.setEnabled(False)
-				c.loop_interval = datetime.timedelta(milliseconds = 50)
-				QtGui.QApplication.processEvents()
-				c.last_eventloop = now
-			return n
 		t0 = datetime.datetime.today()
 		if isinstance(f, list):
 			new_data = f
 		else:
-			class crap:
-				pass
-			c = crap()
-			c.loop_interval = datetime.timedelta(milliseconds = 1000)
-			c.last_eventloop = datetime.datetime.today()
-			new_data = [g(x) for x in f]
+			n = 0
+			new_data = []
+			for x in f:
+				new_data.append(x)
+				if n > 1000:
+					self.mp.pump()
+					n = 0
+				n += 1
 		t1 = datetime.datetime.today()
 		self.extent_table.sortByColumn(-1)
 		t2 = datetime.datetime.today()
@@ -742,7 +789,7 @@ class OverviewModel(QtCore.QObject):
 	'''Render the overview into a text field.'''
 	rendered = QtCore.pyqtSignal()
 
-	def __init__(self, fmdb, ctl, precision = 65536, parent = None):
+	def __init__(self, fmdb, ctl, precision = 65536, parent = None, yield_fn = None):
 		super(OverviewModel, self).__init__(parent)
 		self.fmdb = fmdb
 		self.fs = self.fmdb.query_summary()
@@ -755,6 +802,7 @@ class OverviewModel(QtCore.QObject):
 		self.rst = QtCore.QTimer()
 		self.rst.timeout.connect(self.delayed_resize)
 		self.range_highlight = None
+		self.yield_fn = yield_fn
 		self.__do_resize()
 
 	def load(self):
@@ -858,23 +906,26 @@ class OverviewModel(QtCore.QObject):
 
 	def highlight_ranges(self, ranges):
 		'''Highlight a range of physical extents in the overview.'''
-		def compress_ranges(ranges):
-			def e(x):
-				return 1 if x in rset else 0
-			rset = set()
-			for x in ranges:
-				if type(x) == int:
-					start = end = x
-				else:
-					start, end = x
-				for x in range(start, end + 1):
-					rset.add(x)
-			return [e(n) for n in range(0, olen)]
 		old_highlight = self.range_highlight
+		# Figure out which ranges we're playing with
 		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
 		self.fmdb.set_overview_length(olen)
-		t = {x for x in self.fmdb.pick_bytes(ranges)}
-		self.range_highlight = compress_ranges(t)
+
+		# Compress that into a set
+		rset = set()
+		n = 0
+		for x in self.fmdb.pick_bytes(ranges):
+			if type(x) == int:
+				start = end = x
+			else:
+				start, end = x
+			for x in range(start, end + 1):
+				rset.add(x)
+			if n > 1000:
+				self.yield_fn()
+				n = 0
+			n += 1
+		self.range_highlight =  [(1 if n in rset else 0) for n in range(0, olen)]
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
