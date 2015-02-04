@@ -566,7 +566,6 @@ class fmgui(QtGui.QMainWindow):
 		'''Dispatch a query to populate the extent table.'''
 		self.ost.stop()
 		try:
-			self.setEnabled(False)
 			QtGui.QApplication.processEvents()
 			idx = self.querytype_combo.currentIndex()
 			qt = self.query_types[idx]
@@ -646,6 +645,8 @@ class fmgui(QtGui.QMainWindow):
 		def g(n):
 			now = datetime.datetime.today()
 			if now > c.last_eventloop + c.loop_interval:
+				self.setEnabled(False)
+				c.loop_interval = datetime.timedelta(milliseconds = 50)
 				QtGui.QApplication.processEvents()
 				c.last_eventloop = now
 			return n
@@ -656,7 +657,7 @@ class fmgui(QtGui.QMainWindow):
 			class crap:
 				pass
 			c = crap()
-			c.loop_interval = datetime.timedelta(milliseconds = 100)
+			c.loop_interval = datetime.timedelta(milliseconds = 1000)
 			c.last_eventloop = datetime.datetime.today()
 			new_data = [g(x) for x in f]
 		t1 = datetime.datetime.today()
