@@ -715,6 +715,7 @@ class fmgui(QtGui.QMainWindow):
 		self.extent_table.sortByColumn(-1)
 		t2 = datetime.datetime.today()
 		self.etm.revise(new_data)
+		self.actionExportExtents.setEnabled(len(new_data) > 0)
 		t3 = datetime.datetime.today()
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
