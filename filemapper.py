@@ -16,17 +16,25 @@ if __name__ == "__main__":
 	parser.add_argument('-m', action = 'store_true', help = 'Enable machine-friendly outputs (CLI).')
 	parser.add_argument('-l', default = 2048, metavar = 'length', type = int, help = 'Initial overview length (CLI).')
 	parser.add_argument('-r', nargs = 1, metavar = 'fspath', help = 'Analyze a filesystem using the FIEMAP backend.')
-	parser.add_argument('-g', action = 'store_true', help = 'Run the GUI.')
+	parser.add_argument('-q', action = 'store_true', help = 'If -r is specified, exit after analyzing.')
+	parser.add_argument('-g', action = 'store_true', help = 'Start the GUI.')
 	parser.add_argument('database', help = 'Database file to store snapshots.')
 	parser.add_argument('commands', nargs = '*', \
-		help = 'Commands to run (CLI).')
+		help = 'Commands to run (CLI).  -g cannot be specified.')
 	args = parser.parse_args(sys.argv[1:])
 
 	if args.r is not None:
 		fmdb = fiemap.fiemap_db(args.r[0], args.database)
 		fmdb.analyze(True)
+		if args.q:
+			sys.exit(0)
 	else:
 		fmdb = fmdb.fmdb(None, args.database)
+
+	if args.g and len(args.commands) > 0:
+		print('-g cannot be specified with commands to run.')
+		parser.print_help()
+		sys.exit(1)
 
 	if args.g:
 		import fmgui
@@ -38,4 +46,7 @@ if __name__ == "__main__":
 		fmdb.set_overview_length(args.l)
 		fmcli = fmcli.fmcli(fmdb)
 		fmcli.machine = args.m
-		fmcli.interact('filemapper v0.5')
+		for c in args.commands:
+			fmcli.push(c)
+		if len(args.commands) == 0:
+			fmcli.interact('filemapper v0.5')
