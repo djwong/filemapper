@@ -307,6 +307,8 @@
     <addaction name="actionExtent_List"/>
     <addaction name="separator"/>
     <addaction name="actionToolbar"/>
+    <addaction name="separator"/>
+    <addaction name="actionChangeFont"/>
    </widget>
    <widget class="QMenu" name="menuUnits">
     <property name="title">
@@ -340,6 +342,9 @@
    <property name="text">
     <string>Quit</string>
    </property>
+   <property name="statusTip">
+    <string>Quit this program.</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+Q</string>
    </property>
@@ -354,6 +359,9 @@
    <property name="text">
     <string>Automatic</string>
    </property>
+   <property name="statusTip">
+    <string>Automatically choose display units.</string>
+   </property>
   </action>
   <action name="actionBytes">
    <property name="checkable">
@@ -361,6 +369,9 @@
    </property>
    <property name="text">
     <string>Bytes</string>
+   </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of bytes.</string>
    </property>
   </action>
   <action name="actionSectors">
@@ -370,6 +381,9 @@
    <property name="text">
     <string>Sectors</string>
    </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of 512-byte sectors.</string>
+   </property>
   </action>
   <action name="actionBlocks">
    <property name="checkable">
@@ -377,6 +391,9 @@
    </property>
    <property name="text">
     <string>Blocks</string>
+   </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of file system blocks.</string>
    </property>
   </action>
   <action name="actionKiB">
@@ -386,6 +403,9 @@
    <property name="text">
     <string>KiB</string>
    </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of kibibytes (1,024 bytes).</string>
+   </property>
   </action>
   <action name="actionMiB">
    <property name="checkable">
@@ -393,6 +413,9 @@
    </property>
    <property name="text">
     <string>MiB</string>
+   </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of mebibytes (1,024 kibibytes).</string>
    </property>
   </action>
   <action name="actionGiB">
@@ -402,6 +425,9 @@
    <property name="text">
     <string>GiB</string>
    </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of gibibytes (1,024 mebibytes).</string>
+   </property>
   </action>
   <action name="actionTiB">
    <property name="checkable">
@@ -409,6 +435,9 @@
    </property>
    <property name="text">
     <string>TiB</string>
+   </property>
+   <property name="statusTip">
+    <string>Always display sizes in units of tebibytes (1,024 gibibytes).</string>
    </property>
   </action>
   <action name="actionFileSystem_Tree">
@@ -421,6 +450,9 @@
    <property name="text">
     <string>File System</string>
    </property>
+   <property name="statusTip">
+    <string>Show or hide the file system tree.</string>
+   </property>
   </action>
   <action name="actionExtent_List">
    <property name="checkable">
@@ -432,6 +464,9 @@
    <property name="text">
     <string>Extents</string>
    </property>
+   <property name="statusTip">
+    <string>Show or hide the list of extents.</string>
+   </property>
   </action>
   <action name="actionToolbar">
    <property name="checkable">
@@ -442,6 +477,17 @@
    </property>
    <property name="text">
     <string>Toolbar</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide the query tools.</string>
+   </property>
+  </action>
+  <action name="actionChangeFont">
+   <property name="text">
+    <string>Change Overview Font...</string>
+   </property>
+   <property name="statusTip">
+    <string>Change the font in the overview.</string>
    </property>
   </action>
  </widget>
