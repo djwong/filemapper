@@ -175,11 +175,13 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 	fe_lblk = None
 	fe_len = None
 	while block <= end_block:
-		indata = struct.pack('I', block)
+		indata = struct.pack('i', block)
 		res = fcntl.ioctl(fd, _FIBMAP, indata)
-		pblock = struct.unpack('I', res)[0]
+		pblock = struct.unpack('i', res)[0]
+		if pblock < 1:
+			print("URK %d" % pblock)
 		if fe_pblk is not None:
-			if pblock != fe_pblk + fe_len:
+			if pblock < 1 or pblock != fe_pblk + fe_len:
 				yield _fiemap_extent(fe_lblk * block_size, \
 						fe_pblk * block_size, \
 						fe_len * block_size, 0)
@@ -187,14 +189,15 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 			else:
 				fe_len += 1
 		else:
-			if pblock != 0:
+			if pblock > 0:
 				fe_pblk = pblock
 				fe_lblk = block
 				fe_len = 1
 		block += 1
 
 	if fe_pblk is not None:
-		yield _fiemap_extent(fe_lblk, fe_pblk, fe_len, 0)
+		yield _fiemap_extent(fe_lblk * block_size, \
+				fe_pblk * block_size, fe_len * block_size, 0)
 
 def file_mappings(fd, start = 0, length = None, flags = 0):
 	if flags & FIEMAP_FLAG_FORCE_FIBMAP:
