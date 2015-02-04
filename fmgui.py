@@ -305,17 +305,20 @@ class fmgui(QtGui.QMainWindow):
 		self.setWindowTitle('%s - FileMapper' % self.fmdb.fspath)
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
-
 		self.mp = MessagePump(self.mp_start, self.mp_stop)
 
-		# Set up the units menu
+		# Set up the menu
 		units = fmcli.units_auto
 		self.unit_actions = self.menuUnits.actions()
 		ag = QtGui.QActionGroup(self)
 		for u in self.unit_actions:
 			u.setActionGroup(ag)
 		ag.triggered.connect(self.change_units)
+		self.actionExportExtents.triggered.connect(self.export_extents_csv)
+		self.actionExportExtents.setIcon(QtGui.QIcon.fromTheme('document-save'))
 		self.actionChangeFont.triggered.connect(self.change_font)
+		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
+		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
 
 		# Set up the overview
 		self.overview = OverviewModel(fmdb, self.overview_text, yield_fn = self.mp.pump)
@@ -357,6 +360,7 @@ class fmgui(QtGui.QMainWindow):
 
 		# Next, the query button
 		self.query_btn.clicked.connect(self.run_query)
+		self.query_btn.setIcon(QtGui.QIcon.fromTheme('system-search'))
 
 		# Then the check-list query data
 		extent_types = [
@@ -719,6 +723,34 @@ class fmgui(QtGui.QMainWindow):
 		t5 = datetime.datetime.today()
 		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
 
+	def export_extents_csv(self):
+		'''Export extents to a CSV file.'''
+		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export to CSV', \
+				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
+		if fn == '':
+			return
+		idx = self.querytype_combo.currentIndex()
+		qt = self.query_types[idx]
+		self.mp.start()
+		try:
+			with open(fn, 'w') as fd:
+				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
+				fd.write('# %s\n' % self.status_label.text())
+				fd.write('# Query: %s\n' % qt.summarize())
+				n = 0
+				for ext in self.etm.extents(None):
+					fd.write("'%s',%d,%d,%d,'%s','%s'\n" % \
+						(ext.path if ext.path != '' else self.fs.pathsep, \
+						 ext.p_off, ext.l_off, ext.length, \
+						 ext.flags_to_str(), \
+						 fmcli.typecodes[ext.type]))
+					if n > 1000:
+						self.mp.pump()
+						n = 0
+					n += 1
+		finally:
+			self.mp.stop()
+
 	def query_inodes(self, args):
 		'''Query for extents mapped to ranges of inodes.'''
 		if len(args) == 0:
@@ -1006,6 +1038,10 @@ class FmQuery(object):
 		'''Import state data for serialization.'''
 		raise NotImplementedError()
 
+	def summarize(self):
+		'''Summarize the state of this query as a string.'''
+		return self.label + ': '
+
 class StringQuery(FmQuery):
 	'''Handle queries that are free-form text.'''
 	def __init__(self, label, ctl, query_fn, edit_string = '', history = None, parent=None, *args):
@@ -1055,6 +1091,10 @@ class StringQuery(FmQuery):
 		self.edit_string = data['edit_string']
 		self.history = data['history']
 
+	def summarize(self):
+		x = super(StringQuery, self).summarize()
+		return x + self.edit_string
+
 class ChecklistQuery(FmQuery):
 	'''Handle queries comprising a selection of discrete items.'''
 	def __init__(self, label, ctl, query_fn, items, parent=None, *args):
@@ -1081,6 +1121,10 @@ class ChecklistQuery(FmQuery):
 				if i[0] == d['label']:
 					i[1] = d['state']
 					break
+
+	def summarize(self):
+		x = super(StringQuery, self).summarize()
+		return x + ', '.join([x for x in self.items if x[1]])
 
 class XLineEdit(QtGui.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''

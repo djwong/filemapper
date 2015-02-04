@@ -300,6 +300,8 @@
     <property name="title">
      <string>FIle</string>
     </property>
+    <addaction name="actionExportExtents"/>
+    <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menuView">
@@ -491,6 +493,17 @@
    </property>
    <property name="statusTip">
     <string>Change the font in the overview.</string>
+   </property>
+  </action>
+  <action name="actionExportExtents">
+   <property name="text">
+    <string>Export Extents as CSV...</string>
+   </property>
+   <property name="statusTip">
+    <string>Export the current extent list as CSV.</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
    </property>
   </action>
  </widget>
