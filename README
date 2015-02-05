@@ -1,0 +1,54 @@
+FileMapper: Draw pictures of the physical layout of a file system.
+
+This tool can walk every file, directory, metadata object, and symbolic link in
+a file system, record the physical locations of everything it finds, and
+draw a picture of where everything is located.
+
+The analyzer tool can use the FIEMAP or FIBMAP ioctls on a mounted file system
+to walk the directory tree looking for the data block mappings of files and
+directories.  There is a separate tool that can examine an unmounted ext[234]
+image; it will find symbolic links and metadata as well.  All results are
+recorded in a sqlite database.
+
+Once the filesystem state has been snapshotted in the database, a CLI and a
+GUI tool can be used to display pictures of where data blocks ended up on the
+underlying disk.  The GUI tool shows the file system tree, a display of the
+contents of the physical extents on the underlying disk similar to the one
+in MSDEFRAG, and a list of extents.  Selecting a file or a range of physical
+blocks shows all extents associated with the selection, although more
+specific queries against the extent table can also be made.
+
+DOWNLOADING
+
+Clone the git repository at: https://github.com/djwong/filemapper
+
+(Sorry, no tarballs or releases yet.)
+
+BUILDING
+
+Ensure that you have the development files for sqlite3, Qt4, python3, pyqt4,
+and e2fslibs installed on your system.  Then run `make' to build e2mapper.
+Everything else is written in Python.
+
+RUNNING
+
+First, index a directory (/home) and store the database (/tmp/some.db):
+
+# ./filemapper.py -r /home /tmp/some.db
+
+Then fire up the GUI:
+
+$ ./filemapper.py -g /tmp/some.db
+
+Alternately, examine a raw ext4 image:
+
+# ./e2mapper /tmp/some.db /dev/sda1
+
+Examine files in the CLI:
+
+$ ./filemapper.py /tmp/some.db
+>> help
+
+LICENSE
+
+GPL v2.  https://www.gnu.org/licenses/gpl-2.0.html
