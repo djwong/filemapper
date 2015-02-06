@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>QFileMapper</string>
+   <string>FileMapper</string>
   </property>
   <property name="windowIcon">
    <iconset>
@@ -56,6 +56,29 @@
       </property>
       <property name="acceptDrops">
        <bool>false</bool>
+      </property>
+      <property name="whatsThis">
+       <string>The physical layout of the file system.  Each letter represents a certain range (&quot;extent&quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.
+
+F = file
+D = directory
+E = file extent mappings
+M = metadata
+X = extended attributes
+S = symbolic links</string>
+      </property>
+      <property name="accessibleName">
+       <string>Physical layout</string>
+      </property>
+      <property name="accessibleDescription">
+       <string>The physical layout of the file system.  Each letter represents a certain range (&quot;extent&quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.
+
+F = file
+D = directory
+E = file extent mappings
+M = metadata
+X = extended attributes
+S = symbolic links</string>
       </property>
       <property name="verticalScrollBarPolicy">
        <enum>Qt::ScrollBarAlwaysOn</enum>
@@ -104,6 +127,15 @@
        </item>
        <item>
         <widget class="QComboBox" name="querytype_combo">
+         <property name="whatsThis">
+          <string>Select a type of query to perform against the extent table. (Alt+S)</string>
+         </property>
+         <property name="accessibleName">
+          <string>Extent query type</string>
+         </property>
+         <property name="accessibleDescription">
+          <string>Select a type of query to perform against the extent table. (Alt+S)</string>
+         </property>
          <property name="editable">
           <bool>false</bool>
          </property>
@@ -116,6 +148,15 @@
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
+         </property>
+         <property name="whatsThis">
+          <string>Write the parameters of the extent query here.</string>
+         </property>
+         <property name="accessibleName">
+          <string>Extent query text</string>
+         </property>
+         <property name="accessibleDescription">
+          <string>Write the parameters of the extent query here.</string>
          </property>
          <property name="editable">
           <bool>true</bool>
@@ -141,6 +182,15 @@
            <width>0</width>
            <height>1</height>
           </size>
+         </property>
+         <property name="whatsThis">
+          <string>Select the parameters of the query here.</string>
+         </property>
+         <property name="accessibleName">
+          <string>Extent query selections</string>
+         </property>
+         <property name="accessibleDescription">
+          <string>Select the parameters of the query here.</string>
          </property>
          <property name="verticalScrollBarPolicy">
           <enum>Qt::ScrollBarAlwaysOff</enum>
@@ -170,6 +220,15 @@
        </item>
        <item>
         <widget class="QPushButton" name="query_btn">
+         <property name="whatsThis">
+          <string>Runs the extent query, showing results in the extent list and highlighting the associated overview cells. (Alt+Q)</string>
+         </property>
+         <property name="accessibleName">
+          <string>Run query</string>
+         </property>
+         <property name="accessibleDescription">
+          <string>Runs the extent query, showing results in the extent list and highlighting the associated overview cells. (Alt+Q)</string>
+         </property>
          <property name="text">
           <string>Run &amp;Query</string>
          </property>
@@ -199,7 +258,17 @@
         </widget>
        </item>
        <item>
-        <widget class="QComboBox" name="zoom_combo"/>
+        <widget class="QComboBox" name="zoom_combo">
+         <property name="whatsThis">
+          <string>Changes the zoom level of the overview. (Alt+Z)</string>
+         </property>
+         <property name="accessibleName">
+          <string>Change overview zoom</string>
+         </property>
+         <property name="accessibleDescription">
+          <string>Changes the zoom level of the overview. (Alt+Z)</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -233,6 +302,15 @@
      </property>
      <item row="0" column="1">
       <widget class="QTreeView" name="fs_tree">
+       <property name="whatsThis">
+        <string>The file system tree at the time the snapshot was taken.  Selecting files shows all extents connected to the files; selecting directories shows all extents connected to the directories and their descendents.</string>
+       </property>
+       <property name="accessibleName">
+        <string>File system tree</string>
+       </property>
+       <property name="accessibleDescription">
+        <string>The file system tree at the time the snapshot was taken.  Selecting files shows all extents connected to the files; selecting directories shows all extents connected to the directories and their descendents.</string>
+       </property>
        <property name="selectionMode">
         <enum>QAbstractItemView::ExtendedSelection</enum>
        </property>
@@ -270,6 +348,15 @@
      </property>
      <item row="0" column="0">
       <widget class="QTreeView" name="extent_table">
+       <property name="whatsThis">
+        <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
+       </property>
+       <property name="accessibleName">
+        <string>Extent List</string>
+       </property>
+       <property name="accessibleDescription">
+        <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
+       </property>
        <property name="editTriggers">
         <set>QAbstractItemView::NoEditTriggers</set>
        </property>
