@@ -143,10 +143,8 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 	/* Internal node? */
 	if (blockcnt < 0) {
 		dbg_printf("ino=%d free=%llu\n", wf->ino, *blocknr);
-		wf->wf_db_err = insert_extent(&wf->base, wf->ino,
-					   *blocknr * fs->blocksize,
-					   0, fs->blocksize, 0,
-					   extent_codes[EXT2_XT_EXTENT]);
+		insert_extent(&wf->base, wf->ino, *blocknr * fs->blocksize,
+			      0, fs->blocksize, 0, extent_codes[EXT2_XT_EXTENT]);
 		if (wf->wf_db_err)
 			goto out;
 		return 0;
@@ -167,12 +165,11 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 		/* Insert the extent */
 		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino,
 			   *blocknr, blockcnt, 1);
-		wf->wf_db_err = insert_extent(&wf->base, wf->ino,
-				   wf->last.e_pblk * fs->blocksize,
-				   wf->last.e_lblk * fs->blocksize,
-				   wf->last.e_len * fs->blocksize,
-				   0,
-				   extent_codes[wf->type]);
+		insert_extent(&wf->base, wf->ino,
+			      wf->last.e_pblk * fs->blocksize,
+			      wf->last.e_lblk * fs->blocksize,
+			      wf->last.e_len * fs->blocksize,
+			      0, extent_codes[wf->type]);
 		if (wf->wf_db_err)
 			goto out;
 	}
@@ -215,12 +212,11 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 		if (!(extent.e_flags & EXT2_EXTENT_FLAGS_LEAF)) {
 			dbg_printf("ino=%d free=%llu\n", wf->ino,
 				   extent.e_pblk);
-			wf->wf_db_err = insert_extent(&wf->base, ino,
-						   extent.e_pblk * fs->blocksize,
-						   extent.e_lblk * fs->blocksize,
-						   fs->blocksize,
-						   0,
-						   extent_codes[EXT2_XT_EXTENT]);
+			insert_extent(&wf->base, ino,
+				      extent.e_pblk * fs->blocksize,
+				      extent.e_lblk * fs->blocksize,
+				      fs->blocksize,
+				      0, extent_codes[EXT2_XT_EXTENT]);
 			if (wf->wf_db_err)
 				goto out;
 			goto next;
@@ -246,12 +242,11 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 			flags = 0;
 			if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
 				flags |= EXTENT_UNWRITTEN;
-			wf->wf_db_err = insert_extent(&wf->base, ino,
-						   last.e_pblk * fs->blocksize,
-						   last.e_lblk * fs->blocksize,
-						   last.e_len * fs->blocksize,
-						   flags,
-						   extent_codes[type]);
+			insert_extent(&wf->base, ino,
+				      last.e_pblk * fs->blocksize,
+				      last.e_lblk * fs->blocksize,
+				      last.e_len * fs->blocksize,
+				      flags, extent_codes[type]);
 			if (wf->wf_db_err)
 				goto out;
 		}
@@ -275,12 +270,10 @@ next:
 		flags = 0;
 		if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
 			flags |= EXTENT_UNWRITTEN;
-		wf->wf_db_err = insert_extent(&wf->base, ino,
-					   last.e_pblk * fs->blocksize,
-					   last.e_lblk * fs->blocksize,
-					   last.e_len * fs->blocksize,
-					   flags,
-					   extent_codes[type]);
+		insert_extent(&wf->base, ino, last.e_pblk * fs->blocksize,
+			      last.e_lblk * fs->blocksize,
+			      last.e_len * fs->blocksize,
+			      flags, extent_codes[type]);
 		if (wf->wf_db_err)
 			goto out;
 	}
@@ -319,22 +312,20 @@ static void walk_file_mappings(struct e2map_t *wf, ext2_ino_t ino,
 	/* Where is this inode in the FS? */
 	ino_offset = inode_offset(wf->fs, ino);
 	inode_end = inode->i_extra_isize;
-	wf->wf_db_err = insert_extent(&wf->base, ino, ino_offset, 0,
-				   EXT2_INODE_SIZE(wf->fs->super),
-				   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
-				   extent_codes[EXT2_XT_METADATA]);
+	insert_extent(&wf->base, ino, ino_offset, 0,
+		      EXT2_INODE_SIZE(wf->fs->super),
+		      EXTENT_SHARED | EXTENT_NOT_ALIGNED,
+		      extent_codes[EXT2_XT_METADATA]);
 	if (wf->wf_db_err)
 		goto out;
 
 	/* inline xattr? */
 	ea_magic = (uint32_t *)(((char *)inode) + inode_end);
 	if (ext2fs_le32_to_cpu(ea_magic) == EXT2_EXT_ATTR_MAGIC) {
-		wf->wf_db_err = insert_extent(&wf->base, ino,
-					   ino_offset + inode_end,
-					   0,
-					   EXT2_INODE_SIZE(wf->fs->super) - inode_end,
-					   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
-					   extent_codes[EXT2_XT_XATTR]);
+		insert_extent(&wf->base, ino, ino_offset + inode_end,
+			      0, EXT2_INODE_SIZE(wf->fs->super) - inode_end,
+			      EXTENT_SHARED | EXTENT_NOT_ALIGNED,
+			      extent_codes[EXT2_XT_XATTR]);
 		if (wf->wf_db_err)
 			goto out;
 	}
@@ -342,9 +333,9 @@ static void walk_file_mappings(struct e2map_t *wf, ext2_ino_t ino,
 	/* external xattr? */
 	b = ext2fs_file_acl_block(wf->fs, inod);
 	if (b) {
-		wf->wf_db_err = insert_extent(&wf->base, ino, b * wf->fs->blocksize,
-					   0, wf->fs->blocksize, 0,
-					   extent_codes[EXT2_XT_XATTR]);
+		insert_extent(&wf->base, ino, b * wf->fs->blocksize,
+			      0, wf->fs->blocksize, 0,
+			      extent_codes[EXT2_XT_XATTR]);
 		if (wf->wf_db_err)
 			goto out;
 	}
@@ -353,23 +344,21 @@ static void walk_file_mappings(struct e2map_t *wf, ext2_ino_t ino,
 	    type == EXT2_FT_SYMLINK) {
 		/* inline data file or symlink? */
 		size_t sz = EXT2_I_SIZE(inode);
-		wf->wf_db_err = insert_extent(&wf->base, ino,
-				   ino_offset + offsetof(struct ext2_inode, i_block),
-				   0, sz > ib_sz ? ib_sz : sz,
-				   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
-				   extent_codes[type]);
+		insert_extent(&wf->base, ino,
+			      ino_offset + offsetof(struct ext2_inode, i_block),
+			      0, sz > ib_sz ? ib_sz : sz,
+			      EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
+			      extent_codes[type]);
 		if (wf->wf_db_err)
 			goto out;
 
 		/* inline data in xattr? */
 		if (sz <= ib_sz)
 			goto out;
-		wf->wf_db_err = insert_extent(&wf->base, ino,
-				   ino_offset + inode_end,
-				   0,
-				   EXT2_INODE_SIZE(wf->fs->super) - inode_end,
-				   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
-				   extent_codes[type]);
+		insert_extent(&wf->base, ino, ino_offset + inode_end,
+			      0, EXT2_INODE_SIZE(wf->fs->super) - inode_end,
+			      EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
+			      extent_codes[type]);
 		if (wf->wf_db_err)
 			goto out;
 	} else if (inode->i_flags & EXT4_EXTENTS_FL) {
@@ -441,11 +430,10 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	}
 
 	snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
-	wf->wf_db_err = insert_inode(&wf->base, dirent->inode,
-				     type_codes[type], path);
+	insert_inode(&wf->base, dirent->inode, type_codes[type], path);
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
-	wf->wf_db_err = insert_dentry(&wf->base, dir, name, dirent->inode);
+	insert_dentry(&wf->base, dir, name, dirent->inode);
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
 
@@ -482,9 +470,8 @@ static void walk_fs(struct e2map_t *wf)
 	if (wf->err)
 		goto out;
 
-	wf->wf_db_err = insert_inode(&wf->base, EXT2_ROOT_INO,
-				     type_codes[EXT2_FT_DIR],
-				     wf->wf_dirpath);
+	insert_inode(&wf->base, EXT2_ROOT_INO, type_codes[EXT2_FT_DIR],
+		     wf->wf_dirpath);
 	if (wf->wf_db_err)
 		goto out;
 
@@ -534,12 +521,9 @@ static void walk_bitmap(struct e2map_t *wf, int64_t ino, ext2fs_block_bitmap bm)
 		} else if (wf->err)
 			break;
 
-		wf->wf_db_err = insert_extent(&wf->base, ino,
-					   start * wf->fs->blocksize,
-					   loff,
-					   (out - start) * wf->fs->blocksize,
-					   EXTENT_SHARED,
-					   extent_codes[EXT2_XT_METADATA]);
+		insert_extent(&wf->base, ino, start * wf->fs->blocksize,
+			      loff, (out - start) * wf->fs->blocksize,
+			      EXTENT_SHARED, extent_codes[EXT2_XT_METADATA]);
 
 		if (wf->wf_db_err)
 			break;
@@ -624,11 +608,9 @@ static void walk_metadata(struct e2map_t *wf)
 			ext2fs_fast_mark_block_bitmap2(sb_bmap, s);
 			INJECT_METADATA(group_ino, path, ino, "superblock",
 					EXT2_FT_REG_FILE);
-			wf->wf_db_err = insert_extent(&wf->base, ino,
-						s * fs->blocksize,
-						0, fs->blocksize,
-						EXTENT_SHARED,
-						extent_codes[EXT2_XT_METADATA]);
+			insert_extent(&wf->base, ino, s * fs->blocksize,
+				      0, fs->blocksize, EXTENT_SHARED,
+				      extent_codes[EXT2_XT_METADATA]);
 			if (wf->wf_db_err)
 				goto out;
 			ino--;
@@ -640,11 +622,9 @@ static void walk_metadata(struct e2map_t *wf)
 			ext2fs_fast_mark_block_bitmap_range2(sb_gdt, o, u);
 			INJECT_METADATA(group_ino, path, ino, "descriptor",
 					EXT2_FT_REG_FILE);
-			wf->wf_db_err = insert_extent(&wf->base, ino,
-						o * fs->blocksize,
-						0, u * fs->blocksize,
-						EXTENT_SHARED,
-						extent_codes[EXT2_XT_METADATA]);
+			insert_extent(&wf->base, ino, o * fs->blocksize,
+				      0, u * fs->blocksize, EXTENT_SHARED,
+				      extent_codes[EXT2_XT_METADATA]);
 			if (wf->wf_db_err)
 				goto out;
 			ino--;
@@ -655,11 +635,9 @@ static void walk_metadata(struct e2map_t *wf)
 			ext2fs_fast_mark_block_bitmap_range2(sb_gdt, n, u);
 			INJECT_METADATA(group_ino, path, ino, "descriptor",
 					EXT2_FT_REG_FILE);
-			wf->wf_db_err = insert_extent(&wf->base, ino,
-						n * fs->blocksize,
-						0, u * fs->blocksize,
-						EXTENT_SHARED,
-						extent_codes[EXT2_XT_METADATA]);
+			insert_extent(&wf->base, ino, n * fs->blocksize,
+				      0, u * fs->blocksize, EXTENT_SHARED,
+				      extent_codes[EXT2_XT_METADATA]);
 			if (wf->wf_db_err)
 				goto out;
 			ino--;
@@ -670,10 +648,9 @@ static void walk_metadata(struct e2map_t *wf)
 		ext2fs_fast_mark_block_bitmap2(sb_bbitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "block_bitmap",
 				EXT2_FT_REG_FILE);
-		wf->wf_db_err = insert_extent(&wf->base, ino, s * fs->blocksize,
-					0, fs->blocksize,
-					EXTENT_SHARED,
-					extent_codes[EXT2_XT_METADATA]);
+		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
+			      fs->blocksize, EXTENT_SHARED,
+			      extent_codes[EXT2_XT_METADATA]);
 		if (wf->wf_db_err)
 			goto out;
 		ino--;
@@ -683,10 +660,9 @@ static void walk_metadata(struct e2map_t *wf)
 		ext2fs_fast_mark_block_bitmap2(sb_ibitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "inode_bitmap",
 				EXT2_FT_REG_FILE);
-		wf->wf_db_err = insert_extent(&wf->base, ino, s * fs->blocksize,
-					0, fs->blocksize,
-					EXTENT_SHARED,
-					extent_codes[EXT2_XT_METADATA]);
+		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
+			      fs->blocksize, EXTENT_SHARED,
+			      extent_codes[EXT2_XT_METADATA]);
 		if (wf->wf_db_err)
 			goto out;
 		ino--;
@@ -697,11 +673,9 @@ static void walk_metadata(struct e2map_t *wf)
 				fs->inode_blocks_per_group);
 		INJECT_METADATA(group_ino, path, ino, "inodes",
 				EXT2_FT_REG_FILE);
-		wf->wf_db_err = insert_extent(&wf->base, ino, s * fs->blocksize,
-					0,
-					fs->inode_blocks_per_group * fs->blocksize,
-					EXTENT_SHARED,
-					extent_codes[EXT2_XT_METADATA]);
+		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
+			      fs->inode_blocks_per_group * fs->blocksize,
+			      EXTENT_SHARED, extent_codes[EXT2_XT_METADATA]);
 		if (wf->wf_db_err)
 			goto out;
 		ino--;
@@ -825,12 +799,12 @@ int main(int argc, char *argv[])
 	prepare_db(&wf.base);
 	CHECK_ERROR("while preparing database");
 	total_bytes = ext2fs_blocks_count(fs->super) * fs->blocksize;
-	err = collect_fs_stats(&wf.base, fs->device_name, fs->blocksize,
-			fs->fragsize, total_bytes,
-			ext2fs_free_blocks_count(fs->super) * fs->blocksize,
-			fs->super->s_inodes_count,
-			fs->super->s_free_inodes_count,
-			EXT2_NAME_LEN);
+	collect_fs_stats(&wf.base, fs->device_name, fs->blocksize,
+			 fs->fragsize, total_bytes,
+			 ext2fs_free_blocks_count(fs->super) * fs->blocksize,
+			 fs->super->s_inodes_count,
+			 fs->super->s_free_inodes_count,
+			 EXT2_NAME_LEN);
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */
@@ -844,13 +818,13 @@ int main(int argc, char *argv[])
 	/* Generate indexes and finalize. */
 	index_db(&wf.base);
 	CHECK_ERROR("while indexing database");
-	err = finalize_fs_stats(&wf.base, fs->device_name);
+	finalize_fs_stats(&wf.base, fs->device_name);
 	CHECK_ERROR("while finalizing database");
 
 	/* Cache overviews. */
-	err = cache_overview(&wf.base, total_bytes, 2048);
+	cache_overview(&wf.base, total_bytes, 2048);
 	CHECK_ERROR("while caching CLI overview");
-	err = cache_overview(&wf.base, total_bytes, 65536);
+	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
 out:
 	iconv_close(iconv_ctl);
