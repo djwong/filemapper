@@ -31,6 +31,8 @@ if __name__ == "__main__":
 	if args.r is not None:
 		fmdb = fmdb.fiemap_db(args.r[0], args.database)
 		fmdb.analyze(True)
+		fmdb.cache_overview(2048)
+		fmdb.cache_overview(65536)
 		if args.q:
 			sys.exit(0)
 	else:

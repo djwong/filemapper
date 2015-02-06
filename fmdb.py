@@ -157,6 +157,7 @@ PRAGMA application_id = %d;
 PRAGMA journal_mode = WAL;
 DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
+DROP TABLE IF EXISTS overview_t;
 DROP TABLE IF EXISTS dentry_t;
 DROP TABLE IF EXISTS extent_t;
 DROP TABLE IF EXISTS extent_type_t;
@@ -172,6 +173,7 @@ CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGE
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
+CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % APP_ID]
 	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
@@ -188,6 +190,7 @@ CREATE INDEX dir_nino_i ON dir_t(name_ino);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);
 CREATE INDEX extent_ino_i ON extent_t(ino);
+CREATE INDEX overview_cell_i ON overview_t(length, cell_no);
 PRAGMA foreign_key_check;
 '''
 
@@ -197,8 +200,13 @@ def print_times(label, times):
 	print('%s: %s' % (label, ', '.join(l)))
 
 class overview_block(object):
-	def __init__(self):
-		self.files = self.dirs = self.mappings = self.metadata = self.xattrs = self.symlink = 0
+	def __init__(self, files = 0, dirs = 0, mappings = 0, metadata = 0, xattrs = 0, symlinks = 0):
+		self.files = files
+		self.dirs = dirs
+		self.mappings = mappings
+		self.metadata = metadata
+		self.xattrs = xattrs
+		self.symlinks = symlinks
 
 	def add(self, value):
 		'''Add another overview block to this one.'''
@@ -207,11 +215,11 @@ class overview_block(object):
 		self.mappings += value.mappings
 		self.metadata += value.metadata
 		self.xattrs += value.xattrs
-		self.symlink += value.symlink
+		self.symlinks += value.symlinks
 
 	def to_letter(ov):
 		'''Render this overview block as a string.'''
-		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlink
+		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlinks
 		if tot == 0:
 			return '.'
 		elif ov.files == tot:
@@ -224,7 +232,7 @@ class overview_block(object):
 			return 'M'
 		elif ov.xattrs == tot:
 			return 'X'
-		elif ov.symlink == tot:
+		elif ov.symlinks == tot:
 			return 'S'
 
 		x = ov.files
@@ -241,13 +249,14 @@ class overview_block(object):
 		if ov.xattrs > x:
 			x = ov.xattrs
 			letter = 'x'
-		if ov.symlink > x:
-			x = ov.symlink
+		if ov.symlinks > x:
+			x = ov.symlinks
 			letter = 's'
 		return letter
 
 	def __str__(ov):
-		return '(f:%d d:%d e:%d m:%d x:%d s:%d)' % (ov.files, ov.dirs, ov.mappings, ov.metadata, ov.xattrs, ov.symlink)
+		return '(f:%d d:%d e:%d m:%d x:%d s:%d)' % (ov.files, ov.dirs, \
+				ov.mappings, ov.metadata, ov.xattrs, ov.symlinks)
 
 class fmdb(object):
 	'''filemapper database'''
@@ -258,7 +267,7 @@ class fmdb(object):
 			db = dbpath
 		elif fspath is None:
 			self.writable = False
-			db = 'file:%s?mode=ro' % dbpath
+			db = 'file:%s' % dbpath
 		else:
 			self.writable = True
 			db = 'file:%s' % dbpath
@@ -270,14 +279,13 @@ class fmdb(object):
 			self.conn = sqlite3.connect(dbpath)
 		self.fs = None
 		self.overview_len = None
-		self.cached_overview = []
 		self.result_batch_size = 512
 
 		# Check the database sanity if we're reading it.
 		if not self.writable:
 			cur = self.conn.execute('PRAGMA application_id;')
 			appid = cur.fetchall()[0][0]
-			if appid != 61268:
+			if appid != APP_ID:
 				print('WARNING: This might not be a FileMapper database!')
 		self.conn.executescript(generate_op_sql())
 		if not self.writable:
@@ -373,29 +381,30 @@ class fmdb(object):
 		if self.overview_len == length:
 			return
 		self.overview_len = length
-		self.bytes_per_cell = int(self.fs.total_bytes / self.overview_len)
+		self.bytes_per_cell = int(float(self.fs.total_bytes) / self.overview_len)
 
-	def query_overview(self):
-		'''Create the overview.'''
-		for c in self.cached_overview:
-			if c[0] == self.overview_len:
-				return c[1]
-
+	def generate_overview(self, length):
+		'''Generate the overview for a given length.'''
+		length = int(length)
+		if length < 1:
+			raise ValueError('Cannot create overviews of negative length.')
 		self.query_summary()
+		bytes_per_cell = int(float(self.fs.total_bytes) / length)
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		overview = [overview_block() for x in range(0, self.overview_len)]
 
 		t0 = datetime.datetime.today()
-		cur.execute('SELECT p_off, length, type FROM extent_t;')
+		overview = [overview_block() for x in range(0, length)]
 		t1 = datetime.datetime.today()
+		cur.execute('SELECT p_off, p_end, type FROM extent_t;')
+		t2 = datetime.datetime.today()
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
-			for (e_p_off, e_len, e_type) in rows:
-				start_cell = int(e_p_off // self.bytes_per_cell)
-				end_cell = int((e_p_off + e_len - 1) // self.bytes_per_cell)
+			for (e_p_off, e_p_end, e_type) in rows:
+				start_cell = int(e_p_off // bytes_per_cell)
+				end_cell = int(e_p_end // bytes_per_cell)
 				if e_type == EXT_TYPE_FILE:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].files += 1
@@ -413,11 +422,57 @@ class fmdb(object):
 						overview[i].xattrs += 1
 				elif e_type == EXT_TYPE_SYMLINK:
 					for i in range(start_cell, end_cell + 1):
-						overview[i].symlink += 1
-		t2 = datetime.datetime.today()
-		print_times('overview', [t0, t1, t2])
-		self.cached_overview.append([self.overview_len, overview])
+						overview[i].symlinks += 1
+		t3 = datetime.datetime.today()
+		print_times('generate_overview', [t0, t1, t2, t3])
 		return overview
+
+	def query_overview(self):
+		'''Generate an overview report.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+
+		# Do we already have it in the database?
+		qstr = 'SELECT COUNT(cell_no) FROM overview_t WHERE length = ?'
+		qarg = [self.overview_len]
+		cur.execute(qstr, qarg)
+		if cur.fetchall()[0][0] == self.overview_len:
+			t0 = datetime.datetime.today()
+			qstr = 'SELECT files, dirs, mappings, metadata, xattrs, symlinks FROM overview_t WHERE length = ?'
+			qarg = [self.overview_len]
+			cur.execute(qstr, qarg)
+			while True:
+				rows = cur.fetchmany()
+				if len(rows) == 0:
+					break
+				for r in rows:
+					yield overview_block(r[0], r[1], \
+							r[2], r[3], r[4], \
+							r[5])
+			t1 = datetime.datetime.today()
+			print_times('cached_overview', [t0, t1])
+			return
+
+		# Generate the data.
+		overview = self.generate_overview(self.overview_len)
+
+		# Try to stuff it in the database.
+		try:
+			t0 = datetime.datetime.today()
+			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
+			qarg = [(self.overview_len, i, overview[i].files, overview[i].dirs, \
+				 overview[i].mappings, overview[i].metadata, \
+				 overview[i].xattrs, overview[i].symlinks) \
+				 for i in range(0, self.overview_len)]
+			cur.executemany(qstr, qarg)
+			self.conn.commit()
+
+			t1 = datetime.datetime.today()
+			print_times('store_overview', [t0, t1])
+		except:
+			pass
+		for row in overview:
+			yield row
 
 	def query_summary(self):
 		'''Fetch the filesystem summary.'''

@@ -132,6 +132,7 @@ class fmcli(code.InteractiveConsole):
 		self.fmdb = fmdb
 		readline.set_history_length(1000)
 		self.commands = {
+			('cache', 'a'): self.do_cache_overview,
 			('cell', 'c'): self.do_cell_to_extents,
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
@@ -327,6 +328,15 @@ class fmcli(code.InteractiveConsole):
 				ranges.append(n2p(self.fs, arg))
 		for x in self.fmdb.query_poff_range(ranges):
 			self.print_extent(x)
+
+	def do_cache_overview(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Create caches of the overview table.')
+		parser.add_argument('lengths', nargs = '+', \
+			help = 'Lengths of the overview tables.')
+		args = parser.parse_args(argv[1:])
+		for arg in args.lengths:
+			self.fmdb.cache_overview(arg)
 
 	def do_cell_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
