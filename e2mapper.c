@@ -22,6 +22,15 @@
 # define dbg_printf(f, a...)
 #endif
 
+struct overview_t {
+	uint64_t files;
+	uint64_t dirs;
+	uint64_t mappings;
+	uint64_t metadata;
+	uint64_t xattrs;
+	uint64_t symlinks;
+};
+
 static iconv_t iconv_ctl;
 
 static char *opschema = "\
@@ -38,6 +47,7 @@ PRAGMA application_id = 61268;\
 PRAGMA journal_mode = WAL;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
+DROP TABLE IF EXISTS overview_t;\
 DROP TABLE IF EXISTS dentry_t;\
 DROP TABLE IF EXISTS extent_t;\
 DROP TABLE IF EXISTS inode_t;\
@@ -61,6 +71,7 @@ INSERT INTO extent_type_t VALUES (3, 'm');\
 INSERT INTO extent_type_t VALUES (4, 'x');\
 INSERT INTO extent_type_t VALUES (5, 's');\
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));\
+CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));\
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;\
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;";
 
@@ -71,7 +82,9 @@ CREATE INDEX dir_ino_i ON dir_t(dir_ino);\
 CREATE INDEX dir_nino_i ON dir_t(name_ino);\
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);\
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);\
-CREATE INDEX extent_ino_i ON extent_t(ino);";
+CREATE INDEX extent_ino_i ON extent_t(ino);\
+CREATE INDEX overview_cell_i ON overview_t(length, cell_no);\
+PRAGMA foreign_key_check;";
 
 struct walk_fs_t {
 	sqlite3 *db;
@@ -98,13 +111,21 @@ static int type_codes[] = {
 #define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
 #define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
 #define EXT2_XT_XATTR		(EXT2_FT_MAX + 18)
+
+#define EXT_TYPE_FILE		0
+#define EXT_TYPE_DIR		1
+#define EXT_TYPE_EXTENT		2
+#define EXT_TYPE_METADATA	3
+#define EXT_TYPE_XATTR		4
+#define EXT_TYPE_SYMLINK	5
+
 static int extent_codes[] = {
-	[EXT2_FT_REG_FILE]	= 0,
-	[EXT2_FT_DIR]		= 1,
-	[EXT2_XT_EXTENT]	= 2,
-	[EXT2_XT_METADATA]	= 3,
-	[EXT2_XT_XATTR]		= 4,
-	[EXT2_FT_SYMLINK]	= 5,
+	[EXT2_FT_REG_FILE]	= EXT_TYPE_FILE,
+	[EXT2_FT_DIR]		= EXT_TYPE_DIR,
+	[EXT2_XT_EXTENT]	= EXT_TYPE_EXTENT,
+	[EXT2_XT_METADATA]	= EXT_TYPE_METADATA,
+	[EXT2_XT_XATTR]		= EXT_TYPE_XATTR,
+	[EXT2_FT_SYMLINK]	= EXT_TYPE_SYMLINK,
 };
 
 /* Extent flags.  Yes, these are the FIEMAP flags. */
@@ -1147,6 +1168,117 @@ out:
 	return wf.err;
 }
 
+/* Generate an overview cache. */
+static int cache_overview(sqlite3 *db, ext2_filsys fs, uint64_t length, int *db_err)
+{
+	uint64_t start_cell, end_cell, i;
+	uint64_t bytes, bytes_per_cell, e_p_off, e_p_end;
+	int e_type;
+	sqlite3_stmt *stmt = NULL;
+	struct overview_t *overview;
+	int err, err2;
+
+	/* Allocate memory */
+	overview = calloc(length, sizeof(*overview));
+	if (overview == NULL)
+		return ENOMEM;
+
+	bytes = ext2fs_blocks_count(fs->super) * fs->blocksize;
+	bytes_per_cell = bytes / length;
+
+	/* Aggregate the extents */
+	err = sqlite3_prepare_v2(db, "SELECT p_off, p_end, type FROM extent_t;",
+				 -1, &stmt, NULL);
+	if (err)
+		goto out;
+	err = sqlite3_step(stmt);
+	while (err == SQLITE_ROW) {
+		e_p_off = sqlite3_column_int64(stmt, 0);
+		e_p_end = sqlite3_column_int64(stmt, 1);
+		e_type = sqlite3_column_int(stmt, 2);
+		start_cell = e_p_off / bytes_per_cell;
+		end_cell = e_p_end / bytes_per_cell;
+		switch (e_type) {
+		case EXT_TYPE_FILE:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].files++;
+			break;
+		case EXT_TYPE_DIR:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].dirs++;
+			break;
+		case EXT_TYPE_EXTENT:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].mappings++;
+			break;
+		case EXT_TYPE_METADATA:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].metadata++;
+			break;
+		case EXT_TYPE_XATTR:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].xattrs++;
+			break;
+		case EXT_TYPE_SYMLINK:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].symlinks++;
+			break;
+		}
+		err = sqlite3_step(stmt);
+	}
+	if (err && err != SQLITE_DONE)
+		goto out;
+	err = sqlite3_finalize(stmt);
+	if (err)
+		goto out;
+	stmt = NULL;
+
+	/* Now spit it back to the database */
+	err = sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+				 -1, &stmt, NULL);
+	if (err)
+		goto out;
+	for (i = 0; i < length; i++) {
+		err = sqlite3_bind_int64(stmt, 1, length);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 2, i);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 3, overview[i].files);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 4, overview[i].dirs);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 5, overview[i].mappings);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 6, overview[i].metadata);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 7, overview[i].xattrs);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 8, overview[i].symlinks);
+		if (err)
+			goto out;
+		err = sqlite3_step(stmt);
+		if (err && err != SQLITE_DONE)
+			goto out;
+		err = sqlite3_reset(stmt);
+		if (err)
+			goto out;
+	}
+out:
+	err2 = sqlite3_finalize(stmt);
+	if (!err)
+		err = err2;
+	free(overview);
+	*db_err = err;
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	const char *dbfile;
@@ -1246,6 +1378,28 @@ int main(int argc, char *argv[])
 	if (err) {
 		com_err(dbfile, 0, "%s while finalizing database",
 			sqlite3_errstr(err));
+		goto out;
+	}
+
+	/* Cache overviews. */
+	err = cache_overview(db, fs, 2048, &db_err);
+	if (err) {
+		com_err(dbfile, err, "while caching overview");
+		goto out;
+	}
+	if (db_err) {
+		com_err(dbfile, 0, "%d %s while caching overview",
+			db_err, sqlite3_errstr(db_err));
+		goto out;
+	}
+	err = cache_overview(db, fs, 65536, &db_err);
+	if (err) {
+		com_err(dbfile, err, "while caching overview");
+		goto out;
+	}
+	if (db_err) {
+		com_err(dbfile, 0, "%s caching overview database",
+			sqlite3_errstr(db_err));
 		goto out;
 	}
 out:
