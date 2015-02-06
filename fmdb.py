@@ -427,6 +427,28 @@ class fmdb(object):
 		print_times('generate_overview', [t0, t1, t2, t3])
 		return overview
 
+	def cache_overview(self, length):
+		'''Generate and cache overview data.'''
+		# Generate the data.
+		overview = self.generate_overview(length)
+
+		# Try to stuff it in the database.
+		try:
+			t0 = datetime.datetime.today()
+			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
+			qarg = [(length, i, overview[i].files, overview[i].dirs, \
+				 overview[i].mappings, overview[i].metadata, \
+				 overview[i].xattrs, overview[i].symlinks) \
+				 for i in range(0, length)]
+			cur.executemany(qstr, qarg)
+			self.conn.commit()
+
+			t1 = datetime.datetime.today()
+			print_times('store_overview', [t0, t1])
+		except:
+			pass
+		return overview
+
 	def query_overview(self):
 		'''Generate an overview report.'''
 		cur = self.conn.cursor()
@@ -453,25 +475,8 @@ class fmdb(object):
 			print_times('cached_overview', [t0, t1])
 			return
 
-		# Generate the data.
-		overview = self.generate_overview(self.overview_len)
-
-		# Try to stuff it in the database.
-		try:
-			t0 = datetime.datetime.today()
-			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
-			qarg = [(self.overview_len, i, overview[i].files, overview[i].dirs, \
-				 overview[i].mappings, overview[i].metadata, \
-				 overview[i].xattrs, overview[i].symlinks) \
-				 for i in range(0, self.overview_len)]
-			cur.executemany(qstr, qarg)
-			self.conn.commit()
-
-			t1 = datetime.datetime.today()
-			print_times('store_overview', [t0, t1])
-		except:
-			pass
-		for row in overview:
+		# Generate and cache it, then.
+		for row in self.cache_overview(self.overview_len):
 			yield row
 
 	def query_summary(self):
