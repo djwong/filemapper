@@ -385,7 +385,6 @@ class fmdb(object):
 
 	def generate_overview(self, length):
 		'''Generate the overview for a given length.'''
-		length = int(length)
 		if length < 1:
 			raise ValueError('Cannot create overviews of negative length.')
 		self.query_summary()
@@ -430,10 +429,13 @@ class fmdb(object):
 	def cache_overview(self, length):
 		'''Generate and cache overview data.'''
 		# Generate the data.
+		length = int(length)
 		overview = self.generate_overview(length)
 
 		# Try to stuff it in the database.
 		try:
+			cur = self.conn.cursor()
+			cur.arraysize = self.result_batch_size
 			t0 = datetime.datetime.today()
 			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
 			qarg = [(length, i, overview[i].files, overview[i].dirs, \
@@ -445,7 +447,8 @@ class fmdb(object):
 
 			t1 = datetime.datetime.today()
 			print_times('store_overview', [t0, t1])
-		except:
+		except Exception as e:
+			print(e)
 			pass
 		return overview
 
