@@ -702,6 +702,8 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 
 	/* Read the inode */
 	ino_sz = EXT2_INODE_SIZE(wf->fs->super);
+	if (ino_sz < sizeof(struct ext2_inode_large))
+		ino_sz = sizeof(struct ext2_inode_large);
 	err = ext2fs_get_memzero(ino_sz, &inode);
 	if (err)
 		return err;
@@ -714,7 +716,7 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 	ino_offset = inode_offset(wf->fs, ino);
 	inode_end = inode->i_extra_isize;
 	wf->db_err = insert_extent(wf, ino, ino_offset, 0,
-				   ino_sz,
+				   EXT2_INODE_SIZE(wf->fs->super),
 				   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
 				   EXT2_XT_METADATA);
 	if (wf->db_err)
@@ -726,7 +728,7 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 		wf->db_err = insert_extent(wf, ino,
 					   ino_offset + inode_end,
 					   0,
-					   ino_sz - inode_end,
+					   EXT2_INODE_SIZE(wf->fs->super) - inode_end,
 					   EXTENT_SHARED | EXTENT_NOT_ALIGNED,
 					   EXT2_XT_XATTR);
 		if (wf->db_err)
@@ -761,7 +763,7 @@ static errcode_t walk_file_mappings(struct walk_fs_t *wf, ext2_ino_t ino,
 		wf->db_err = insert_extent(wf, ino,
 				   ino_offset + inode_end,
 				   0,
-				   ino_sz - inode_end,
+				   EXT2_INODE_SIZE(wf->fs->super) - inode_end,
 				   EXTENT_SHARED | EXTENT_DATA_INLINE | EXTENT_NOT_ALIGNED,
 				   type);
 		if (wf->db_err)
