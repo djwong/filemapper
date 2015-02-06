@@ -350,7 +350,7 @@ class fmgui(QtGui.QMainWindow):
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
 		self.query_text.setAutoCompletion(True)
-		self.query_text.setAutoCompletionCaseSensitivity(False)
+		self.query_text.setAutoCompletionCaseSensitivity(True)
 		self.query_text.setDuplicatesEnabled(False)
 		self.xle = XLineEdit(self.query_text)
 		self.xle.returnPressed.connect(self.run_query)
