@@ -526,19 +526,20 @@ class fmgui(QtGui.QMainWindow):
 				return p + '*'
 			return p
 		self.ost.stop()
-		nodes = {m.internalPointer() for m in self.fs_tree.selectedIndexes()}
-		paths = [n.path if n.path != '' else '/' for n in nodes]
+		extent_paths = []
+		query_paths = []
 		keymod = int(QtGui.QApplication.keyboardModifiers())
-		if keymod & QtCore.Qt.AltModifier:
-			if len(paths) == 0:
-				self.etm.highlight_names(None)
+		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
+		for m in self.fs_tree.selectedIndexes():
+			node = m.internalPointer()
+			p = node.path if node.path != '' else '/'
+			if node.hasChildren() and not is_meta:
+				extent_paths.append(p)
+				query_paths.append(p + '*')
 			else:
-				self.etm.highlight_names(paths)
-			p = [np(n) for n in nodes]
-		else:
-			self.etm.highlight_names(None)
-			p = paths
-		self.enter_query(self.query_paths, ' '.join(p))
+				query_paths.append(p)
+		self.etm.highlight_names(extent_paths)
+		self.enter_query(self.query_paths, ' '.join(query_paths))
 		self.run_query()
 
 	def pick_extent_table(self, n, o):
