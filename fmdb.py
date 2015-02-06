@@ -139,6 +139,8 @@ class dentry(object):
 	def typestr(self):
 		return inode_types[self.type]
 
+# Database strings
+APP_ID = 0xEF54
 def generate_op_sql():
 	'''Generate per-connection database settings.'''
 	return '''PRAGMA cache_size = 65536;
@@ -150,6 +152,7 @@ PRAGMA threads = 8;'''
 def generate_schema_sql():
 	'''Generate the database schema.'''
 	x = ['''PRAGMA page_size = 4096;
+PRAGMA application_id = %d;
 PRAGMA journal_mode = WAL;
 DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
@@ -169,7 +172,7 @@ CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL,
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
-CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''']
+CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % APP_ID]
 	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
 	z = ["INSERT INTO extent_type_t VALUES (%d, '%s');" % (x, extent_types[x]) for x in sorted(extent_types.keys())]
 	return '\n'.join(x + y + z)
@@ -250,10 +253,13 @@ class fmdb(object):
 	def __init__(self, fspath, dbpath):
 		'''Initialize a database object.'''
 		if dbpath == ':memory:':
+			self.writable = True
 			db = dbpath
 		elif fspath is None:
+			self.writable = False
 			db = 'file:%s?mode=ro' % dbpath
 		else:
+			self.writable = True
 			db = 'file:%s' % dbpath
 		self.conn = None
 		try:
@@ -265,8 +271,15 @@ class fmdb(object):
 		self.overview_len = None
 		self.cached_overview = []
 		self.result_batch_size = 512
+
+		# Check the database sanity if we're reading it.
+		if not self.writable:
+			cur = self.conn.execute('PRAGMA application_id;')
+			appid = cur.fetchall()[0][0]
+			if appid != 61268:
+				print('WARNING: This might not be a FileMapper database!')
 		self.conn.executescript(generate_op_sql())
-		if fspath is None:
+		if not self.writable:
 			cur = self.conn.cursor()
 			try:
 				cur.execute('SELECT path, finished FROM fs_t')
