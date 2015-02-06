@@ -147,6 +147,7 @@ def generate_op_sql():
 PRAGMA mmap_size = 1073741824;
 PRAGMA synchronous = OFF;
 PRAGMA locking_mode = EXCLUSIVE;
+PRAGMA case_sensitive_like = ON;
 PRAGMA threads = 8;'''
 
 def generate_schema_sql():

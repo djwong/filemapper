@@ -29,6 +29,7 @@ PRAGMA cache_size = 65536;\
 PRAGMA mmap_size = 1073741824;\
 PRAGMA synchronous = OFF;\
 PRAGMA locking_mode = EXCLUSIVE;\
+PRAGMA case_sensitive_like = ON;\
 PRAGMA threads = 8;\
 ";
 
