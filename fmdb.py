@@ -260,17 +260,18 @@ class overview_block(object):
 
 class fmdb(object):
 	'''filemapper database'''
-	def __init__(self, fspath, dbpath):
+	def __init__(self, fspath, dbpath, dbwrite):
 		'''Initialize a database object.'''
+		self.writable = dbwrite
 		if dbpath == ':memory:':
 			self.writable = True
 			db = dbpath
-		elif fspath is None:
-			self.writable = False
-			db = 'file:%s' % dbpath
-		else:
+		elif dbwrite:
 			self.writable = True
-			db = 'file:%s' % dbpath
+			db = 'file:%s?mode=rw' % dbpath
+		else:
+			self.writable = False
+			db = 'file:%s?mode=ro' % dbpath
 		self.conn = None
 		try:
 			self.conn = sqlite3.connect(db, uri = True)
@@ -282,13 +283,13 @@ class fmdb(object):
 		self.result_batch_size = 512
 
 		# Check the database sanity if we're reading it.
-		if not self.writable:
+		if fspath is None:
 			cur = self.conn.execute('PRAGMA application_id;')
 			appid = cur.fetchall()[0][0]
 			if appid != APP_ID:
 				print('WARNING: This might not be a FileMapper database!')
 		self.conn.executescript(generate_op_sql())
-		if not self.writable:
+		if fspath is None:
 			cur = self.conn.cursor()
 			try:
 				cur.execute('SELECT path, finished FROM fs_t')
@@ -434,6 +435,8 @@ class fmdb(object):
 
 		# Try to stuff it in the database.
 		try:
+			if not self.writable:
+				raise Exception('Read-only database.')
 			cur = self.conn.cursor()
 			cur.arraysize = self.result_batch_size
 			t0 = datetime.datetime.today()
@@ -770,14 +773,14 @@ class fmdb(object):
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
-	def __init__(self, fspath, dbpath):
+	def __init__(self, fspath, dbpath, dbwrite):
 		if fspath is None:
 			raise ValueError('Please specify a FS path.')
-		super(fiemap_db, self).__init__(fspath, dbpath)
+		super(fiemap_db, self).__init__(fspath, dbpath, dbwrite)
 
 	def is_stale(self):
 		'''Decide if the FS should be re-analyzed.'''
-		if self.fspath == None:
+		if not self.writable:
 			return False
 		try:
 			cur = self.conn.cursor()
@@ -793,7 +796,7 @@ class fiemap_db(fmdb):
 
 	def analyze(self, force = False):
 		'''Regenerate the database.'''
-		if not force and not self.must_regenerate():
+		if not force and not self.is_stale():
 			return
 		self.start_update()
 		fiemap.walk_fs(self.fspath,

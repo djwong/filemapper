@@ -29,14 +29,14 @@ if __name__ == "__main__":
 		print(fmdb.generate_index_sql())
 
 	if args.r is not None:
-		fmdb = fmdb.fiemap_db(args.r[0], args.database)
+		fmdb = fmdb.fiemap_db(args.r[0], args.database, True)
 		fmdb.analyze(True)
 		fmdb.cache_overview(2048)
 		fmdb.cache_overview(65536)
 		if args.q:
 			sys.exit(0)
 	else:
-		fmdb = fmdb.fmdb(None, args.database)
+		fmdb = fmdb.fmdb(None, args.database, os.access(args.database, os.W_OK))
 
 	if args.g and len(args.commands) > 0:
 		print('-g cannot be specified with commands to run.')
