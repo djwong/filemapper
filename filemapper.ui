@@ -95,7 +95,10 @@
        <item>
         <widget class="QLabel" name="label">
          <property name="text">
-          <string>Search for:</string>
+          <string>&amp;Search for:</string>
+         </property>
+         <property name="buddy">
+          <cstring>querytype_combo</cstring>
          </property>
         </widget>
        </item>
@@ -168,10 +171,10 @@
        <item>
         <widget class="QPushButton" name="query_btn">
          <property name="text">
-          <string>Show Details</string>
+          <string>Run &amp;Query</string>
          </property>
          <property name="shortcut">
-          <string>Alt+S</string>
+          <string>Alt+Q</string>
          </property>
          <property name="default">
           <bool>true</bool>
@@ -188,7 +191,10 @@
        <item>
         <widget class="QLabel" name="label_2">
          <property name="text">
-          <string>Zoom:</string>
+          <string>&amp;Zoom:</string>
+         </property>
+         <property name="buddy">
+          <cstring>zoom_combo</cstring>
          </property>
         </widget>
        </item>
