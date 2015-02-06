@@ -139,10 +139,18 @@ class dentry(object):
 	def typestr(self):
 		return inode_types[self.type]
 
+def generate_op_sql():
+	'''Generate per-connection database settings.'''
+	return '''PRAGMA cache_size = 65536;
+PRAGMA mmap_size = 1073741824;
+PRAGMA synchronous = OFF;
+PRAGMA locking_mode = EXCLUSIVE;
+PRAGMA threads = 8;'''
+
 def generate_schema_sql():
 	'''Generate the database schema.'''
-	x = ['''PRAGMA synchronous = OFF;
-PRAGMA page_size = 4096;
+	x = ['''PRAGMA page_size = 4096;
+PRAGMA journal_mode = WAL;
 DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
 DROP TABLE IF EXISTS dentry_t;
@@ -176,6 +184,7 @@ CREATE INDEX dir_nino_i ON dir_t(name_ino);
 CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);
 CREATE INDEX extent_ino_i ON extent_t(ino);
+PRAGMA foreign_key_check;
 '''
 
 def print_times(label, times):
@@ -256,8 +265,7 @@ class fmdb(object):
 		self.overview_len = None
 		self.cached_overview = []
 		self.result_batch_size = 512
-		self.conn.execute("PRAGMA cache_size = 65536")
-		self.conn.execute("PRAGMA threads = 8")
+		self.conn.executescript(generate_op_sql())
 		if fspath is None:
 			cur = self.conn.cursor()
 			try:

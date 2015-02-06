@@ -24,6 +24,7 @@ if __name__ == "__main__":
 	args = parser.parse_args(sys.argv[1:])
 
 	if args.s:
+		print(fmdb.generate_op_sql())
 		print(fmdb.generate_schema_sql())
 		print(fmdb.generate_index_sql())
 

@@ -24,10 +24,16 @@
 
 static iconv_t iconv_ctl;
 
-static char *dbschema = "PRAGMA page_size = 4096;\
+static char *opschema = "\
 PRAGMA cache_size = 65536;\
+PRAGMA mmap_size = 1073741824;\
 PRAGMA synchronous = OFF;\
+PRAGMA locking_mode = EXCLUSIVE;\
 PRAGMA threads = 8;\
+";
+
+static char *dbschema = "PRAGMA page_size = 4096;\
+PRAGMA journal_mode = WAL;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
 DROP TABLE IF EXISTS dentry_t;\
@@ -226,7 +232,9 @@ static int run_batch_query(sqlite3 *db, const char *sql)
 	p = sql;
 	err = sqlite3_prepare_v2(db, p, -1, &stmt, &tail);
 	while (err == 0 && stmt) {
-		err = sqlite3_step(stmt);
+		do {
+			err = sqlite3_step(stmt);
+		} while (err == SQLITE_ROW);
 		if (err != SQLITE_DONE)
 			break;
 		err = sqlite3_finalize(stmt);
@@ -1178,9 +1186,15 @@ int main(int argc, char *argv[])
 	iconv_ctl = iconv_open("UTF-8", "UTF-8");
 
 	/* Prepare and clean out database. */
-	err = run_batch_query(db, dbschema);
+	err = run_batch_query(db, opschema);
 	if (err) {
 		com_err(dbfile, 0, "%s while preparing database",
+			sqlite3_errstr(err));
+		goto out;
+	}
+	err = run_batch_query(db, dbschema);
+	if (err) {
+		com_err(dbfile, 0, "%s while cleaning database",
 			sqlite3_errstr(err));
 		goto out;
 	}
