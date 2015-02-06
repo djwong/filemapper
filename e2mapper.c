@@ -595,6 +595,7 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 	int			flags;
 	errcode_t		retval;
 
+	memset(&last, 0, sizeof(last));
 	retval = ext2fs_extent_open(fs, ino, &handle);
 	if (retval)
 		return retval;
@@ -603,7 +604,6 @@ static errcode_t walk_extents(struct walk_fs_t *wf, ext2_ino_t ino, int type)
 	if (retval)
 		goto out;
 
-	memset(&last, 0, sizeof(last));
 	do {
 		if (extent.e_flags & EXT2_EXTENT_FLAGS_SECOND_VISIT)
 			goto next;
