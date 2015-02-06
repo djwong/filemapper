@@ -949,7 +949,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	struct walk_fs_t wf;
 	dgrp_t group;
 	int64_t ino, group_ino;
-	blk64_t s, o, n;
+	blk64_t s, o, n, first_data_block;
 	blk_t u;
 	struct ext2_inode inode;
 	char path[PATH_MAX + 1];
@@ -972,6 +972,8 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	INJECT_ROOT_METADATA(GROUPS_DIR, EXT2_FT_DIR);
 	INJECT_ROOT_METADATA(HIDDEN_DIR, EXT2_FT_DIR);
 
+	first_data_block = fs->super->s_first_data_block;
+	fs->super->s_first_data_block = 0;
 	wf.err = ext2fs_allocate_block_bitmap(fs, "superblock", &sb_bmap);
 	if (wf.err)
 		goto out;
@@ -991,6 +993,7 @@ static errcode_t walk_metadata(sqlite3 *db, ext2_filsys fs, int *db_err)
 	wf.err = ext2fs_allocate_block_bitmap(fs, "inode tables", &sb_itable);
 	if (wf.err)
 		goto out;
+	fs->super->s_first_data_block = first_data_block;
 
 	ino = INO_GROUPS_DIR - 1;
 	snprintf(path, PATH_MAX, "%d", fs->group_desc_count);
