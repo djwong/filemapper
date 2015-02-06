@@ -120,6 +120,9 @@
          <property name="insertPolicy">
           <enum>QComboBox::NoInsert</enum>
          </property>
+         <property name="sizeAdjustPolicy">
+          <enum>QComboBox::AdjustToMinimumContentsLength</enum>
+         </property>
         </widget>
        </item>
        <item>
@@ -496,6 +499,9 @@
    </property>
   </action>
   <action name="actionExportExtents">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="text">
     <string>&amp;Export Extents as CSV...</string>
    </property>
@@ -504,9 +510,6 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+E</string>
-   </property>
-   <property name="enabled">
-    <bool>false</bool>
    </property>
   </action>
  </widget>

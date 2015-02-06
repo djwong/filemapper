@@ -1133,6 +1133,9 @@ class XLineEdit(QtGui.QLineEdit):
 		self.textChanged.connect(self.changed)
 		self.image.hide()
 		self.image.mouseReleaseEvent = self.clear_mouse_release
+		qm = self.textMargins()
+		qm.setRight(qm.right() + 24)
+		self.setTextMargins(qm)
 
 	def clear_mouse_release(self, ev):
 		QtGui.QLabel.mouseReleaseEvent(self.image, ev)
