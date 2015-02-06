@@ -337,9 +337,9 @@ class fmcli(code.InteractiveConsole):
 		args = parser.parse_args(argv[1:])
 		l = self.fmdb.overview_len
 		for arg in args.lengths:
-			self.fmdb.set_overview_len(arg)
+			self.fmdb.set_overview_length(arg)
 			self.fmdb.query_overview()
-		self.fmdb.set_overview_len(l)
+		self.fmdb.set_overview_length(l)
 
 	def do_cell_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
