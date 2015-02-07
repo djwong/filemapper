@@ -301,6 +301,7 @@ int main(int argc, char *argv[])
 {
 	const char *dbfile;
 	const char *fsdev;
+	char *errm;
 	struct ntfsmap_t wf;
 	sqlite3 *db = NULL;
 	ntfs_volume *fs = NULL;
@@ -361,6 +362,17 @@ int main(int argc, char *argv[])
 	/* Prepare and clean out database. */
 	prepare_db(&wf.base);
 	CHECK_ERROR("while preparing database");
+	wf.wf_db_err = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errm);
+	if (err) {
+		ntfs_log_error("%s while starting transaction", errm);
+		free(errm);
+		goto out;
+	}
+	if (wf.wf_db_err) {
+		ntfs_log_error("%s while starting transaction",
+				sqlite3_errstr(wf.wf_db_err));
+		goto out;
+	}
 	ntfs_volume_get_free_space(fs);
 	total_bytes = fs->nr_clusters * fs->cluster_size;
 		
@@ -401,6 +413,17 @@ int main(int argc, char *argv[])
 	CHECK_ERROR("while caching CLI overview");
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
+	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
+	if (err) {
+		ntfs_log_error("%s while ending transaction", errm);
+		free(errm);
+		goto out;
+	}
+	if (wf.wf_db_err) {
+		ntfs_log_error("%s while ending transaction",
+				sqlite3_errstr(wf.wf_db_err));
+		goto out;
+	}
 out:
 	if (wf.wf_iconv)
 		iconv_close(wf.wf_iconv);
