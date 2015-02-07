@@ -16,7 +16,7 @@ PRAGMA threads = 8;\
 
 static char *dbschema = "PRAGMA page_size = 4096;\
 PRAGMA application_id = 61268;\
-PRAGMA journal_mode = WAL;\
+PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
 DROP TABLE IF EXISTS overview_t;\
