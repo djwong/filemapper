@@ -198,8 +198,11 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 		return;
 
 	wf->err = ext2fs_extent_get(handle, EXT2_EXTENT_ROOT, &extent);
-	if (wf->err)
+	if (wf->err) {
+		if (wf->err == EXT2_ET_EXTENT_NO_NEXT)
+			wf->err = 0;
 		goto out;
+	}
 
 	do {
 		if (extent.e_flags & EXT2_EXTENT_FLAGS_SECOND_VISIT)
@@ -734,7 +737,7 @@ out:
 #define CHECK_ERROR(msg) \
 do { \
 	if (wf.err) { \
-		com_err(dbfile, wf.err, (msg)); \
+		com_err(fsdev, wf.err, (msg)); \
 		goto out; \
 	} \
 	if (wf.wf_db_err) { \
@@ -747,6 +750,7 @@ int main(int argc, char *argv[])
 {
 	const char *dbfile;
 	const char *fsdev;
+	char *errm;
 	struct e2map_t wf;
 	sqlite3 *db = NULL;
 	ext2_filsys fs = NULL;
@@ -758,6 +762,8 @@ int main(int argc, char *argv[])
 		printf("Usage: %s dbfile fsdevice\n", argv[0]);
 		return 0;
 	}
+
+	add_error_table(&et_ext2_error_table);
 
 	/* Open things */
 	memset(&wf, 0, sizeof(wf));
@@ -794,6 +800,17 @@ int main(int argc, char *argv[])
 	/* Prepare and clean out database. */
 	prepare_db(&wf.base);
 	CHECK_ERROR("while preparing database");
+	wf.wf_db_err = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errm);
+	if (err) {
+		com_err(dbfile, 0, "%s while starting transaction", errm);
+		free(errm);
+		goto out;
+	}
+	if (wf.wf_db_err) {
+		com_err(dbfile, 0, "%s while starting transaction",
+				sqlite3_errstr(wf.wf_db_err));
+		goto out;
+	}
 	total_bytes = ext2fs_blocks_count(fs->super) * fs->blocksize;
 	collect_fs_stats(&wf.base, fs->device_name, fs->blocksize,
 			 fs->fragsize, total_bytes,
@@ -822,6 +839,17 @@ int main(int argc, char *argv[])
 	CHECK_ERROR("while caching CLI overview");
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
+	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
+	if (err) {
+		com_err(dbfile, 0, "%s while ending transaction", errm);
+		free(errm);
+		goto out;
+	}
+	if (wf.wf_db_err) {
+		com_err(dbfile, 0, "%s while ending transaction",
+				sqlite3_errstr(wf.wf_db_err));
+		goto out;
+	}
 out:
 	if (wf.wf_iconv)
 		iconv_close(wf.wf_iconv);
