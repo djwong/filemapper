@@ -617,13 +617,14 @@ class fmdb(object):
 			if p == self.fs.pathsep:
 				p = ''
 			if '*' in p:
-				op = 'LIKE'
+				op = 'GLOB'
 			else:
 				op = '='
 			qstr = qstr + ' %s path %s ?' % (cond, op)
 			cond = 'OR'
-			qarg.append(p.replace('*', '%'))
+			qarg.append(p)
 		qstr = qstr + " ORDER BY path, l_off"
+		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -752,12 +753,12 @@ class fmdb(object):
 		qarg = []
 		for p in paths:
 			if '*' in p:
-				op = 'LIKE'
+				op = 'GLOB'
 			else:
 				op = '='
 			qstr = qstr + ' %s path_t.path %s ?' % (cond, op)
 			cond = 'OR'
-			qarg.append(p.replace('*', '%'))
+			qarg.append(p)
 		if len(qarg) == 0:
 			cond = ''
 		else:
