@@ -518,13 +518,6 @@ class fmgui(QtGui.QMainWindow):
 
 	def pick_fs_tree(self, n, o):
 		'''Handle the selection of a FS tree nodes.'''
-		def np(n):
-			p = n.path
-			if p == '':
-				p = '/'
-			if n.hasChildren():
-				return p + '*'
-			return p
 		self.ost.stop()
 		extent_paths = []
 		query_paths = []
