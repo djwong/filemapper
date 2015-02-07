@@ -801,7 +801,7 @@ int main(int argc, char *argv[])
 	prepare_db(&wf.base);
 	CHECK_ERROR("while preparing database");
 	wf.wf_db_err = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errm);
-	if (err) {
+	if (errm) {
 		com_err(dbfile, 0, "%s while starting transaction", errm);
 		free(errm);
 		goto out;
@@ -840,7 +840,7 @@ int main(int argc, char *argv[])
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
 	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
-	if (err) {
+	if (errm) {
 		com_err(dbfile, 0, "%s while ending transaction", errm);
 		free(errm);
 		goto out;
