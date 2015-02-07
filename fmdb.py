@@ -389,7 +389,7 @@ class fmdb(object):
 		if length < 1:
 			raise ValueError('Cannot create overviews of negative length.')
 		self.query_summary()
-		bytes_per_cell = int(float(self.fs.total_bytes) / length)
+		bytes_per_cell = float(self.fs.total_bytes) / length
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 
@@ -403,8 +403,8 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for (e_p_off, e_p_end, e_type) in rows:
-				start_cell = int(e_p_off // bytes_per_cell)
-				end_cell = int(e_p_end // bytes_per_cell)
+				start_cell = int(e_p_off / bytes_per_cell)
+				end_cell = int(e_p_end / bytes_per_cell)
 				if e_type == EXT_TYPE_FILE:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].files += 1
