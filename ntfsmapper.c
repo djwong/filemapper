@@ -25,18 +25,6 @@
 #undef DEBUG
 #include "filemapper.h"
 
-#ifndef MS_RECOVER
-#define MS_RECOVER	0x10000000
-#endif
-
-#ifndef MS_FORENSIC
-#define MS_FORENSIC	0x04000000 /* No modification during mount */
-#endif
-
-#ifndef MS_RDONLY
-#define MS_RDONLY	1
-#endif
-
 struct ntfsmap_t {
 	struct filemapper_t base;
 
@@ -45,14 +33,6 @@ struct ntfsmap_t {
 	u64 dir_ino;
 	u64 total_inodes;
 	u8 *ino_bmap;
-#if 0
-	ext2_filsys fs;
-	errcode_t err;
-	ext2fs_inode_bitmap iseen;
-	ext2_ino_t ino;
-	struct ext2fs_extent last;
-	int type;
-#endif
 };
 #define wf_db		base.db
 #define wf_db_err	base.db_err
