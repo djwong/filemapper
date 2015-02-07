@@ -13,9 +13,8 @@
 #include <iconv.h>
 #include <sqlite3.h>
 #include <ext2fs/ext2fs.h>
-#include "filemapper.h"
-
 #undef DEBUG
+#include "filemapper.h"
 
 struct e2map_t {
 	struct filemapper_t base;
@@ -400,7 +399,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 		  EXT2_NAME_LEN);
 	if (sz < 0)
 		return DIRENT_ABORT;
-	dbg_printf("dir=%d name=%s/%s ino=%d type=%d\n", dir, wf->dirpath, name,
+	dbg_printf("dir=%d name=%s/%s ino=%d type=%d\n", dir, wf->wf_dirpath, name,
 		   dirent->inode, de2->file_type);
 
 	if (de2->file_type != 0) {
