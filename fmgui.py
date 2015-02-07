@@ -535,9 +535,14 @@ class fmgui(QtGui.QMainWindow):
 			p = node.path if node.path != '' else '/'
 			if node.hasChildren() and not is_meta:
 				extent_paths.append(p)
-				query_paths.append(p + '*')
+				if ' ' in p:
+					p = '"%s*"' % p
+				else:
+					p = '%s*' % p
 			else:
-				query_paths.append(p)
+				if ' ' in p:
+					p = '"%s"' % p
+			query_paths.append(p)
 		self.etm.highlight_names(extent_paths)
 		self.enter_query(self.query_paths, ' '.join(query_paths))
 		self.run_query()
