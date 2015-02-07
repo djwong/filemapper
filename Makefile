@@ -1,5 +1,5 @@
 CFLAGS=-Wall -O3 -g
-LDLIBS=-lsqlite3 -lext2fs -lcom_err
+LDLIBS=-lsqlite3 -lext2fs -lcom_err -lntfs-3g
 VERSION=0.5
 
 prefix = /usr
@@ -11,16 +11,17 @@ mandir = ${exec_prefix}/man
 man1dir = ${mandir}/man1
 appdir = ${exec_prefix}/share/applications
 
-all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop
+all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsmapper
 
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
 e2mapper: filemapper.o e2mapper.o
-
 filemapper.c: filemapper.h
-
 e2mapper.c: filemapper.h
+
+ntfsmapper: filemapper.o ntfsmapper.o
+ntfsmapper.c: filemapper.h
 
 clean:;
 	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop

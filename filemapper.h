@@ -38,6 +38,11 @@ struct overview_t {
 	uint64_t symlinks;
 };
 
+#define INO_TYPE_FILE		0
+#define INO_TYPE_DIR		1
+#define INO_TYPE_METADATA	2
+#define INO_TYPE_SYMLINK	3
+
 #define EXT_TYPE_FILE		0
 #define EXT_TYPE_DIR		1
 #define EXT_TYPE_EXTENT		2
