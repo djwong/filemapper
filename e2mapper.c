@@ -17,8 +17,6 @@
 
 #undef DEBUG
 
-static iconv_t iconv_ctl;
-
 struct e2map_t {
 	struct filemapper_t base;
 
@@ -789,9 +787,8 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	iconv_ctl = iconv_open("UTF-8", "UTF-8");
 	memset(&wf, 0, sizeof(wf));
-	wf.wf_iconv = iconv_ctl;
+	wf.wf_iconv = iconv_open("UTF-8", "UTF-8");
 	wf.wf_db = db;
 	wf.fs = fs;
 
@@ -827,7 +824,8 @@ int main(int argc, char *argv[])
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
 out:
-	iconv_close(iconv_ctl);
+	if (wf.wf_iconv)
+		iconv_close(wf.wf_iconv);
 
 	err2 = sqlite3_close(db);
 	if (err2)
