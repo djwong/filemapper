@@ -21,6 +21,7 @@
 #include <ntfs-3g/types.h>
 #include <ntfs-3g/volume.h>
 #include <ntfs-3g/dir.h>
+#include <ntfs-3g/bitmap.h>
 #undef DEBUG
 #include "filemapper.h"
 
@@ -42,6 +43,8 @@ struct ntfsmap_t {
 	ntfs_volume *fs;
 	int err;
 	u64 dir_ino;
+	u64 total_inodes;
+	u8 *ino_bmap;
 #if 0
 	ext2_filsys fs;
 	errcode_t err;
@@ -382,10 +385,8 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 	runlist *runs = NULL;
 	int i;
 
-#if 0
-	if (ext2fs_fast_test_inode_bitmap2(wf->iseen, ino))
+	if (ntfs_bit_get(wf->ino_bmap, inode->mft_no))
 		return;
-#endif
 
 	ctx = ntfs_attr_get_search_ctx(inode, NULL);
 	if (!ctx) {
@@ -412,7 +413,7 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 				      extent_codes(inode, ctx->attr->type));
 			if (wf->wf_db_err)
 				goto out;
-			dbg_printf("ino=%llu type=0x%x vcn=%llu lcn=%llu len=%llu\n",
+			dbg_printf("ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
 				inode->mft_no, ctx->attr->type, runs[i].vcn,
 				runs[i].lcn, runs[i].length);
 		}
@@ -422,6 +423,7 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 
 out:
 	free(runs);
+	ntfs_bit_set(wf->ino_bmap, inode->mft_no, 1);
 	ntfs_attr_put_search_ctx(ctx);
 	return;
 #if 0
@@ -606,12 +608,11 @@ static void walk_fs(struct ntfsmap_t *wf)
 	int err;
 
 	wf->wf_dirpath = "";
-#if 0
-	wf->err = ext2fs_allocate_inode_bitmap(fs, "visited inodes",
-					       &wf->iseen);
-	if (wf->err)
-		goto out;
-#endif
+	wf->ino_bmap = calloc(1, wf->total_inodes / 8);
+	if (!wf->ino_bmap) {
+		wf->err = ENOMEM;
+		return;
+	}
 
 	ni = ntfs_pathname_to_inode(fs, NULL, "/");
 	if (!ni) {
@@ -634,9 +635,8 @@ static void walk_fs(struct ntfsmap_t *wf)
 	if (wf->err || wf->wf_db_err)
 		goto out;
 out:
-#if 0
-	ext2fs_free_inode_bitmap(wf->iseen);
-#endif
+	free(wf->ino_bmap);
+	wf->ino_bmap = NULL;
 	ntfs_inode_close(ni);
 }
 
@@ -920,7 +920,7 @@ int main(int argc, char *argv[])
 	sqlite3 *db = NULL;
 	ntfs_volume *fs = NULL;
 	int db_err = 0;
-	uint64_t total_bytes, total_inodes, size;
+	uint64_t total_bytes, size;
 	int err = 0, err2, delta_bits;
 
 	if (argc != 3) {
@@ -986,9 +986,9 @@ int main(int argc, char *argv[])
 		size <<= delta_bits;
 	else
 		size >>= -delta_bits;
-	
+
 	/* Number of inodes at this point in time. */
-	total_inodes = (fs->mftbmp_na->allocated_size << 3) + size;
+	wf.total_inodes = (fs->mftbmp_na->allocated_size << 3) + size;
 	
 	/* Free inodes available for all and for non-privileged processes. */
 	size += fs->free_mft_records;
@@ -998,7 +998,7 @@ int main(int argc, char *argv[])
 	collect_fs_stats(&wf.base, fs->dev->d_name, fs->cluster_size,
 			fs->cluster_size, total_bytes,
 			fs->free_clusters * fs->cluster_size,
-			total_inodes, size, NTFS_MAX_NAME_LEN);
+			wf.total_inodes, size, NTFS_MAX_NAME_LEN);
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */
