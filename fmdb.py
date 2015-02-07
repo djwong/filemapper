@@ -278,6 +278,7 @@ class fmdb(object):
 		except TypeError:
 			# In Python 2.6 there's no uri parameter support
 			self.conn = sqlite3.connect(dbpath)
+		self.conn.isolation_level = None
 		self.fs = None
 		self.overview_len = None
 		self.result_batch_size = 512
@@ -310,11 +311,23 @@ class fmdb(object):
 			self.conn.close()
 
 	def start_update(self):
-		'''Prepare a database for new data.'''
+		'''Start an update process.'''
+		self.conn.execute('BEGIN TRANSACTION;')
+		pass
+
+	def finish_update(self):
+		'''End the update process.'''
+		self.conn.execute('END TRANSACTION;')
+		pass
+
+	def clear_database(self):
+		'''Erase the database and prepare it for new data.'''
 		if self.fspath is None:
 			raise ValueError('fspath must be specified.')
 		self.conn.executescript(generate_schema_sql())
 
+	def collect_fs_stats(self):
+		'''Store filesystem stats in the database.'''
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
 		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);', \
@@ -328,7 +341,7 @@ class fmdb(object):
 				 str(datetime.datetime.today()), \
 				 os.sep))
 
-	def end_update(self):
+	def finalize_fs_stats(self):
 		'''Finish updating a database.'''
 		self.conn.executescript(generate_index_sql())
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
@@ -437,6 +450,7 @@ class fmdb(object):
 		try:
 			if not self.writable:
 				raise Exception('Read-only database.')
+			self.start_update()
 			cur = self.conn.cursor()
 			cur.arraysize = self.result_batch_size
 			t0 = datetime.datetime.today()
@@ -446,7 +460,7 @@ class fmdb(object):
 				 overview[i].xattrs, overview[i].symlinks) \
 				 for i in range(0, length)]
 			cur.executemany(qstr, qarg)
-			self.conn.commit()
+			self.finish_update()
 
 			t1 = datetime.datetime.today()
 			print_times('store_overview', [t0, t1])
@@ -799,10 +813,12 @@ class fiemap_db(fmdb):
 		'''Regenerate the database.'''
 		if not force and not self.is_stale():
 			return
+		self.clear_database()
 		self.start_update()
+		self.collect_fs_stats()
 		fiemap.walk_fs(self.fspath,
 			self.insert_dir,
 			self.insert_inode,
 			self.insert_extent)
-		self.end_update()
-
+		self.finish_update()
+		self.finalize_fs_stats()
