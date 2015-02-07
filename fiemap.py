@@ -177,8 +177,6 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 		indata = struct.pack('i', block)
 		res = fcntl.ioctl(fd, _FIBMAP, indata)
 		pblock = struct.unpack('i', res)[0]
-		if pblock < 1:
-			print("URK %d" % pblock)
 		if fe_pblk is not None:
 			if pblock < 1 or pblock != fe_pblk + fe_len:
 				yield _fiemap_extent(fe_lblk * block_size, \
