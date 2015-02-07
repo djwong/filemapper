@@ -2,7 +2,7 @@ Source: filemapper
 Section: admin
 Priority: optional
 Maintainer: Darrick J. Wong <djwong@djwong.org>
-Build-Depends: debhelper (>= 9.0.0), python3, e2fslibs-dev, libsqlite3-dev
+Build-Depends: debhelper (>= 9.0.0), python3, e2fslibs-dev, libsqlite3-dev, ntfs-3g-dev
 Standards-Version: 3.9.5
 Homepage: http://djwong.org/
 #Vcs-Git: git://git.debian.org/collab-maint/filemapper.git
