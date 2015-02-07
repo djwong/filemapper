@@ -314,6 +314,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Open things */
+	memset(&wf, 0, sizeof(wf));
 	dbfile = argv[1];
 	fsdev = argv[2];
 
@@ -352,7 +353,6 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	memset(&wf, 0, sizeof(wf));
 	ntfs_set_char_encoding("utf8");
 	wf.wf_iconv = iconv_open("UTF-8", "UTF-8");
 	wf.fs = fs;

@@ -760,6 +760,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Open things */
+	memset(&wf, 0, sizeof(wf));
 	dbfile = argv[1];
 	fsdev = argv[2];
 
@@ -786,7 +787,6 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	memset(&wf, 0, sizeof(wf));
 	wf.wf_iconv = iconv_open("UTF-8", "UTF-8");
 	wf.wf_db = db;
 	wf.fs = fs;
