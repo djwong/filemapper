@@ -268,7 +268,7 @@ class fmdb(object):
 			db = dbpath
 		elif dbwrite:
 			self.writable = True
-			db = 'file:%s?mode=rw' % dbpath
+			db = 'file:%s?mode=rwc' % dbpath
 		else:
 			self.writable = False
 			db = 'file:%s?mode=ro' % dbpath
