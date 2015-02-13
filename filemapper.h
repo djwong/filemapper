@@ -1,7 +1,7 @@
 /*
  * FileMapper declarations for C.
  * Copyright 2015 Darrick J. Wong.
- * Licensed under the GPLv2.
+ * Licensed under the GPLv2+.
  */
 #ifndef FILEMAPPER_H_
 #define FILEMAPPER_H_

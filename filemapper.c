@@ -1,7 +1,7 @@
 /*
  * FileMapper definitions for C.
  * Copyright 2015 Darrick J. Wong.
- * Licensed under the GPLv2.
+ * Licensed under the GPLv2+.
  */
 #include "filemapper.h"
 
