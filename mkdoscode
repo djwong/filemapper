@@ -1,0 +1,26 @@
+#!/bin/sh -x
+
+if [ ! -d "$1" ]; then
+	echo "Usage: $0 dosfstools-src-dir"
+	exit 1
+fi
+
+dir="${PWD}"
+cd "$1"
+
+cat fsck.fat.h boot.h charconv.h check.h common.h fat.h file.h io.h lfn.h version.h > "${dir}/dosfs.h"
+cat >> "${dir}/dosfs.h" << ENDL
+#ifndef FAT_EXTRA_H_
+#define FAT_EXTRA_H_
+void add_file(DOS_FS * fs, DOS_FILE *** chain, DOS_FILE * parent, loff_t offset, FDSC ** cp);
+#endif
+ENDL
+cat > "${dir}/dosfs.c" << ENDL
+#define _XOPEN_SOURCE		600
+#define _FILE_OFFSET_BITS	64
+#define _LARGEFILE64_SOURCE	1
+#define _GNU_SOURCE		1
+#include "dosfs.h"
+ENDL
+cat boot.c charconv.c check.c common.c fat.c file.c io.c lfn.c | sed -e '/^#include "/d' -e '/^#define _LARGEFILE64_SOURCE/d' -e 's/static void add_file/void add_file/g' >> "${dir}/dosfs.c"
+exit 1

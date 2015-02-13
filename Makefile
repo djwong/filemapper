@@ -23,6 +23,9 @@ e2mapper.c: filemapper.h
 ntfsmapper: filemapper.o ntfsmapper.o
 ntfsmapper.c: filemapper.h
 
+fatmapper: filemapper.o fatmapper.o dosfs.o
+fatmapper.c: dosfs.h filemapper.h
+
 clean:;
 	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop
 
