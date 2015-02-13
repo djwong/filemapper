@@ -36,7 +36,7 @@ struct fatmap_t {
 
 /* misc. dosfs stuff */
 #define FAT_MAX_NAME_LEN	255
-int interactive = 0, rw = 0, list = 1, test = 0, verbose = 1, write_immed = 0;
+int interactive = 0, rw = 0, list = 0, test = 0, verbose = 0, write_immed = 0;
 int atari_format = 0, boot_only = 0;
 unsigned n_files = 0;
 void *mem_queue = NULL;
