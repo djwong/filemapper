@@ -1,5 +1,4 @@
 CFLAGS=-Wall -O3 -g
-LDLIBS=-lsqlite3 -lext2fs -lcom_err -lntfs-3g
 VERSION=0.5
 
 prefix = /usr
@@ -17,13 +16,19 @@ all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsma
 	gzip -9 < $< > $@
 
 e2mapper: filemapper.o e2mapper.o
+	$(CC) -o $@ $^ -lsqlite3 -lcom_err -lext2fs
+
 filemapper.c: filemapper.h
 e2mapper.c: filemapper.h
 
 ntfsmapper: filemapper.o ntfsmapper.o
+	$(CC) -o $@ $^ -lsqlite3 -lntfs-3g
+
 ntfsmapper.c: filemapper.h
 
 fatmapper: filemapper.o fatmapper.o dosfs.o
+	$(CC) -o $@ $^ -lsqlite3
+
 fatmapper.c: dosfs.h filemapper.h
 
 clean:;
