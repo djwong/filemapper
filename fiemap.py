@@ -180,7 +180,7 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 		res = fcntl.ioctl(fd, _FIBMAP, indata)
 		pblock = struct.unpack('i', res)[0]
 		if fe_pblk is not None:
-			if pblock > 0 and pblock == fe_pblk + fe_len and
+			if pblock > 0 and pblock == fe_pblk + fe_len and \
 			   fe_len <= max_extent:
 				fe_len += 1
 			else:
