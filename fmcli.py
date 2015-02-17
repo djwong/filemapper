@@ -137,6 +137,7 @@ class fmcli(code.InteractiveConsole):
 			('overview_types', 'ot'): self.do_overview_extent_types,
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
+			('fstat', 'fs'): self.do_paths_stats,
 			('flag', 'g'): self.do_extent_flag,
 			('inode', 'i'): self.do_inodes,
 			('logical', 'l'): self.do_loff_to_extents,
@@ -508,3 +509,27 @@ class fmcli(code.InteractiveConsole):
 		for arg in args.types:
 			types.add(fmdb.extent_type_strings[arg])
 		self.fmdb.set_extent_types_to_show(types)
+
+	def print_file_stats(self, ext):
+		'''Pretty-print file statistics.'''
+		if self.machine:
+			print("'%s',%d,%d,%0.2f" % \
+				(ext.path if ext.path != '' else self.fs.pathsep, \
+				 ext.inode, ext.extents, ext.score))
+			return
+		print("'%s', %d, %d, %0.2f" % \
+			(ext.path if ext.path != '' else self.fs.pathsep, \
+			 ext.inode, ext.extents, ext.score))
+
+	def do_paths_stats(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Calculate inode statistics for given paths.')
+		parser.add_argument('paths', nargs = '+', \
+			help = 'Paths to look up.')
+		args = parser.parse_args(argv[1:])
+		if '*' in args.paths:
+			for x in self.fmdb.query_paths_stats([]):
+				self.print_file_stats(x)
+			return
+		for x in self.fmdb.query_paths_stats(args.paths):
+			self.print_file_stats(x)

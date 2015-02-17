@@ -19,9 +19,11 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
+file_stats = namedtuple('file_stats', ['path', 'inode', 'extents', 'score'])
+
 # Extent types
 EXT_TYPE_FILE		= 0
-EXT_TYPE_DIR		= 1
+EXT_TYPE_DIR		= 1	# User visible extents are kept < 2
 EXT_TYPE_EXTENT		= 2
 EXT_TYPE_METADATA	= 3
 EXT_TYPE_XATTR		= 4
@@ -864,6 +866,57 @@ class fmdb(object):
 	def get_extent_types_to_show(self):
 		'''Retrieve the types of extents to show in the overview and queries.'''
 		return self.extent_types_to_show
+
+	def query_paths_stats(self, paths, ignore_sparse = False):
+		'''Query inode statistics of a the given paths.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		def get_extents():
+			qstr = 'SELECT path, ino, p_off, l_off, length FROM path_extent_v WHERE type <= ?'
+			qarg = [EXT_TYPE_DIR]
+			cond = ' AND ('
+			for p in paths:
+				if p == self.fs.pathsep:
+					p = ''
+				if '*' in p:
+					op = 'GLOB'
+				else:
+					op = '='
+				qstr = qstr + ' %s path %s ?' % (cond, op)
+				cond = 'OR'
+				qarg.append(p)
+			if len(qarg) > 0:
+				qstr += ')'
+			qstr += ' ORDER BY path, l_off'
+			#print(qstr, qarg)
+			cur.execute(qstr, qarg)
+			while True:
+				rows = cur.fetchmany()
+				if len(rows) == 0:
+					return
+				for row in rows:
+					yield row
+
+		last_path = None
+		#extents = p_dist = l_dist = last_path = last_poff = last_loff = last_ino = None
+		for (path, ino, p_off, l_off, length) in get_extents():
+			if last_path != path:
+				if last_path is not None:
+					yield file_stats(last_path, last_ino, extents, float(p_dist) / l_dist)
+				p_dist = l_dist = 0
+				extents = 0
+				last_poff = p_off
+				last_loff = l_off
+				last_path = path
+				last_ino = ino
+			else:
+				p_dist += abs(p_off - last_poff)
+				if not ignore_sparse:
+					l_dist += l_off - last_loff
+			extents += 1
+			p_dist += length
+			l_dist += length
+		yield file_stats(last_path, last_ino, extents, float(p_dist) / l_dist)
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
