@@ -437,12 +437,14 @@ class fmgui(QtGui.QMainWindow):
 		self.query_frame.setEnabled(False)
 		self.overview_text.setEnabled(False)
 		self.fs_tree.setEnabled(False)
+		self.extent_type_actions.setEnabled(False)
 
 	def mp_stop(self):
 		'''Enable UI elements after message pumping.'''
 		self.query_frame.setEnabled(True)
 		self.overview_text.setEnabled(True)
 		self.fs_tree.setEnabled(True)
+		self.extent_type_actions.setEnabled(True)
 
 	def change_font(self):
 		'''Change the overview font.'''
