@@ -28,6 +28,15 @@ EXT_TYPE_XATTR		= 4
 EXT_TYPE_SYMLINK	= 5
 
 extent_types = {
+	EXT_TYPE_FILE:		'f',
+	EXT_TYPE_DIR:		'd',
+	EXT_TYPE_EXTENT:	'e',
+	EXT_TYPE_METADATA:	'm',
+	EXT_TYPE_XATTR:		'x',
+	EXT_TYPE_SYMLINK:	's',
+}
+
+extent_types_long = {
 	EXT_TYPE_FILE:		'File',
 	EXT_TYPE_DIR:		'Directory',
 	EXT_TYPE_EXTENT:	'Extent Map',
@@ -35,6 +44,9 @@ extent_types = {
 	EXT_TYPE_XATTR:		'Extended Attribute',
 	EXT_TYPE_SYMLINK:	'Symbolic Link',
 }
+
+extent_type_strings = {extent_types[i]: i for i in extent_types}
+extent_type_strings_long = {extent_types_long[i]: i for i in extent_types_long}
 
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''
@@ -85,8 +97,8 @@ extent_flags_long = {
 	EXT_FLAG_SHARED:		'(S)hared',
 }
 
-extent_strings = {extent_flags[i] for i in extent_flags}
-extent_strings_long = {extent_flags_long[i] for i in extent_flags_long}
+extent_flags_strings = {extent_flags[i]: i for i in extent_flags}
+extent_flags_strings_long = {extent_flags_long[i]: i for i in extent_flags_long}
 
 def extent_flags_to_str(flags):
 	'''Convert an extent flags number into a string.'''
@@ -96,7 +108,7 @@ def extent_str_to_flags(string):
 	'''Convert an extent string into a flags number.'''
 	ret = 0
 	for s in string:
-		ret |= extent_strings[s]
+		ret |= extent_flags|strings[s]
 	return ret
 
 # An extent
@@ -113,7 +125,7 @@ class poff_row(object):
 		return extent_flags_to_str(self.flags)
 
 	def typestr(self):
-		return extent_types[self.type]
+		return extent_types_long[self.type]
 
 # Inode type codes
 INO_TYPE_FILE		= 0

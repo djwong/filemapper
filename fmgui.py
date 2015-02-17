@@ -363,7 +363,7 @@ class fmgui(QtGui.QMainWindow):
 
 		# Then the check-list query data
 		extent_types = [
-			[fmdb.extent_types[x], True, x] for x in sorted(fmdb.extent_types.keys())
+			[fmdb.extent_types_long[x], True, x] for x in sorted(fmdb.extent_types.keys())
 		]
 		extent_flags = [
 			[fmdb.extent_flags_long[x], False, x] for x in sorted(fmdb.extent_flags_long.keys())

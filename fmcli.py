@@ -451,23 +451,15 @@ class fmcli(code.InteractiveConsole):
 			self.print_extent(x)
 
 	def do_extent_type(self, argv):
-		t = {
-			'f': fmdb.EXT_TYPE_FILE,
-			'd': fmdb.EXT_TYPE_DIR,
-			'e': fmdb.EXT_TYPE_EXTENT,
-			'm': fmdb.EXT_TYPE_METADATA,
-			'x': fmdb.EXT_TYPE_XATTR,
-			's': fmdb.EXT_TYPE_SYMLINK,
-		}
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents with a particular type.')
 		parser.add_argument('types', nargs = '+', \
 			help = 'Type codes to look up.  Valid values are: (d)irectory, (e)xtent map, (f)ile, FS (m)etadata, (s)ymbolic links, and e(x)tended attributes.', \
-			choices = [x for x in sorted(t.keys())])
+			choices = [x for x in sorted(fmdb.extent_type_strings.keys())])
 		args = parser.parse_args(argv[1:])
 		types = set()
 		for arg in args.types:
-			types.add(t[arg])
+			types.add(fmdb.extent_type_strings[arg])
 		for x in self.fmdb.query_extent_types(types):
 			self.print_extent(x)
 
@@ -476,12 +468,12 @@ class fmcli(code.InteractiveConsole):
 			description = 'Look up extents with a particular set of flags.')
 		parser.add_argument('flags', nargs = '*', \
 			help = 'Flag codes to look up.  Valid values are: u(n)known, (d)elayed allocation, (e)ncoded, (E)ncrypted, (u)naligned, (i)nline, (t)ail-packed, (U)nwritten, (m)erged, (s)hared, or no flag code at all.', \
-			choices = [x for x in sorted(fmdb.extent_strings.keys())])
+			choices = [x for x in sorted(fmdb.extent_flags_strings.keys())])
 		parser.add_argument('-e', action = 'store_true', help = 'Flags must match exactly.')
 		args = parser.parse_args(argv[1:])
 		flags = 0
 		for arg in args.flags:
-			flags |= fmdb.extent_strings[arg]
+			flags |= fmdb.extent_flags_strings[arg]
 		for x in self.fmdb.query_extent_flags(flags, args.e):
 			self.print_extent(x)
 
