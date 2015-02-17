@@ -136,10 +136,11 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 		       blk64_t ref_blk, int ref_offset, void *priv_data)
 {
 	struct e2map_t *wf = priv_data;
+	unsigned long long max_extent = 1ULL / fs->blocksize;
 
 	/* Internal node? */
 	if (blockcnt < 0) {
-		dbg_printf("ino=%d free=%llu\n", wf->ino, *blocknr);
+		dbg_printf("R: ino=%d pblk=%llu\n", wf->ino, *blocknr);
 		insert_extent(&wf->base, wf->ino, *blocknr * fs->blocksize,
 			      0, fs->blocksize, 0, extent_codes[EXT2_XT_EXTENT]);
 		if (wf->wf_db_err)
@@ -149,10 +150,8 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 
 	/* Can we attach it to the previous extent? */
 	if (wf->last.e_len) {
-		blk64_t end = wf->last.e_len + 1;
-
 		if (wf->last.e_pblk + wf->last.e_len == *blocknr &&
-		    end < (1ULL << 32)) {
+		    wf->last.e_len + 1 <= max_extent) {
 			wf->last.e_len++;
 			dbg_printf("R: ino=%d len=%u\n", wf->ino,
 				   wf->last.e_len);
@@ -161,7 +160,7 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 
 		/* Insert the extent */
 		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino,
-			   *blocknr, blockcnt, 1);
+			   wf->last.e_pblk, wf->last.e_lblk, wf->last.e_len);
 		insert_extent(&wf->base, wf->ino,
 			      wf->last.e_pblk * fs->blocksize,
 			      wf->last.e_lblk * fs->blocksize,
@@ -175,8 +174,6 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 	wf->last.e_pblk = *blocknr;
 	wf->last.e_lblk = blockcnt;
 	wf->last.e_len = 1;
-	dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino, *blocknr,
-		   blockcnt, 1);
 
 out:
 	if (wf->wf_db_err)
@@ -191,6 +188,7 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 	ext2_extent_handle_t	handle;
 	struct ext2fs_extent	extent, last;
 	int			flags;
+	unsigned long long	max_extent = 1ULL / fs->blocksize;
 
 	memset(&last, 0, sizeof(last));
 	wf->err = ext2fs_extent_open(fs, ino, &handle);
@@ -210,7 +208,7 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 
 		/* Internal node */
 		if (!(extent.e_flags & EXT2_EXTENT_FLAGS_LEAF)) {
-			dbg_printf("ino=%d free=%llu\n", wf->ino,
+			dbg_printf("ino=%d lblk=%llu\n", wf->ino,
 				   extent.e_pblk);
 			insert_extent(&wf->base, ino,
 				      extent.e_pblk * fs->blocksize,
@@ -224,12 +222,11 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 
 		/* Can we attach it to the previous extent? */
 		if (last.e_len) {
-			blk64_t end = last.e_len + extent.e_len;
 			if (last.e_pblk + last.e_len == extent.e_pblk &&
 			    last.e_lblk + last.e_len == extent.e_lblk &&
 			    (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT) ==
 			    (extent.e_flags & EXT2_EXTENT_FLAGS_UNINIT) &&
-			    end < (1ULL << 32)) {
+			    last.e_len + extent.e_len <= max_extent) {
 				last.e_len += extent.e_len;
 				dbg_printf("R: ino=%d len=%u\n", ino,
 					   last.e_len);
@@ -238,7 +235,7 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 
 			/* Insert the extent */
 			dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ino,
-				   extent.e_pblk, extent.e_lblk, extent.e_len);
+				   last.e_pblk, last.e_lblk, last.e_len);
 			flags = 0;
 			if (last.e_flags & EXT2_EXTENT_FLAGS_UNINIT)
 				flags |= EXTENT_UNWRITTEN;
@@ -374,6 +371,18 @@ static void walk_file_mappings(struct e2map_t *wf, ext2_ino_t ino,
 					    0, find_blocks, wf);
 		if (!wf->err)
 			wf->err = err;
+		if (wf->last.e_len > 0) {
+			dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n",
+				   wf->ino, wf->last.e_pblk, wf->last.e_lblk,
+				   wf->last.e_len);
+			insert_extent(&wf->base, wf->ino,
+				      wf->last.e_pblk * wf->fs->blocksize,
+				      wf->last.e_lblk * wf->fs->blocksize,
+				      wf->last.e_len * wf->fs->blocksize,
+				      0, extent_codes[wf->type]);
+			if (wf->wf_db_err)
+				goto out;
+		}
 	}
 
 out:

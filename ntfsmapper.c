@@ -104,8 +104,9 @@ static int extent_codes(ntfs_inode *inode, int attr_type)
 static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 {
 	ntfs_attr_search_ctx *ctx;
-	runlist *runs = NULL;
-	int i;
+	runlist *runs = NULL, *r;
+	unsigned long long p_block, l_block, e_len;
+	unsigned long long max_extent = 1ULL / wf->fs->cluster_size;
 
 	if (ntfs_bit_get(wf->ino_bmap, inode->mft_no))
 		return;
@@ -124,21 +125,51 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 			wf->err = errno;
 			goto out;
 		}
-		for (i = 0; runs[i].length > 0; i++) {
-			if (runs[i].lcn < 0)
+		p_block = l_block = e_len = 0;
+		for (r = runs; r->length > 0; r++) {
+			if (r->lcn < 0)
 				continue;
+			if (e_len > 0) {
+				if (p_block + e_len == r->lcn &&
+				    l_block + e_len == r->vcn &&
+				    e_len + r->length <= max_extent) {
+					e_len += r->length;
+					dbg_printf("R: ino=%d len=%u\n", ino,
+						   e_len);
+					continue;
+				}
+
+				dbg_printf("R: ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
+					inode->mft_no, ctx->attr->type,
+					p_block, l_block, e_len);
+				insert_extent(&wf->base, inode->mft_no,
+					      p_block * wf->fs->cluster_size,
+					      l_block * wf->fs->cluster_size,
+					      e_len * wf->fs->cluster_size,
+					      0,
+					      extent_codes(inode, ctx->attr->type));
+				if (wf->wf_db_err)
+					goto out;
+			}
+			p_block = r->lcn;
+			l_block = r->vcn;
+			e_len = r->length;
+		}
+
+		if (e_len > 0) {
+			dbg_printf("R: ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
+				inode->mft_no, ctx->attr->type,
+				p_block, l_block, e_len);
 			insert_extent(&wf->base, inode->mft_no,
-				      runs[i].lcn * wf->fs->cluster_size,
-				      runs[i].vcn * wf->fs->cluster_size,
-				      runs[i].length * wf->fs->cluster_size,
+				      p_block * wf->fs->cluster_size,
+				      l_block * wf->fs->cluster_size,
+				      e_len * wf->fs->cluster_size,
 				      0,
 				      extent_codes(inode, ctx->attr->type));
 			if (wf->wf_db_err)
 				goto out;
-			dbg_printf("ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
-				inode->mft_no, ctx->attr->type, runs[i].vcn,
-				runs[i].lcn, runs[i].length);
 		}
+
 		free(runs);
 		runs = NULL;
 	}

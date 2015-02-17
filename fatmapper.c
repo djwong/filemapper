@@ -64,6 +64,7 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 	DOS_FS *fs = wf->fs;
 	uint32_t curr, lcurr;
 	uint64_t pclus, lclus, len;
+	unsigned long long max_extent = 1ULL / fs->cluster_size;
 	int type;
 
 	if (file->dir_ent.attr & ATTR_DIR)
@@ -78,19 +79,18 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 	     curr != -1;
 	     curr = next_cluster(fs, curr), lcurr++) {
 		if (len) {
-			uint64_t end = len + 1;
-
 			/* Lengthen extent */
-			if (pclus + len == curr &&
-			    end * fs->cluster_size < (1ULL << 32)) {
+			if (pclus + len == curr && len + 1 <= max_extent) {
 				len++;
 				dbg_printf("R: ino=%llu len=%u\n", wf->ino, len);
 				continue;
 			}
 
 			/* Insert the extent */
-			dbg_printf("S: ino=%llu pblk=%llu lblk=%llu len=%u\n",
-				   wf->ino, curr, lcurr, 1);
+			dbg_printf("R: ino=%llu pblk=%llu lblk=%llu len=%u\n",
+				   wf->ino, cluster_start(fs, pclus),
+				   lclus * fs->cluster_size,
+				   len * fs->cluster_size);
 			insert_extent(&wf->base, wf->ino,
 				      cluster_start(fs, pclus),
 				      lclus * fs->cluster_size,
@@ -104,14 +104,13 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 		pclus = curr;
 		lclus = lcurr;
 		len = 1;
-		dbg_printf("T: ino=%llu pblk=%llu lblk=%llu len=%u\n", wf->ino,
-			   curr, lcurr, 1);
 	}
 
 	if (len) {
 		/* Insert the extent */
-		dbg_printf("U: ino=%d pblk=%llu lblk=%llu len=%u\n", wf->ino,
-			   curr, lcurr, 1);
+		dbg_printf("R: ino=%llu pblk=%llu lblk=%llu len=%u\n",
+			   wf->ino, cluster_start(fs, pclus),
+			   lclus * fs->cluster_size, len * fs->cluster_size);
 		insert_extent(&wf->base, wf->ino,
 			      cluster_start(fs, pclus),
 			      lclus * fs->cluster_size,
