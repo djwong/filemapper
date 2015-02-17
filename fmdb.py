@@ -108,7 +108,7 @@ def extent_str_to_flags(string):
 	'''Convert an extent string into a flags number.'''
 	ret = 0
 	for s in string:
-		ret |= extent_flags|strings[s]
+		ret |= extent_flags_strings[s]
 	return ret
 
 # An extent
