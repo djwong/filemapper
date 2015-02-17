@@ -319,6 +319,14 @@ class fmgui(QtGui.QMainWindow):
 		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
 
+		ag = QtGui.QActionGroup(self)
+		ag.setExclusive(False)
+		self.extent_type_actions = self.menuOverview.actions()[2:2 + len(fmdb.extent_types)]
+		for a in self.extent_type_actions:
+			a.setActionGroup(ag)
+		ag.triggered.connect(self.change_extent_type)
+		self.extent_type_actions = ag
+
 		# Set up the overview
 		self.overview = OverviewModel(self.fmdb, self.overview_text, yield_fn = self.mp.pump)
 		self.overview.rendered.connect(self.do_summary)
@@ -413,6 +421,17 @@ class fmgui(QtGui.QMainWindow):
 		self.overview.load()
 		self.show()
 
+	def change_extent_type(self, action):
+		'''Toggle display of an extent type in the overview.'''
+		arg = set()
+		actions = self.extent_type_actions.actions()
+		for x in range(0, len(actions)):
+			if actions[x].isChecked():
+				arg.add(x)
+		print(arg)
+		self.fmdb.set_extent_types_to_show(arg)
+		self.overview.render()
+
 	def mp_start(self):
 		'''Disable UI elements during message pumping.'''
 		self.query_frame.setEnabled(False)
@@ -446,6 +465,9 @@ class fmgui(QtGui.QMainWindow):
 
 	def save_state(self):
 		'''Save the state of the UI.'''
+		def eta():
+			actions = self.extent_type_actions.actions()
+			return [fmdb.extent_types_long[x] for x in range(0, len(actions)) if actions[x].isChecked()]
 		of = self.overview_text.document().defaultFont()
 		data = {
 			'version': self.json_version,
@@ -456,6 +478,7 @@ class fmgui(QtGui.QMainWindow):
 			'window_geometry': base64.b64encode(self.saveGeometry()).decode('utf-8'),
 			'overview_font_family': of.family(),
 			'overview_font_points': of.pointSizeF(),
+			'extent_types': eta(),
 		}
 		qtdata = {}
 		for qt in self.query_types:
@@ -494,6 +517,11 @@ class fmgui(QtGui.QMainWindow):
 			of.setPointSizeF(data['overview_font_points'])
 			self.overview_text.document().setDefaultFont(of)
 			self.overview.font_changed()
+			opts = {fmdb.extent_type_strings_long[t] for t in data['extent_types']}
+			aa = self.extent_type_actions.actions()
+			for x in range(0, len(fmdb.extent_types)):
+				aa[x].setChecked(x in opts)
+			self.fmdb.set_extent_types_to_show(opts)
 		except Exception as e:
 			failed = True
 		if failed:
@@ -861,7 +889,7 @@ class OverviewModel(QtCore.QObject):
 			y = int(round((i + 1) * o2s))
 			ss = self.overview_big[x:y]
 			rh = self.range_highlight[x:y] if self.range_highlight is not None else [0]
-			ovs = fmdb.overview_block()
+			ovs = fmdb.overview_block(self.fmdb.get_extent_types_to_show())
 			for s in ss:
 				ovs.add(s)
 			if sum(rh) > 0:

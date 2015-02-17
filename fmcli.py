@@ -134,6 +134,7 @@ class fmcli(code.InteractiveConsole):
 		self.commands = {
 			('cache', 'a'): self.do_cache_overview,
 			('cell', 'c'): self.do_cell_to_extents,
+			('overview_types', 'ot'): self.do_overview_extent_types,
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
 			('flag', 'g'): self.do_extent_flag,
@@ -490,3 +491,20 @@ class fmcli(code.InteractiveConsole):
 		dnames = ['' if p == self.fs.pathsep else p for p in args.dirnames]
 		for de in self.fmdb.query_ls(dnames):
 			self.print_dentry(de)
+
+	def do_overview_extent_types(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Restrict the overview display to particular types of extents.')
+		t = [x for x in sorted(fmdb.extent_type_strings.keys())]
+		t.append('all')
+		parser.add_argument('types', nargs = '+', \
+			help = 'Type codes to look up.  Valid values are: (d)irectory, (e)xtent map, (f)ile, FS (m)etadata, (s)ymbolic links, and e(x)tended attributes.  Use "all" to display all types.', \
+			choices = t)
+		args = parser.parse_args(argv[1:])
+		if 'all' in args:
+			self.fmdb.set_extent_types_to_show(None)
+			return
+		types = set()
+		for arg in args.types:
+			types.add(fmdb.extent_type_strings[arg])
+		self.fmdb.set_extent_types_to_show(types)

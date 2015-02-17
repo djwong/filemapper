@@ -409,7 +409,6 @@ S = symbolic links</string>
     <addaction name="separator"/>
     <addaction name="actionToolbar"/>
     <addaction name="separator"/>
-    <addaction name="actionChangeFont"/>
    </widget>
    <widget class="QMenu" name="menuUnits">
     <property name="title">
@@ -424,8 +423,22 @@ S = symbolic links</string>
     <addaction name="actionGiB"/>
     <addaction name="actionTiB"/>
    </widget>
+   <widget class="QMenu" name="menuOverview">
+    <property name="title">
+     <string>&amp;Overview</string>
+    </property>
+    <addaction name="actionChangeFont"/>
+    <addaction name="separator"/>
+    <addaction name="actionShowFileExtents"/>
+    <addaction name="actionShowDirectoryExtents"/>
+    <addaction name="actionShowExtentMapExtents"/>
+    <addaction name="actionShowMetadataExtents"/>
+    <addaction name="actionShowExtendedAttributeExtents"/>
+    <addaction name="actionShowSymbolicLinkExtents"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
+   <addaction name="menuOverview"/>
    <addaction name="menuUnits"/>
   </widget>
   <widget class="QToolBar" name="toolBar">
@@ -585,7 +598,10 @@ S = symbolic links</string>
   </action>
   <action name="actionChangeFont">
    <property name="text">
-    <string>Change Overview &amp;Font...</string>
+    <string>Change F&amp;ont...</string>
+   </property>
+   <property name="toolTip">
+    <string>Change Overview Font</string>
    </property>
    <property name="statusTip">
     <string>Change the font in the overview.</string>
@@ -603,6 +619,90 @@ S = symbolic links</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+E</string>
+   </property>
+  </action>
+  <action name="actionShowFileExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;File Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide file data extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionShowDirectoryExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Directory Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide directory data extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionShowExtentMapExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Extent Map Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide file extent map extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionShowMetadataExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Metadata Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide file system metadata extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionShowExtendedAttributeExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show E&amp;xtended Attribute Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide extended attribute extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionShowSymbolicLinkExtents">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Symbolic Link Extents</string>
+   </property>
+   <property name="statusTip">
+    <string>Show or hide symbolic link extents in the overview.</string>
    </property>
   </action>
  </widget>

@@ -212,7 +212,9 @@ def print_times(label, times):
 	print('%s: %s' % (label, ', '.join(l)))
 
 class overview_block(object):
-	def __init__(self, files = 0, dirs = 0, mappings = 0, metadata = 0, xattrs = 0, symlinks = 0):
+	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
+		     metadata = 0, xattrs = 0, symlinks = 0):
+		self.ets = extents_to_show
 		self.files = files
 		self.dirs = dirs
 		self.mappings = mappings
@@ -230,40 +232,46 @@ class overview_block(object):
 		self.symlinks += value.symlinks
 
 	def to_letter(ov):
+		def on(t):
+			return ov.ets is None or t in ov.ets
 		'''Render this overview block as a string.'''
 		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlinks
 		if tot == 0:
 			return '.'
-		elif ov.files == tot:
+		elif ov.files == tot and on(EXT_TYPE_FILE):
 			return 'F'
-		elif ov.dirs == tot:
+		elif ov.dirs == tot and on(EXT_TYPE_DIR):
 			return 'D'
-		elif ov.mappings == tot:
+		elif ov.mappings == tot and on(EXT_TYPE_EXTENT):
 			return 'E'
-		elif ov.metadata == tot:
+		elif ov.metadata == tot and on(EXT_TYPE_METADATA):
 			return 'M'
-		elif ov.xattrs == tot:
+		elif ov.xattrs == tot and on(EXT_TYPE_XATTR):
 			return 'X'
-		elif ov.symlinks == tot:
+		elif ov.symlinks == tot and on(EXT_TYPE_SYMLINK):
 			return 'S'
 
-		x = ov.files
-		letter = 'f'
-		if ov.dirs > x:
+		x = 0
+		if ov.files > x and on(EXT_TYPE_FILE):
+			x = ov.files
+			letter = 'f'
+		if ov.dirs > x and on(EXT_TYPE_DIR):
 			x = ov.dirs
 			letter = 'd'
-		if ov.mappings > x:
+		if ov.mappings > x and on(EXT_TYPE_EXTENT):
 			x = ov.mappings
 			letter = 'e'
-		if ov.metadata > x:
+		if ov.metadata > x and on(EXT_TYPE_METADATA):
 			x = ov.metadata
 			letter = 'm'
-		if ov.xattrs > x:
+		if ov.xattrs > x and on(EXT_TYPE_XATTR):
 			x = ov.xattrs
 			letter = 'x'
-		if ov.symlinks > x:
+		if ov.symlinks > x and on(EXT_TYPE_SYMLINK):
 			x = ov.symlinks
 			letter = 's'
+		if x == 0:
+			letter = '.'
 		return letter
 
 	def __str__(ov):
@@ -316,6 +324,7 @@ class fmdb(object):
 			self.fspath = results[0][0]
 		else:
 			self.fspath = fspath
+		self.extent_types_to_show = None
 
 	def __del__(self):
 		'''Destroy database object.'''
@@ -419,7 +428,7 @@ class fmdb(object):
 		cur.arraysize = self.result_batch_size
 
 		t0 = datetime.datetime.today()
-		overview = [overview_block() for x in range(0, length)]
+		overview = [overview_block(self.extent_types_to_show) for x in range(0, length)]
 		t1 = datetime.datetime.today()
 		cur.execute('SELECT p_off, p_end, type FROM extent_t;')
 		t2 = datetime.datetime.today()
@@ -500,7 +509,8 @@ class fmdb(object):
 				if len(rows) == 0:
 					break
 				for r in rows:
-					yield overview_block(r[0], r[1], \
+					yield overview_block(self.extent_types_to_show, \
+							r[0], r[1], \
 							r[2], r[3], r[4], \
 							r[5])
 			t1 = datetime.datetime.today()
@@ -577,19 +587,29 @@ class fmdb(object):
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
 		for r in ranges:
 			if type(r) == int:
-				qstr = qstr + ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				qstr += ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
 				cond = 'OR'
 				qarg.append(r)
 				qarg.append(r)
 			else:
-				qstr = qstr + ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				qstr += ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
 				cond = 'OR'
 				qarg.append(r[1])
 				qarg.append(r[0])
-		qstr = qstr + " ORDER BY path, l_off"
-		cur.execute(qstr, qarg)
+		if len(ets) > 0 and len(qarg) > 0:
+			qstr += ')'
+		qstr += ' ORDER BY path, l_off'
+		cur.execute(qstr, ets + qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
@@ -606,21 +626,31 @@ class fmdb(object):
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
 		for r in ranges:
 			if type(r) == int:
-				qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
+				qstr += ' %s (p_off <= ? AND p_end >= ?)' % cond
 				cond = 'OR'
 				qarg.append(r)
 				qarg.append(r)
 			else:
-				qstr = qstr + ' %s (p_off <= ? AND p_end >= ?)' % cond
+				qstr += ' %s (p_off <= ? AND p_end >= ?)' % cond
 				cond = 'OR'
 				qarg.append(r[1])
 				qarg.append(r[0])
-		qstr = qstr + " ORDER BY path, l_off"
-		#print(qstr, qarg)
+		if len(ets) > 0 and len(qarg) > 0:
+			qstr += ')'
+		qstr += ' ORDER BY path, l_off'
+		#print(qstr, ets + qarg)
 		t0 = datetime.datetime.today()
-		cur.execute(qstr, qarg)
+		cur.execute(qstr, ets + qarg)
 		t1 = datetime.datetime.today()
 		while True:
 			rows = cur.fetchmany()
@@ -639,6 +669,14 @@ class fmdb(object):
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
 		for p in paths:
 			if p == self.fs.pathsep:
 				p = ''
@@ -649,9 +687,11 @@ class fmdb(object):
 			qstr = qstr + ' %s path %s ?' % (cond, op)
 			cond = 'OR'
 			qarg.append(p)
-		qstr = qstr + " ORDER BY path, l_off"
-		#print(qstr, qarg)
-		cur.execute(qstr, qarg)
+		if len(ets) > 0 and len(qarg) > 0:
+			qstr += ')'
+		qstr += ' ORDER BY path, l_off'
+		#print(qstr, ets + qarg)
+		cur.execute(qstr, ets + qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
@@ -667,18 +707,28 @@ class fmdb(object):
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
 		for r in ranges:
 			if type(r) == int:
-				qstr = qstr + ' %s ino = ?' % cond
+				qstr += ' %s ino = ?' % cond
 				cond = 'OR'
 				qarg.append(r)
 			else:
-				qstr = qstr + ' %s ino BETWEEN ? AND ?' % cond
+				qstr += ' %s ino BETWEEN ? AND ?' % cond
 				cond = 'OR'
 				qarg.append(r[0])
 				qarg.append(r[1])
-		qstr = qstr + " ORDER BY path, l_off"
-		cur.execute(qstr, qarg)
+		if len(ets) > 0 and len(qarg) > 0:
+			qstr += ')'
+		qstr += ' ORDER BY path, l_off'
+		cur.execute(qstr, ets + qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
@@ -694,18 +744,29 @@ class fmdb(object):
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
 		cond = 'WHERE'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
 		for r in ranges:
 			if type(r) == int:
-				qstr = qstr + ' %s length = ?' % cond
+				qstr += ' %s length = ?' % cond
 				cond = 'OR'
 				qarg.append(r)
 			else:
-				qstr = qstr + ' %s length BETWEEN ? AND ?' % cond
+				qstr += ' %s length BETWEEN ? AND ?' % cond
 				cond = 'OR'
 				qarg.append(r[0])
 				qarg.append(r[1])
-		qstr = qstr + " ORDER BY path, l_off"
-		cur.execute(qstr, qarg)
+		if len(ets) > 0 and len(qarg) > 0:
+			qstr += ')'
+		qstr += ' ORDER BY path, l_off'
+		#print(qstr, ets + qarg)
+		cur.execute(qstr, ets + qarg)
 		while True:
 			rows = cur.fetchmany()
 			if len(rows) == 0:
@@ -722,14 +783,12 @@ class fmdb(object):
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v'
 		qarg = []
-		cond = 'WHERE type IN ('
-		for r in types:
-			qstr = qstr + ' %s ?' % cond
-			cond = ', '
-			qarg.append(r)
-		if len(qarg) > 0:
-			qstr = qstr + ')'
-		qstr = qstr + ' ORDER BY path, l_off'
+		all_types = set(extent_types)
+		cond = 'WHERE'
+		if set(types) != all_types:
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in types]))
+			qarg = types
+		qstr += ' ORDER BY path, l_off'
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -797,6 +856,14 @@ class fmdb(object):
 				break
 			for row in rows:
 				yield dentry(row[0], row[1], row[2])
+
+	def set_extent_types_to_show(self, types):
+		'''Restrict the overview and queries to showing these types of extents.'''
+		self.extent_types_to_show = types
+
+	def get_extent_types_to_show(self):
+		'''Retrieve the types of extents to show in the overview and queries.'''
+		return self.extent_types_to_show
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
