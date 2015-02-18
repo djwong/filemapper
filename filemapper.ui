@@ -488,6 +488,7 @@ S = symbolic links</string>
      <string>&amp;File</string>
     </property>
     <addaction name="actionExportExtents"/>
+    <addaction name="actionExportInodes"/>
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
@@ -703,7 +704,7 @@ S = symbolic links</string>
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>&amp;Export Extents...</string>
+    <string>Export &amp;Extents...</string>
    </property>
    <property name="statusTip">
     <string>Export the current extent list to a flat file on disk.</string>
@@ -794,6 +795,20 @@ S = symbolic links</string>
    </property>
    <property name="statusTip">
     <string>Show or hide symbolic link extents in the overview.</string>
+   </property>
+  </action>
+  <action name="actionExportInodes">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Export &amp;Inodes...</string>
+   </property>
+   <property name="statusTip">
+    <string>Export the current inode list to a flat file on disk.</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+I</string>
    </property>
   </action>
  </widget>

@@ -62,7 +62,8 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.length),
 			lambda x: x.flagstr(),
 			lambda x: x.typestr(),
-			lambda x: x.path if x.path != '' else fs.pathsep]
+			lambda x: x.path if x.path != '' else fs.pathsep
+		]
 		self.sort_keys = [
 			lambda x: x.p_off,
 			lambda x: x.l_off,
@@ -169,6 +170,142 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			return
 		for r in rows:
 			yield self.__data[r]
+
+	def extent_count(self):
+		'''Return the number of rows in the dataset.'''
+		return len(self.__data)
+
+	def sort(self, column, order):
+		if column < 0:
+			return
+		self.__data.sort(key = self.sort_keys[column], reverse = order == 1)
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(self.rows - 1, len(self.headers) - 1)
+		self.dataChanged.emit(tl, br)
+
+class InodeTableModel(QtCore.QAbstractTableModel):
+	'''Render and highlight an inode table.'''
+	def __init__(self, fs, data, units, rows_to_show=500, parent=None, *args):
+		super(InodeTableModel, self).__init__(parent, *args)
+		self.__data = data
+		self.headers = ['Inode Number', 'Extents', \
+				'Travel Score', 'Type', 'Paths']
+		self.header_map = [
+			lambda x: fmcli.format_size(fmcli.units_none, x.ino),
+			lambda x: fmcli.format_size(fmcli.units_none, x.nr_extents),
+			lambda x: fmcli.format_size(self.units, x.travel_score),
+			lambda x: x.typestr(),
+			lambda x: x.paths_to_str(),
+		]
+		self.sort_keys = [
+			lambda x: x.ino,
+			lambda x: x.nr_extents,
+			lambda x: x.travel_score,
+			lambda x: x.typestr(),
+			lambda x: x.paths_to_str(),
+		]
+		self.align_map = [
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignLeft,
+			QtCore.Qt.AlignLeft,
+		]
+		self.units = units
+		self.rows_to_show = rows_to_show
+		self.rows = min(rows_to_show, len(data))
+		self.name_highlight = None
+
+	def change_units(self, new_units):
+		'''Change the display units of the size and length columns.'''
+		self.units = new_units
+		tl = self.createIndex(0, 2)
+		br = self.createIndex(len(self.__data) - 1, 2)
+		self.dataChanged.emit(tl, br)
+
+	def revise(self, new_data):
+		'''Update the inode table and redraw.'''
+		olen = self.rows
+		nlen = min(len(new_data), self.rows_to_show)
+		self.rows = nlen
+		parent = self.createIndex(-1, -1)
+		self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+		if olen > nlen:
+			self.beginRemoveRows(parent, nlen, olen)
+		elif nlen > olen:
+			self.beginInsertRows(parent, olen, nlen)
+		self.__data = new_data
+		if olen > nlen:
+			self.endRemoveRows()
+		elif nlen > olen:
+			self.endInsertRows()
+		tl = self.createIndex(0, 0)
+		br = self.createIndex(olen - 1, len(self.headers) - 1)
+		self.dataChanged.emit(tl, br)
+		self.emit(QtCore.SIGNAL("layoutChanged()"))
+
+	def canFetchMore(self, parent):
+		return self.rows < len(self.__data)
+
+	def fetchMore(self, parent):
+		'''Reduce load times by rendering subsets selectively.'''
+		nlen = min(len(self.__data) - self.rows, self.rows_to_show)
+		self.beginInsertRows(parent, self.rows, self.rows + nlen)
+		self.rows += nlen
+		self.endInsertRows()
+
+	def rowCount(self, parent):
+		if not parent.isValid():
+			return self.rows
+		return 0
+
+	def columnCount(self, parent):
+		return len(self.headers)
+
+	def data(self, index, role):
+		def is_name_highlighted(names):
+			if self.name_highlight is None:
+				return False
+			return len(names & self.name_highlight) > 0
+		if not index.isValid():
+			return None
+		i = index.row()
+		j = index.column()
+		row = self.__data[i]
+		if role == QtCore.Qt.DisplayRole:
+			return self.header_map[j](row)
+		elif role == QtCore.Qt.FontRole:
+			if is_name_highlighted(row.paths):
+				return bold_font
+			return None
+		elif role == QtCore.Qt.TextAlignmentRole:
+			return self.align_map[j]
+		return None
+
+	def headerData(self, col, orientation, role):
+		if orientation == QtCore.Qt.Horizontal and \
+		   role == QtCore.Qt.DisplayRole:
+			return self.headers[col]
+		return None
+
+	def highlight_names(self, names = None):
+		'''Highlight rows corresponding to some FS paths.'''
+		self.name_highlight = names
+		# Skip the re-render since we're just about to requery anyway.
+		# XXX: are we?
+
+	def inodes(self, rows):
+		'''Retrieve a range of extents.'''
+		if rows is None or len(rows) == 0:
+			for r in self.__data:
+				yield r
+			return
+		for r in rows:
+			yield self.__data[r]
+
+	def inode_count(self):
+		'''Return the number of rows in the dataset.'''
+		return len(self.__data)
 
 	def sort(self, column, order):
 		if column < 0:
@@ -324,6 +461,8 @@ class fmgui(QtGui.QMainWindow):
 		ag.triggered.connect(self.change_units)
 		self.actionExportExtents.triggered.connect(self.export_extents_csv)
 		self.actionExportExtents.setIcon(QtGui.QIcon.fromTheme('document-save'))
+		self.actionExportInodes.triggered.connect(self.export_inodes_csv)
+		self.actionExportInodes.setIcon(QtGui.QIcon.fromTheme('document-save'))
 		self.actionChangeFont.triggered.connect(self.change_font)
 		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
@@ -350,6 +489,12 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 		self.extent_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
+		self.extent_table.sortByColumn(-1)
+
+		# Set up the inode view
+		self.itm = InodeTableModel(self.fs, [], units)
+		self.inode_table.setModel(self.itm)
+		#XXX self.inode_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
 		self.extent_table.sortByColumn(-1)
 
 		# Set up the fs tree view
@@ -558,7 +703,7 @@ class fmgui(QtGui.QMainWindow):
 	def pick_fs_tree(self, n, o):
 		'''Handle the selection of a FS tree nodes.'''
 		self.ost.stop()
-		extent_paths = []
+		extent_paths = set()
 		query_paths = []
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
@@ -566,7 +711,7 @@ class fmgui(QtGui.QMainWindow):
 			node = m.internalPointer()
 			p = node.path if node.path != '' else '/'
 			if node.hasChildren() and not is_meta:
-				extent_paths.append(p)
+				extent_paths.add(p)
 				if ' ' in p:
 					p = '"%s*"' % p
 				else:
@@ -576,6 +721,7 @@ class fmgui(QtGui.QMainWindow):
 					p = '"%s"' % p
 			query_paths.append(p)
 		self.etm.highlight_names(extent_paths)
+		self.itm.highlight_names(extent_paths)
 		self.enter_query(self.query_paths, ' '.join(query_paths))
 		self.run_query()
 
@@ -620,6 +766,7 @@ class fmgui(QtGui.QMainWindow):
 			fmcli.units_tib,
 		]
 		self.etm.change_units(avail_units[idx])
+		self.itm.change_units(avail_units[idx])
 		for u in self.unit_actions:
 			u.setChecked(False)
 		self.unit_actions[idx].setChecked(True)
@@ -743,13 +890,44 @@ class fmgui(QtGui.QMainWindow):
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
 		t4 = datetime.datetime.today()
-		self.results_dock.setWindowTitle('Query Results - %s extents, %s inodes' % (fmcli.format_number(fmcli.units_none, len(new_data)), '0'))
+		self.update_query_summary()
 		t5 = datetime.datetime.today()
 		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
 
+	def update_query_summary(self):
+		'''Update the query summary text in the UI.'''
+		self.results_dock.setWindowTitle('Query Results - %s extents, %s inodes' % (fmcli.format_number(fmcli.units_none, self.etm.extent_count()), fmcli.format_number(fmcli.units_none, self.itm.inode_count())))
+
+	def load_inodes(self, f):
+		'''Populate the inode table.'''
+		t0 = datetime.datetime.today()
+		if isinstance(f, list):
+			new_data = f
+		else:
+			n = 0
+			new_data = []
+			for x in f:
+				new_data.append(x)
+				if n > 1000:
+					self.mp.pump()
+					n = 0
+				n += 1
+		t1 = datetime.datetime.today()
+		self.inode_table.sortByColumn(-1)
+		t2 = datetime.datetime.today()
+		self.itm.revise(new_data)
+		self.actionExportInodes.setEnabled(len(new_data) > 0)
+		t3 = datetime.datetime.today()
+		for x in range(self.itm.columnCount(None)):
+			self.inode_table.resizeColumnToContents(x)
+		t4 = datetime.datetime.today()
+		self.update_query_summary()
+		t5 = datetime.datetime.today()
+		fmdb.print_times('load_stats', [t0, t1, t2, t3, t4, t5])
+
 	def export_extents_csv(self):
 		'''Export extents to a CSV file.'''
-		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export to CSV', \
+		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
 				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
 		if fn == '':
 			return
@@ -761,13 +939,43 @@ class fmgui(QtGui.QMainWindow):
 				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
+				fd.write('# Path, Physical Offset, Logical Offset, Length, Flags, Type\n')
 				n = 0
 				for ext in self.etm.extents(None):
-					fd.write("'%s',%d,%d,%d,'%s','%s'\n" % \
+					fd.write('"%s",%d,%d,%d,"%s","%s"\n' % \
 						(ext.path if ext.path != '' else self.fs.pathsep, \
 						 ext.p_off, ext.l_off, ext.length, \
 						 ext.flagstr(), \
 						 ext.typestr()))
+					if n > 1000:
+						self.mp.pump()
+						n = 0
+					n += 1
+		finally:
+			self.mp.stop()
+
+	def export_inodes_csv(self):
+		'''Export inodes to a CSV file.'''
+		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
+				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
+		if fn == '':
+			return
+		idx = self.querytype_combo.currentIndex()
+		qt = self.query_types[idx]
+		self.mp.start()
+		try:
+			with open(fn, 'w') as fd:
+				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
+				fd.write('# %s\n' % self.status_label.text())
+				fd.write('# Query: %s\n' % qt.summarize())
+				fd.write('# Inode, Number of Extents, Travel Score, Type, Paths\n')
+				n = 0
+				for inode in self.itm.inodes(None):
+					fd.write('%d,%d,%.02f,"%s","%s"\n' % \
+						(inode.ino, inode.nr_extents, \
+						 inode.travel_score, \
+						 inode.typestr(), \
+						 inode.paths_to_str()))
 					if n > 1000:
 						self.mp.pump()
 						n = 0
@@ -809,10 +1017,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def query_paths(self, args):
 		'''Query for extents mapped to a list of FS paths.'''
-		if '*' in args:
-			self.load_extents(self.fmdb.query_paths([], False))
-			return
 		self.load_extents(self.fmdb.query_paths(args))
+		self.load_inodes(self.fmdb.query_paths_stats(args, resolve_paths = True, analyze_extents = True))
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''

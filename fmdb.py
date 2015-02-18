@@ -19,7 +19,23 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
-file_stats = namedtuple('file_stats', ['paths', 'ino', 'type', 'nr_extents', 'travel_score'])
+class inode_stats(object):
+	def __init__(self, fs, paths, ino, itype, nr_extents, travel_score):
+		self.fs = fs
+		self.paths = paths
+		self.ino = ino
+		self.itype = itype
+		self.nr_extents = nr_extents
+		self.travel_score = travel_score
+
+	def paths_to_str(self):
+		'''Return a string representation of the inode paths.'''
+		p = [self.fs.pathsep if x == '' else x for x in self.paths]
+		return ', '.join(p)
+
+	def typestr(self):
+		'''Return a string representing the inode type.'''
+		return inode_types_long[self.itype]
 
 # Extent types
 EXT_TYPE_FILE		= 0
@@ -136,6 +152,13 @@ INO_TYPE_METADATA	= 2
 INO_TYPE_SYMLINK	= 3
 
 inode_types = {
+	INO_TYPE_FILE:		'f',
+	INO_TYPE_DIR:		'd',
+	INO_TYPE_METADATA:	'm',
+	INO_TYPE_SYMLINK:	's',
+}
+
+inode_types_long = {
 	INO_TYPE_FILE:		'file',
 	INO_TYPE_DIR:		'directory',
 	INO_TYPE_METADATA:	'metadata',
@@ -158,7 +181,7 @@ class dentry(object):
 		self.type = type
 
 	def typestr(self):
-		return inode_types[self.type]
+		return inode_types_long[self.type]
 
 # Database strings
 APP_ID = 0xEF54
@@ -968,7 +991,7 @@ class fmdb(object):
 				    (travel_score0 is None and travel_score != travel_score0)):
 					upd.append((nr_extents, travel_score, ino))
 				p = path_map[ino] if ino in path_map else []
-				yield file_stats(p, ino, type, nr_extents, travel_score)
+				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score)
 		if len(upd) > 0:
 			cur.execute('BEGIN TRANSACTION')
 			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
