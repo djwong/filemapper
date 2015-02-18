@@ -171,14 +171,15 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 class FsTreeNode(object):
 	'''A node in the recorded filesystem.'''
-	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
+	def __init__(self, path, ino, type, statbuf, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
-			raise Exception
+			raise ValueError('Provide a data loading function or a parent node.')
 		if fs is None and parent is None:
-			raise Exception
+			raise ValueError('Provide a FS summary object or a parent node.')
 		self.path = path
 		self.type = type
 		self.ino = ino
+		self.statbuf = statbuf
 		self.parent = parent
 		if load_fn is not None:
 			self.load_fn = load_fn
@@ -200,7 +201,7 @@ class FsTreeNode(object):
 		if self.loaded:
 			return
 		self.loaded = True
-		self.children = [FsTreeNode(self.path + self.fs.pathsep + de.name, de.ino, de.type, parent = self) for de in self.load_fn(self.path)]
+		self.children = [FsTreeNode(self.path + self.fs.pathsep + de.name, de.ino, de.type, st, parent = self) for (de, st) in self.load_fn(self.path)]
 
 	def row(self):
 		if self.__row is None:
@@ -218,7 +219,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 	def __init__(self, fs, root, parent=None, *args):
 		super(FsTreeModel, self).__init__(parent, *args)
 		self.root = root
-		self.headers = ['Name']
+		self.headers = ['Name', 'Extents', 'Travel Score', 'Inode']
 		self.fs = fs
 
 	def index(self, row, column, parent):
@@ -262,17 +263,24 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if not index.isValid():
 			return None
 		node = index.internalPointer()
+		col = index.column()
 		if role == QtCore.Qt.DisplayRole:
 			node.load()
-			if index.column() == 0:
+			if col == 0:
 				if len(node.path) == 0:
 					return '/'
 				r = node.path.rindex(self.fs.pathsep)
 				return node.path[r + 1:]
+			elif col == 1:
+				return node.statbuf.nr_extents
+			elif col == 2:
+				return '%d' % node.statbuf.travel_score
 			else:
 				return node.ino
 		elif role == QtCore.Qt.DecorationRole:
-			if node.type == fmdb.INO_TYPE_DIR:
+			if col != 0:
+				return None
+			elif node.type == fmdb.INO_TYPE_DIR:
 				return QtGui.QIcon.fromTheme('folder')
 			else:
 				return QtGui.QIcon.fromTheme('text-x-generic')
@@ -283,12 +291,6 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		   role == QtCore.Qt.DisplayRole:
 			return self.headers[col]
 		return None
-
-def sort_dentry(dentry):
-	if dentry.type == fmdb.INO_TYPE_DIR:
-		return '0' + dentry.name
-	else:
-		return '1' + dentry.name
 
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
@@ -345,15 +347,16 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
-		root = FsTreeNode(de.name, de.ino, de.type, \
-				  lambda x: sorted(self.fmdb.query_ls([x]), key = sort_dentry), \
+		i = list(self.fmdb.query_paths_stats(['/'], analyze_extents = True))
+		root = FsTreeNode(de.name, de.ino, de.type, i[0], self.load_dir_data, \
 				  fs = self.fs)
-
 		self.ftm = FsTreeModel(self.fs, root)
 		self.fs_tree.setModel(self.ftm)
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 		self.fs_tree.setRootIsDecorated(False)
 		self.fs_tree.expand(self.ftm.root_index())
+		self.fs_tree.collapsed.connect(self.tree_changed)
+		self.fs_tree.expanded.connect(self.tree_changed)
 
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
@@ -420,6 +423,23 @@ class fmgui(QtGui.QMainWindow):
 		self.load_state()
 		self.overview.load()
 		self.show()
+
+	def tree_changed(self):
+		'''Auto-resize the fs tree.'''
+		for x in range(self.fs_tree.header().count()):
+			self.fs_tree.resizeColumnToContents(x)
+
+	def load_dir_data(self, path):
+		'''Load data on files in a directory.'''
+		def sort_dentry(data):
+			dentry = data[0]
+			if dentry.type == fmdb.INO_TYPE_DIR:
+				return '0' + dentry.name
+			else:
+				return '1' + dentry.name
+		stat_data = {s.ino: s for s in self.fmdb.query_dir_contents_stats([path], analyze_extents = True)}
+		l = [(de, stat_data[de.ino]) for de in self.fmdb.query_ls([path])]
+		return sorted(l, key = sort_dentry)
 
 	def change_extent_type(self, action):
 		'''Toggle display of an extent type in the overview.'''
@@ -554,6 +574,8 @@ class fmgui(QtGui.QMainWindow):
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
 		for m in self.fs_tree.selectedIndexes():
+			if m.column() != 0:
+				continue
 			node = m.internalPointer()
 			p = node.path if node.path != '' else '/'
 			if node.hasChildren() and not is_meta:
