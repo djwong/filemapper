@@ -509,15 +509,15 @@ class fmcli(code.InteractiveConsole):
 			types.add(fmdb.extent_type_strings[arg])
 		self.fmdb.set_extent_types_to_show(types)
 
-	def print_file_stats(self, ext):
-		'''Pretty-print file statistics.'''
+	def print_inode_stats(self, ext):
+		'''Pretty-print inode statistics.'''
 		p = (ext.paths[0] if ext.paths[0] != '' else self.fs.pathsep) if len(ext.paths) > 0 else None
 		if self.machine:
-			print("'%s',%d,%s,%0.2f" % \
-				(p, ext.ino, ext.nr_extents, ext.travel_score))
+			print("'%s',%d,%s,%0.2f,%s" % \
+				(p, ext.ino, ext.nr_extents, ext.travel_score, ext.typestr()))
 			return
-		print("'%s', %d, %s, %0.2f" % \
-			(p, ext.ino, ext.nr_extents, ext.travel_score))
+		print("'%s', %d, %s, %0.2f, '%s'" % \
+			(p, ext.ino, ext.nr_extents, ext.travel_score, ext.typestr()))
 
 	def do_paths_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -531,7 +531,7 @@ class fmcli(code.InteractiveConsole):
 			list(i)
 			return
 		for x in i:
-			self.print_file_stats(x)
+			self.print_inode_stats(x)
 
 	def do_clear_calculated(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
