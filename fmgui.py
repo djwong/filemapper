@@ -71,6 +71,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: x.typestr(),
 			lambda x: x.path,
 		]
+		self.align_map = [
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignLeft,
+			QtCore.Qt.AlignLeft,
+			QtCore.Qt.AlignLeft,
+		]
 		self.units = units
 		self.rows_to_show = rows_to_show
 		self.rows = min(rows_to_show, len(data))
@@ -138,8 +146,9 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			if is_name_highlighted(row.path):
 				return bold_font
 			return None
-		else:
-			return None
+		elif role == QtCore.Qt.TextAlignmentRole:
+			return self.align_map[j]
+		return None
 
 	def headerData(self, col, orientation, role):
 		if orientation == QtCore.Qt.Horizontal and \
