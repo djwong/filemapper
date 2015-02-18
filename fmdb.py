@@ -891,7 +891,7 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		def get_extents():
-			qstr = 'SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ?'
+			qstr = 'SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ? ORDER_BY l_off'
 			qarg = [ino, primary_extent_type_for_inode[type]]
 			#print(qstr, qarg)
 			cur.execute(qstr, qarg)
@@ -912,8 +912,8 @@ class fmdb(object):
 			extents += 1
 			p_dist += length
 			l_dist += length
-			last_poff = p_off
-			last_loff = l_off
+			last_poff = p_off + length - 1
+			last_loff = l_off + length - 1
 		if extents == 0:
 			return (0, 0.0)
 		return (extents, float(p_dist) / l_dist)
