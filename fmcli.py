@@ -138,6 +138,7 @@ class fmcli(code.InteractiveConsole):
 			('help', 'h', '?'): self.do_help,
 			('file', 'f'): self.do_paths,
 			('fstat', 'fs'): self.do_paths_stats,
+			('clear', 'cc'): self.do_clear_calculated,
 			('flag', 'g'): self.do_extent_flag,
 			('inode', 'i'): self.do_inodes,
 			('logical', 'l'): self.do_loff_to_extents,
@@ -531,3 +532,9 @@ class fmcli(code.InteractiveConsole):
 			return
 		for x in i:
 			self.print_file_stats(x)
+
+	def do_clear_calculated(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Erase all calculated values.')
+		args = parser.parse_args(argv[1:])
+		self.fmdb.clear_calculated_values()
