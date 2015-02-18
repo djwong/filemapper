@@ -282,14 +282,14 @@ class fmcli(code.InteractiveConsole):
 			 ext.flagstr(), \
 			 ext.typestr()))
 
-	def print_dentry(self, de):
+	def print_dentry(self, de, st):
 		'''Pretty-print a dentry.'''
 		if self.machine:
-			print("'%s',%d,'%s'" % \
-				(de.name, de.ino, de.typestr()))
+			print("'%s',%d,'%s',%d,%.02f" % \
+				(de.name, de.ino, de.typestr(), st.nr_extents, st.travel_score))
 			return
-		print("'%s', %s, '%s'" % \
-			(de.name, format_number(units_none, de.ino), de.typestr()))
+		print("'%s', %s, '%s', %s, %.02f" % \
+			(de.name, format_number(units_none, de.ino), de.typestr(), format_number(units_none, st.nr_extents), st.travel_score))
 
 	def do_loff_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -393,12 +393,13 @@ class fmcli(code.InteractiveConsole):
 			description = 'Look up extents of a given path.')
 		parser.add_argument('paths', nargs = '+', \
 			help = 'Paths to look up.')
+		parser.add_argument('-q', action = 'store_true', help = 'Quiet mode.')
 		args = parser.parse_args(argv[1:])
-		if '*' in args.paths:
-			for ext in self.fmdb.query_paths([]):
-				self.print_extent(ext)
+		it = self.fmdb.query_paths(args.paths)
+		if args.q:
+			list(it)
 			return
-		for ext in self.fmdb.query_paths(args.paths):
+		for ext in it:
 			self.print_extent(ext)
 
 	def do_machine(self, argv):
@@ -485,13 +486,10 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('dirnames', nargs = '+', \
 			help = 'Directory names to look up.')
 		args = parser.parse_args(argv[1:])
-		if '*' in args.dirnames:
-			for de in self.fmdb.query_ls([]):
-				self.print_dentry(de)
-			return
-		dnames = ['' if p == self.fs.pathsep else p for p in args.dirnames]
-		for de in self.fmdb.query_ls(dnames):
-			self.print_dentry(de)
+		stat_data = {statbuf.ino: statbuf for statbuf in self.fmdb.query_dir_contents_stats(args.dirnames, analyze_extents = True)}
+		for de in self.fmdb.query_ls(args.dirnames):
+			st = stat_data[de.ino] if de.ino in stat_data else None
+			self.print_dentry(de, st)
 
 	def do_overview_extent_types(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -512,24 +510,24 @@ class fmcli(code.InteractiveConsole):
 
 	def print_file_stats(self, ext):
 		'''Pretty-print file statistics.'''
+		p = (ext.paths[0] if ext.paths[0] != '' else self.fs.pathsep) if len(ext.paths) > 0 else None
 		if self.machine:
-			print("'%s',%d,%d,%0.2f" % \
-				(ext.path if ext.path != '' else self.fs.pathsep, \
-				 ext.inode, ext.extents, ext.score))
+			print("'%s',%d,%s,%0.2f" % \
+				(p, ext.ino, ext.nr_extents, ext.travel_score))
 			return
-		print("'%s', %d, %d, %0.2f" % \
-			(ext.path if ext.path != '' else self.fs.pathsep, \
-			 ext.inode, ext.extents, ext.score))
+		print("'%s', %d, %s, %0.2f" % \
+			(p, ext.ino, ext.nr_extents, ext.travel_score))
 
 	def do_paths_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Calculate inode statistics for given paths.')
 		parser.add_argument('paths', nargs = '+', \
 			help = 'Paths to look up.')
+		parser.add_argument('-q', action = 'store_true', help = 'Quiet mode.  Calculate and cache the results, but do not print them.')
 		args = parser.parse_args(argv[1:])
-		if '*' in args.paths:
-			for x in self.fmdb.query_paths_stats([]):
-				self.print_file_stats(x)
+		i = self.fmdb.query_paths_stats(args.paths, resolve_paths = True, analyze_extents = True)
+		if args.q:
+			list(i)
 			return
-		for x in self.fmdb.query_paths_stats(args.paths):
+		for x in i:
 			self.print_file_stats(x)

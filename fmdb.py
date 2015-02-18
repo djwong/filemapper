@@ -19,7 +19,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
-file_stats = namedtuple('file_stats', ['path', 'inode', 'extents', 'score'])
+file_stats = namedtuple('file_stats', ['paths', 'ino', 'type', 'nr_extents', 'travel_score'])
 
 # Extent types
 EXT_TYPE_FILE		= 0
@@ -142,6 +142,13 @@ inode_types = {
 	INO_TYPE_SYMLINK:	'symbolic link',
 }
 
+primary_extent_type_for_inode = {
+	INO_TYPE_FILE:		EXT_TYPE_FILE,
+	INO_TYPE_DIR:		EXT_TYPE_DIR,
+	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
+	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
+}
+
 # Directory entry
 class dentry(object):
 	'''Directory entry.'''
@@ -160,7 +167,6 @@ def generate_op_sql():
 	return '''PRAGMA cache_size = 65536;
 PRAGMA mmap_size = 1073741824;
 PRAGMA synchronous = OFF;
-PRAGMA locking_mode = EXCLUSIVE;
 PRAGMA case_sensitive_like = ON;
 PRAGMA threads = 8;'''
 
@@ -182,7 +188,7 @@ DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
 CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
 CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, FOREIGN KEY(type) REFERENCES inode_type_t(id));
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, FOREIGN KEY(type) REFERENCES inode_type_t(id));
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
@@ -679,18 +685,19 @@ class fmdb(object):
 			cond = ' AND ('
 		else:
 			ets = []
-		for p in paths:
-			if p == self.fs.pathsep:
-				p = ''
-			if '*' in p:
-				op = 'GLOB'
-			else:
-				op = '='
-			qstr = qstr + ' %s path %s ?' % (cond, op)
-			cond = 'OR'
-			qarg.append(p)
-		if len(ets) > 0 and len(qarg) > 0:
-			qstr += ')'
+		if '*' not in paths and '/*' not in paths:
+			for p in paths:
+				if p == self.fs.pathsep:
+					p = ''
+				if '*' in p:
+					op = 'GLOB'
+				else:
+					op = '='
+				qstr = qstr + ' %s path %s ?' % (cond, op)
+				cond = 'OR'
+				qarg.append(p)
+			if len(ets) > 0 and len(qarg) > 0:
+				qstr += ')'
 		qstr += ' ORDER BY path, l_off'
 		#print(qstr, ets + qarg)
 		cur.execute(qstr, ets + qarg)
@@ -838,19 +845,20 @@ class fmdb(object):
 		qstr = 'SELECT dentry_t.name, dentry_t.name_ino, dentry_t.type FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino'
 		cond = 'AND ('
 		qarg = []
-		for p in paths:
-			if '*' in p:
-				op = 'GLOB'
-			else:
-				op = '='
-			qstr = qstr + ' %s path_t.path %s ?' % (cond, op)
-			cond = 'OR'
-			qarg.append(p)
-		if len(qarg) == 0:
-			cond = ''
-		else:
-			cond = ')'
-		qstr = qstr + '%s ORDER by dentry_t.name' % cond
+		if '*' not in paths and '/*' not in paths:
+			for p in paths:
+				if p == self.fs.pathsep:
+					p = ''
+				if '*' in p:
+					op = 'GLOB'
+				else:
+					op = '='
+				qstr += ' %s path_t.path %s ?' % (cond, op)
+				cond = 'OR'
+				qarg.append(p)
+			if len(qarg) > 0:
+				qstr += ')'
+		qstr += ' ORDER by dentry_t.name'
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -867,27 +875,24 @@ class fmdb(object):
 		'''Retrieve the types of extents to show in the overview and queries.'''
 		return self.extent_types_to_show
 
-	def query_paths_stats(self, paths, ignore_sparse = False):
-		'''Query inode statistics of a the given paths.'''
+	def count_inode_extents(self, ino, type):
+		'''Count the number of extents of a given type and attached to an inode.'''
+		cur = self.conn.cursor()
+		qstr = 'SELECT COUNT(extent_t.p_off) FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ?'
+		qarg = [ino, primary_extent_type_for_inode[type]]
+		cur.execute(qstr, qarg)
+		r = cur.fetchall()
+		if r is not None and len(r) == 1 and len(r[0]) == 1:
+			return r[0][0]
+		return None
+
+	def analyze_inode_extents(self, ino, type, ignore_sparse = False):
+		'''Calculate the average distance and extent count for a given inode.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		def get_extents():
-			qstr = 'SELECT path, ino, p_off, l_off, length FROM path_extent_v WHERE type <= ?'
-			qarg = [EXT_TYPE_DIR]
-			cond = ' AND ('
-			for p in paths:
-				if p == self.fs.pathsep:
-					p = ''
-				if '*' in p:
-					op = 'GLOB'
-				else:
-					op = '='
-				qstr = qstr + ' %s path %s ?' % (cond, op)
-				cond = 'OR'
-				qarg.append(p)
-			if len(qarg) > 0:
-				qstr += ')'
-			qstr += ' ORDER BY path, l_off'
+			qstr = 'SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ?'
+			qarg = [ino, primary_extent_type_for_inode[type]]
 			#print(qstr, qarg)
 			cur.execute(qstr, qarg)
 			while True:
@@ -897,26 +902,129 @@ class fmdb(object):
 				for row in rows:
 					yield row
 
-		last_path = None
-		#extents = p_dist = l_dist = last_path = last_poff = last_loff = last_ino = None
-		for (path, ino, p_off, l_off, length) in get_extents():
-			if last_path != path:
-				if last_path is not None:
-					yield file_stats(last_path, last_ino, extents, float(p_dist) / l_dist)
-				p_dist = l_dist = 0
-				extents = 0
-				last_poff = p_off
-				last_loff = l_off
-				last_path = path
-				last_ino = ino
-			else:
+		extents = p_dist = l_dist = 0
+		last_poff = last_loff = None
+		for (p_off, l_off, length) in get_extents():
+			if last_poff is not None:
 				p_dist += abs(p_off - last_poff)
 				if not ignore_sparse:
 					l_dist += l_off - last_loff
 			extents += 1
 			p_dist += length
 			l_dist += length
-		yield file_stats(last_path, last_ino, extents, float(p_dist) / l_dist)
+			last_poff = p_off
+			last_loff = l_off
+		if extents == 0:
+			return (0, 0.0)
+		return (extents, float(p_dist) / l_dist)
+
+	def query_inodes_stats(self, ino_sql, ino_sql_args, resolve_paths, count_extents, analyze_extents):
+		'''Retrieve the inode statistic data, given a query to select inodes.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+
+		# Figure out what to do with the inode sql
+		if ino_sql is not None and ino_sql != '':
+			isql = 'WHERE inode_t.ino IN (%s)' % ino_sql
+			rpsql = 'WHERE path_t.ino IN (%s)' % ino_sql
+			iargs = ino_sql_args
+		else:
+			isql = ''
+			rpsql = ''
+			iargs = []
+
+		# Do we need to reverse-map inodes to paths?
+		path_map = {}
+		if resolve_paths:
+			qstr = 'SELECT path, ino FROM path_t %s' % rpsql
+			cur.execute(qstr, iargs)
+			while True:
+				rows = cur.fetchmany()
+				if len(rows) == 0:
+					break
+				for (path, ino) in rows:
+					if ino in path_map:
+						path_map[ino].append(path)
+					else:
+						path_map[ino] = [path]
+
+		# Go for the main query
+		qstr = 'SELECT ino, type, nr_extents, travel_score FROM inode_t %s' % isql
+		cur.execute(qstr, iargs)
+		upd = []
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for (ino, type, nr_extents, travel_score) in rows:
+				nr_extents0 = nr_extents
+				travel_score0 = travel_score
+				if (travel_score is None or nr_extents is None) and analyze_extents:
+					nr_extents, travel_score = self.analyze_inode_extents(ino, type)
+				if nr_extents is None and count_extents:
+					nr_extents = self.count_inode_extents(ino, type)
+				if self.writable and \
+				   ((nr_extents0 is None and nr_extents != nr_extents0) or \
+				    (travel_score0 is None and travel_score != travel_score0)):
+					upd.append((nr_extents, travel_score, ino))
+				p = path_map[ino] if ino in path_map else []
+				yield file_stats(p, ino, type, nr_extents, travel_score)
+		if len(upd) > 0:
+			cur.execute('BEGIN TRANSACTION')
+			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
+			cur.executemany(qstr, upd)
+			cur.execute('END TRANSACTION')
+
+	def clear_calculated_values(self):
+		'''Remove all calculated values from the database.'''
+		if not self.writable:
+			raise Exception('Database is not writable.')
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'UPDATE inode_t SET nr_extents = NULL, travel_score = NULL'
+		cur.execute('BEGIN TRANSACTION')
+		cur.execute(qstr)
+		cur.execute('END TRANSACTION')
+
+	def query_paths_stats(self, paths, resolve_paths = False, count_extents = False, analyze_extents = False):
+		'''Retrieve the inode data for the given path specifications.'''
+		qstr = 'SELECT DISTINCT ino FROM path_t'
+		qarg = []
+		cond = ' WHERE '
+		for p in paths:
+			if p == self.fs.pathsep:
+				p = ''
+			if '*' in p:
+				op = 'GLOB'
+			else:
+				op = '='
+			qstr += ' %s path %s ?' % (cond, op)
+			cond = 'OR'
+			qarg.append(p)
+		if '*' in paths or '/*' in paths:
+			qstr = qarg = None
+		for x in self.query_inodes_stats(qstr, qarg, resolve_paths, count_extents, analyze_extents):
+			yield x
+
+	def query_dir_contents_stats(self, paths, resolve_paths = False, count_extents = False, analyze_extents = False):
+		'''Retrieve the inode data of all files in the given directories.'''
+		qstr = 'SELECT DISTINCT name_ino FROM dir_t, path_t WHERE dir_t.dir_ino = path_t.ino'
+		qarg = []
+		cond = ' AND '
+		for p in paths:
+			if p == self.fs.pathsep:
+				p = ''
+			if '*' in p:
+				op = 'GLOB'
+			else:
+				op = '='
+			qstr += ' %s path_t.path %s ?' % (cond, op)
+			cond = 'OR'
+			qarg.append(p)
+		if '*' in paths or '/*' in paths:
+			qstr = qarg = None
+		for x in self.query_inodes_stats(qstr, qarg, resolve_paths, count_extents, analyze_extents):
+			yield x
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
