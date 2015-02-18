@@ -31,19 +31,20 @@ struct e2map_t {
 #define wf_dirpath	base.dirpath
 #define wf_iconv	base.iconv
 
+#define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
+#define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
+#define EXT2_XT_XATTR		(EXT2_FT_MAX + 18)
+
 static int type_codes[] = {
-	[EXT2_FT_REG_FILE]	= 0,
-	[EXT2_FT_DIR]		= 1,
-	[EXT2_FT_SYMLINK]	= 3,
+	[EXT2_FT_REG_FILE]	= INO_TYPE_FILE,
+	[EXT2_FT_DIR]		= INO_TYPE_DIR,
+	[EXT2_FT_SYMLINK]	= INO_TYPE_SYMLINK,
+	[EXT2_XT_METADATA]	= INO_TYPE_METADATA,
 };
 
 #ifndef EXT4_INLINE_DATA_FL
 # define EXT4_INLINE_DATA_FL	0x10000000 /* Inode has inline data */
 #endif
-
-#define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
-#define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
-#define EXT2_XT_XATTR		(EXT2_FT_MAX + 18)
 
 static int extent_codes[] = {
 	[EXT2_FT_REG_FILE]	= EXT_TYPE_FILE,
@@ -99,17 +100,17 @@ struct hidden_file {
 	int type;
 };
 
-#define H(name, type) {INO_##name, STR_##name, EXT2_FT_##type}
+#define H(name, type) {INO_##name, STR_##name, EXT2_##type}
 static struct hidden_file hidden_inodes[] = {
-	H(BADBLOCKS_FILE, REG_FILE),
-	H(USR_QUOTA_FILE, REG_FILE),
-	H(GRP_QUOTA_FILE, REG_FILE),
-	H(BOOTLOADER_FILE, REG_FILE),
-	H(UNDELETE_DIR, DIR),
-	H(RESIZE_FILE, REG_FILE),
-	H(JOURNAL_FILE, REG_FILE),
-	H(EXCLUDE_FILE, REG_FILE),
-	H(REPLICA_FILE, REG_FILE),
+	H(BADBLOCKS_FILE, XT_METADATA),
+	H(USR_QUOTA_FILE, XT_METADATA),
+	H(GRP_QUOTA_FILE, XT_METADATA),
+	H(BOOTLOADER_FILE, XT_METADATA),
+	H(UNDELETE_DIR, FT_DIR),
+	H(RESIZE_FILE, XT_METADATA),
+	H(JOURNAL_FILE, XT_METADATA),
+	H(EXCLUDE_FILE, XT_METADATA),
+	H(REPLICA_FILE, XT_METADATA),
 	{},
 };
 #undef H
@@ -474,10 +475,6 @@ static void walk_fs(struct e2map_t *wf)
 	errcode_t err;
 
 	wf->wf_dirpath = "";
-	wf->err = ext2fs_allocate_inode_bitmap(fs, "visited inodes",
-					       &wf->iseen);
-	if (wf->err)
-		goto out;
 
 	insert_inode(&wf->base, EXT2_ROOT_INO, type_codes[EXT2_FT_DIR],
 		     wf->wf_dirpath);
@@ -488,14 +485,13 @@ static void walk_fs(struct e2map_t *wf)
 	if (wf->err || wf->wf_db_err)
 		goto out;
 
-	err = ext2fs_dir_iterate2(fs, EXT2_ROOT_INO, 0, NULL,
-				      walk_fs_helper, wf);
+	err = ext2fs_dir_iterate2(fs, EXT2_ROOT_INO, 0, NULL, walk_fs_helper, wf);
 	if (!wf->err)
 		wf->err = err;
 	if (wf->err || wf->wf_db_err)
 		goto out;
 out:
-	ext2fs_free_inode_bitmap(wf->iseen);
+	return;
 }
 
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
@@ -563,11 +559,11 @@ static void walk_metadata(struct e2map_t *wf)
 
 	INJECT_METADATA(EXT2_ROOT_INO, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, EXT2_FT_DIR);
-	INJECT_ROOT_METADATA(SB_FILE, EXT2_FT_REG_FILE);
-	INJECT_ROOT_METADATA(GDT_FILE, EXT2_FT_REG_FILE);
-	INJECT_ROOT_METADATA(BBITMAP_FILE, EXT2_FT_REG_FILE);
-	INJECT_ROOT_METADATA(IBITMAP_FILE, EXT2_FT_REG_FILE);
-	INJECT_ROOT_METADATA(ITABLE_FILE, EXT2_FT_REG_FILE);
+	INJECT_ROOT_METADATA(SB_FILE, EXT2_XT_METADATA);
+	INJECT_ROOT_METADATA(GDT_FILE, EXT2_XT_METADATA);
+	INJECT_ROOT_METADATA(BBITMAP_FILE, EXT2_XT_METADATA);
+	INJECT_ROOT_METADATA(IBITMAP_FILE, EXT2_XT_METADATA);
+	INJECT_ROOT_METADATA(ITABLE_FILE, EXT2_XT_METADATA);
 	INJECT_ROOT_METADATA(GROUPS_DIR, EXT2_FT_DIR);
 	INJECT_ROOT_METADATA(HIDDEN_DIR, EXT2_FT_DIR);
 
@@ -616,7 +612,7 @@ static void walk_metadata(struct e2map_t *wf)
 		if (s || group == 0) {
 			ext2fs_fast_mark_block_bitmap2(sb_bmap, s);
 			INJECT_METADATA(group_ino, path, ino, "superblock",
-					EXT2_FT_REG_FILE);
+					EXT2_XT_METADATA);
 			insert_extent(&wf->base, ino, s * fs->blocksize,
 				      0, fs->blocksize, EXTENT_SHARED,
 				      extent_codes[EXT2_XT_METADATA]);
@@ -630,7 +626,7 @@ static void walk_metadata(struct e2map_t *wf)
 		if (o) {
 			ext2fs_fast_mark_block_bitmap_range2(sb_gdt, o, u);
 			INJECT_METADATA(group_ino, path, ino, "descriptor",
-					EXT2_FT_REG_FILE);
+					EXT2_XT_METADATA);
 			insert_extent(&wf->base, ino, o * fs->blocksize,
 				      0, u * fs->blocksize, EXTENT_SHARED,
 				      extent_codes[EXT2_XT_METADATA]);
@@ -643,7 +639,7 @@ static void walk_metadata(struct e2map_t *wf)
 		if (n) {
 			ext2fs_fast_mark_block_bitmap_range2(sb_gdt, n, u);
 			INJECT_METADATA(group_ino, path, ino, "descriptor",
-					EXT2_FT_REG_FILE);
+					EXT2_XT_METADATA);
 			insert_extent(&wf->base, ino, n * fs->blocksize,
 				      0, u * fs->blocksize, EXTENT_SHARED,
 				      extent_codes[EXT2_XT_METADATA]);
@@ -656,7 +652,7 @@ static void walk_metadata(struct e2map_t *wf)
 		s = ext2fs_block_bitmap_loc(fs, group);
 		ext2fs_fast_mark_block_bitmap2(sb_bbitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "block_bitmap",
-				EXT2_FT_REG_FILE);
+				EXT2_XT_METADATA);
 		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
 			      fs->blocksize, EXTENT_SHARED,
 			      extent_codes[EXT2_XT_METADATA]);
@@ -668,7 +664,7 @@ static void walk_metadata(struct e2map_t *wf)
 		s = ext2fs_inode_bitmap_loc(fs, group);
 		ext2fs_fast_mark_block_bitmap2(sb_ibitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "inode_bitmap",
-				EXT2_FT_REG_FILE);
+				EXT2_XT_METADATA);
 		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
 			      fs->blocksize, EXTENT_SHARED,
 			      extent_codes[EXT2_XT_METADATA]);
@@ -681,7 +677,7 @@ static void walk_metadata(struct e2map_t *wf)
 		ext2fs_fast_mark_block_bitmap_range2(sb_itable, s,
 				fs->inode_blocks_per_group);
 		INJECT_METADATA(group_ino, path, ino, "inodes",
-				EXT2_FT_REG_FILE);
+				EXT2_XT_METADATA);
 		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
 			      fs->inode_blocks_per_group * fs->blocksize,
 			      EXTENT_SHARED, extent_codes[EXT2_XT_METADATA]);
@@ -716,6 +712,7 @@ static void walk_metadata(struct e2map_t *wf)
 			goto out;
 		if (!memcmp(zero_buf, inode.i_block, sizeof(zero_buf)))
 			continue;
+
 		INJECT_METADATA(INO_HIDDEN_DIR, path, hf->ino, hf->name,
 				hf->type);
 
@@ -830,6 +827,8 @@ int main(int argc, char *argv[])
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */
+	wf.err = ext2fs_allocate_inode_bitmap(fs, "visited inodes", &wf.iseen);
+	CHECK_ERROR("while allocating scanned inode bitmap");
 	walk_fs(&wf);
 	CHECK_ERROR("while analyzing filesystem");
 
@@ -860,6 +859,8 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 out:
+	if (wf.iseen)
+		ext2fs_free_inode_bitmap(wf.iseen);
 	if (wf.wf_iconv)
 		iconv_close(wf.wf_iconv);
 
