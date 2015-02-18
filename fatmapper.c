@@ -310,13 +310,13 @@ static void walk_metadata(struct fatmap_t *wf)
 
 	INJECT_METADATA(ROOT_DIR_INO, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, INO_TYPE_DIR);
-	INJECT_ROOT_METADATA(SB_FILE, INO_TYPE_FILE);
+	INJECT_ROOT_METADATA(SB_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_SB_FILE, 0, 0,
 		      fs->cluster_size, 0, EXT_TYPE_METADATA);
-	INJECT_ROOT_METADATA(PRIMARY_FAT_FILE, INO_TYPE_FILE);
+	INJECT_ROOT_METADATA(PRIMARY_FAT_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_PRIMARY_FAT_FILE, fs->fat_start, 0,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
-	INJECT_ROOT_METADATA(BACKUP_FAT_FILE, INO_TYPE_FILE);
+	INJECT_ROOT_METADATA(BACKUP_FAT_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_BACKUP_FAT_FILE, fs->fat_start + fs->fat_size, 0,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
 out:
