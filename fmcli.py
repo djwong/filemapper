@@ -423,7 +423,7 @@ class fmcli(code.InteractiveConsole):
 		ranges = []
 		for arg in args.inodes:
 			if arg == 'all':
-				for x in self.fmdb.query_inodes([]):
+				for x in self.fmdb.query_inums([]):
 					self.print_extent(x)
 				return
 			elif '-' in arg:
@@ -431,7 +431,7 @@ class fmcli(code.InteractiveConsole):
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
 				ranges.append(int(arg))
-		for x in self.fmdb.query_inodes(ranges):
+		for x in self.fmdb.query_inums(ranges):
 			self.print_extent(x)
 
 	def do_lengths(self, argv):
@@ -526,7 +526,7 @@ class fmcli(code.InteractiveConsole):
 			help = 'Paths to look up.')
 		parser.add_argument('-q', action = 'store_true', help = 'Quiet mode.  Calculate and cache the results, but do not print them.')
 		args = parser.parse_args(argv[1:])
-		i = self.fmdb.query_paths_stats(args.paths, resolve_paths = True, analyze_extents = True)
+		i = self.fmdb.query_paths_inodes(args.paths, resolve_paths = True, analyze_extents = True)
 		if args.q:
 			list(i)
 			return

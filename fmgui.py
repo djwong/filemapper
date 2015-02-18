@@ -451,6 +451,7 @@ class fmgui(QtGui.QMainWindow):
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
 		self.mp = MessagePump(self.mp_start, self.mp_stop)
+		self.inode_query_args = {'resolve_paths': True, 'analyze_extents': True}
 
 		# Set up the menu
 		units = fmcli.units_auto
@@ -813,6 +814,7 @@ class fmgui(QtGui.QMainWindow):
 		'''Query for extents based on the extent type code.'''
 		r = [x[2] for x in args if x[1]]
 		self.load_extents(self.fmdb.query_extent_types(r))
+		self.load_inodes(self.fmdb.query_extent_types_inodes(r, **self.inode_query_args))
 
 	def query_extent_flags(self, args):
 		'''Query for extents based on the extent flag code.'''
@@ -822,56 +824,60 @@ class fmgui(QtGui.QMainWindow):
 			if len(x) > 2 and x[1]:
 				flags |= x[2]
 		self.load_extents(self.fmdb.query_extent_flags(flags, exact))
+		self.load_inodes(self.fmdb.query_extent_flags_inodes(flags, exact, **self.inode_query_args))
 
 	def query_overview(self, args):
 		'''Query for extents mapped to ranges of overview cells.'''
 		if len(args) == 0:
-			return self.load_extents([])
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		ranges = []
-		for arg in args:
-			if arg == 'all':
-				self.load_extents(self.fmdb.query_poff_range([]))
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
-			else:
-				ranges.append(int(arg))
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+				else:
+					ranges.append(int(arg))
 		self.fmdb.set_overview_length(self.overview.total_length())
-		r = self.fmdb.pick_cells(ranges)
+		r = list(self.fmdb.pick_cells(ranges))
 		self.load_extents(self.fmdb.query_poff_range(r))
+		self.load_inodes(self.fmdb.query_poff_range_inodes(r, **self.inode_query_args))
 
 	def query_loff(self, args):
 		'''Query for extents mapped to ranges of logical bytes.'''
 		if len(args) == 0:
-			return self.load_extents([])
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		ranges = []
-		for arg in args:
-			if arg == 'all':
-				self.load_extents(self.fmdb.query_loff_range([]))
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(n2p(self.fs, arg))
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(n2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_loff_range(ranges))
+		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
 
 	def query_poff(self, args):
 		'''Query for extents mapped to ranges of physical bytes.'''
 		if len(args) == 0:
-			return self.load_extents([])
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		ranges = []
-		for arg in args:
-			if arg == 'all':
-				self.load_extents(self.fmdb.query_poff_range([]))
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(n2p(self.fs, arg))
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(n2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_poff_range(ranges))
+		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
 
 	def load_extents(self, f):
 		'''Populate the extent table.'''
@@ -902,7 +908,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def update_query_summary(self):
 		'''Update the query summary text in the UI.'''
-		self.results_dock.setWindowTitle('Query Results - %s extents, %s inodes' % (fmcli.format_number(fmcli.units_none, self.etm.extent_count()), fmcli.format_number(fmcli.units_none, self.itm.inode_count())))
+		self.results_dock.setWindowTitle('Query Results - %s extents; %s inodes' % (fmcli.format_number(fmcli.units_none, self.etm.extent_count()), fmcli.format_number(fmcli.units_none, self.itm.inode_count())))
 
 	def load_inodes(self, f):
 		'''Populate the inode table.'''
@@ -992,39 +998,45 @@ class fmgui(QtGui.QMainWindow):
 	def query_inodes(self, args):
 		'''Query for extents mapped to ranges of inodes.'''
 		if len(args) == 0:
-			return self.load_extents([])
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		ranges = []
-		for arg in args:
-			if arg == 'all':
-				self.load_extents(self.fmdb.query_inodes([]))
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
-			else:
-				ranges.append(int(arg))
-		self.load_extents(self.fmdb.query_inodes(ranges))
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+				else:
+					ranges.append(int(arg))
+		self.load_extents(self.fmdb.query_inums(ranges))
+		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
 
 	def query_lengths(self, args):
 		'''Query for extents based on ranges of lengths.'''
 		if len(args) == 0:
-			return self.load_extents([])
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		ranges = []
-		for arg in args:
-			if arg == 'all':
-				self.load_extents(self.fmdb.query_lengths([]))
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(fmcli.n2p(self.fs, arg))
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(fmcli.n2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_lengths(ranges))
+		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
 
 	def query_paths(self, args):
 		'''Query for extents mapped to a list of FS paths.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
 		self.load_extents(self.fmdb.query_paths(args))
-		self.load_inodes(self.fmdb.query_paths_stats(args, resolve_paths = True, analyze_extents = True))
+		self.load_inodes(self.fmdb.query_paths_inodes(args, **self.inode_query_args))
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
