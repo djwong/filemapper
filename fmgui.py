@@ -632,7 +632,7 @@ class fmgui(QtGui.QMainWindow):
 			'units': self.etm.units.label,
 			'window_state': base64.b64encode(self.saveState()).decode('utf-8'),
 			'window_geometry': base64.b64encode(self.saveGeometry()).decode('utf-8'),
-			'overview_font_family': of.family(),
+			'overview_font_family': str(of.family()),
 			'overview_font_points': of.pointSizeF(),
 			'extent_types': eta(),
 		}
