@@ -32,7 +32,7 @@ INSERT INTO inode_type_t VALUES (0, 'f');\
 INSERT INTO inode_type_t VALUES (1, 'd');\
 INSERT INTO inode_type_t VALUES (2, 'm');\
 INSERT INTO inode_type_t VALUES (3, 's');\
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, FOREIGN KEY(type) REFERENCES inode_type_t(id));\
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, FOREIGN KEY(type) REFERENCES inode_type_t(id));\
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));\
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));\
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);\
@@ -130,7 +130,7 @@ void run_batch_query(struct filemapper_t *wf, const char *sql)
 void insert_inode(struct filemapper_t *wf, int64_t ino, int type,
 		  const char *path)
 {
-	const char *ino_sql = "INSERT OR REPLACE INTO inode_t VALUES(?, ?);";
+	const char *ino_sql = "INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL);";
 	const char *path_sql = "INSERT INTO path_t VALUES(?, ?);";
 	sqlite3_stmt *stmt = NULL;
 	int err, err2, col = 1;

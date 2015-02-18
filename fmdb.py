@@ -399,7 +399,7 @@ class fmdb(object):
 			xtype = INO_TYPE_DIR
 		else:
 			xtype = INO_TYPE_FILE
-		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?);', \
+		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL);', \
 				(xstat.st_ino, xtype))
 		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
 				(path, xstat.st_ino))
