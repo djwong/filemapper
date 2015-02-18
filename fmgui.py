@@ -182,9 +182,9 @@ class FsTreeNode(object):
 	'''A node in the recorded filesystem.'''
 	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
-			raise Exception
+			raise ValueError('Supply a dentry loading function or a parent node.')
 		if fs is None and parent is None:
-			raise Exception
+			raise ValueError('Supply a FS summary object or a parent node.')
 		self.path = path
 		self.type = type
 		self.ino = ino
@@ -275,7 +275,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			node.load()
 			if index.column() == 0:
 				if len(node.path) == 0:
-					return '/'
+					return self.fs.pathsep
 				r = node.path.rindex(self.fs.pathsep)
 				return node.path[r + 1:]
 			else:
@@ -743,7 +743,7 @@ class fmgui(QtGui.QMainWindow):
 		for x in range(self.etm.columnCount(None)):
 			self.extent_table.resizeColumnToContents(x)
 		t4 = datetime.datetime.today()
-		self.extent_dock.setWindowTitle('Extents (%s)' % fmcli.format_number(fmcli.units_none, len(new_data)))
+		self.results_dock.setWindowTitle('Query Results - %s extents, %s inodes' % (fmcli.format_number(fmcli.units_none, len(new_data)), '0'))
 		t5 = datetime.datetime.today()
 		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
 

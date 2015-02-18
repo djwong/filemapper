@@ -325,9 +325,9 @@ S = symbolic links</string>
     </layout>
    </widget>
   </widget>
-  <widget class="QDockWidget" name="extent_dock">
+  <widget class="QDockWidget" name="results_dock">
    <property name="windowTitle">
-    <string>Extents</string>
+    <string>Query Results</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>8</number>
@@ -347,37 +347,128 @@ S = symbolic links</string>
       <number>2</number>
      </property>
      <item row="0" column="0">
-      <widget class="QTreeView" name="extent_table">
-       <property name="whatsThis">
-        <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
+      <widget class="QTabWidget" name="results_tab">
+       <property name="tabPosition">
+        <enum>QTabWidget::West</enum>
        </property>
-       <property name="accessibleName">
-        <string>Extent List</string>
-       </property>
-       <property name="accessibleDescription">
-        <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
-       </property>
-       <property name="editTriggers">
-        <set>QAbstractItemView::NoEditTriggers</set>
-       </property>
-       <property name="showDropIndicator" stdset="0">
-        <bool>false</bool>
-       </property>
-       <property name="alternatingRowColors">
-        <bool>true</bool>
-       </property>
-       <property name="selectionMode">
-        <enum>QAbstractItemView::ExtendedSelection</enum>
-       </property>
-       <property name="indentation">
+       <property name="currentIndex">
         <number>0</number>
        </property>
-       <property name="uniformRowHeights">
+       <property name="movable">
         <bool>true</bool>
        </property>
-       <property name="sortingEnabled">
-        <bool>true</bool>
-       </property>
+       <widget class="QWidget" name="tabExtents">
+        <attribute name="title">
+         <string>Extents</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item row="0" column="0">
+          <widget class="QTreeView" name="extent_table">
+           <property name="whatsThis">
+            <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
+           </property>
+           <property name="accessibleName">
+            <string>Extent List</string>
+           </property>
+           <property name="accessibleDescription">
+            <string>A list of extents matching the most recent extent query.  Selecting extents will show their location on the overview.</string>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="showDropIndicator" stdset="0">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::ExtendedSelection</enum>
+           </property>
+           <property name="indentation">
+            <number>0</number>
+           </property>
+           <property name="uniformRowHeights">
+            <bool>true</bool>
+           </property>
+           <property name="itemsExpandable">
+            <bool>false</bool>
+           </property>
+           <property name="sortingEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabInodeStat">
+        <attribute name="title">
+         <string>Inodes</string>
+        </attribute>
+        <layout class="QGridLayout" name="gridLayout_4">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item row="0" column="0">
+          <widget class="QTreeView" name="inode_table">
+           <property name="whatsThis">
+            <string>A list of inodes matching the most recent extent query.</string>
+           </property>
+           <property name="accessibleName">
+            <string>Inode List</string>
+           </property>
+           <property name="accessibleDescription">
+            <string>A list of inodes matching the most recent extent query.</string>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="showDropIndicator" stdset="0">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="selectionMode">
+            <enum>QAbstractItemView::ExtendedSelection</enum>
+           </property>
+           <property name="indentation">
+            <number>0</number>
+           </property>
+           <property name="uniformRowHeights">
+            <bool>true</bool>
+           </property>
+           <property name="itemsExpandable">
+            <bool>false</bool>
+           </property>
+           <property name="sortingEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
       </widget>
      </item>
     </layout>
@@ -612,10 +703,10 @@ S = symbolic links</string>
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>&amp;Export Extents as CSV...</string>
+    <string>&amp;Export Extents...</string>
    </property>
    <property name="statusTip">
-    <string>Export the current extent list as CSV.</string>
+    <string>Export the current extent list to a flat file on disk.</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+E</string>
@@ -744,7 +835,7 @@ S = symbolic links</string>
   <connection>
    <sender>actionExtent_List</sender>
    <signal>toggled(bool)</signal>
-   <receiver>extent_dock</receiver>
+   <receiver>results_dock</receiver>
    <slot>setVisible(bool)</slot>
    <hints>
     <hint type="sourcelabel">
@@ -774,7 +865,7 @@ S = symbolic links</string>
    </hints>
   </connection>
   <connection>
-   <sender>extent_dock</sender>
+   <sender>results_dock</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>actionExtent_List</receiver>
    <slot>setChecked(bool)</slot>
