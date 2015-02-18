@@ -35,8 +35,8 @@ def format_size(units, num):
 	'''Pretty-format a number with base-2 suffixes.'''
 	if units.factor is not None:
 		if units.factor == 1:
-			return "{:,}{}{}".format(int(num / units.factor), \
-				' ' if len(units.label) > 0 else '', units.label)
+			return "{:,}{}{}".format(int(num), \
+				' ' if len(units.label) > 0 else '', units.label[:-1] if num == 1 else units.label)
 		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
 	units_scale = [units_bytes, units_kib, units_mib, units_gib, units_tib]
 	for i in range(0, len(units_scale) - 1):
@@ -48,7 +48,7 @@ def format_number(units, num):
 	'''Pretty-format a number with base-10 suffixes.'''
 	if units.factor is not None:
 		if units.factor == 1:
-			return "{:,}{}{}".format(int(num / units.factor), \
+			return "{:,}{}{}".format(int(num), \
 				' ' if len(units.label) > 0 else '', units.label)
 		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
 	units_scale = [units_none, units_k, units_m, units_g, units_t]
