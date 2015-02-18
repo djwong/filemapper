@@ -115,4 +115,7 @@ void prepare_db(struct filemapper_t *wf);
 /* Index database. */
 void index_db(struct filemapper_t *wf);
 
+/* Calculate inode statistics */
+void calc_inode_stats(struct filemapper_t *wf);
+
 #endif /* ifdef FM_H_ */

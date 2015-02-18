@@ -58,6 +58,13 @@ CREATE INDEX extent_ino_i ON extent_t(ino);\
 CREATE INDEX overview_cell_i ON overview_t(length, cell_no);\
 PRAGMA foreign_key_check;";
 
+static int primary_extent_type_for_inode[] = {
+	[INO_TYPE_FILE]		= EXT_TYPE_FILE,
+	[INO_TYPE_DIR]		= EXT_TYPE_DIR,
+	[INO_TYPE_METADATA]	= EXT_TYPE_METADATA,
+	[INO_TYPE_SYMLINK]	= EXT_TYPE_SYMLINK,
+};
+
 /* Convert a directory pathname */
 int icvt(struct filemapper_t *wf, char *in, size_t inl, char *out, size_t outl)
 {
@@ -504,4 +511,116 @@ void prepare_db(struct filemapper_t *wf)
 void index_db(struct filemapper_t *wf)
 {
 	run_batch_query(wf, dbindex);
+}
+
+/* Calculate the number of extents and travel score data */
+void calc_inode_stats(struct filemapper_t *wf)
+{
+	sqlite3 *db = wf->db;
+	sqlite3_stmt *ino_stmt = NULL, *ext_stmt = NULL, *upd_stmt = NULL;
+	int64_t extents, p_dist, l_dist, last_poff, last_loff;
+	int64_t p_off, l_off, length;
+	int64_t ino;
+	int type;
+	int err, err2;
+
+	/* For each inode... */
+	err = sqlite3_prepare_v2(db, "SELECT ino, type FROM inode_t;",
+				 -1, &ino_stmt, NULL);
+	if (err)
+		goto out;
+
+	/* Select an extent... */
+	err = sqlite3_prepare_v2(db, "SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ? ORDER BY l_off;",
+				 -1, &ext_stmt, NULL);
+	if (err)
+		goto out;
+
+	/* Update inode table... */
+	err = sqlite3_prepare_v2(db, "UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?;",
+				 -1, &upd_stmt, NULL);
+	if (err)
+		goto out;
+
+	/* For each inode... */
+	err = sqlite3_step(ino_stmt);
+	while (err == SQLITE_ROW) {
+		ino = sqlite3_column_int64(ino_stmt, 0);
+		type = sqlite3_column_int(ino_stmt, 1);
+
+		/* For each extent attached to that inode... */
+		err = sqlite3_reset(ext_stmt);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(ext_stmt, 1, ino);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(ext_stmt, 2,
+					 primary_extent_type_for_inode[type]);
+		if (err)
+			goto out;
+
+		extents = p_dist = l_dist = 0;
+		last_poff = last_loff = 0;
+		err = sqlite3_step(ext_stmt);
+		while (err == SQLITE_ROW) {
+			p_off = sqlite3_column_int64(ext_stmt, 0);
+			l_off = sqlite3_column_int64(ext_stmt, 1);
+			length = sqlite3_column_int64(ext_stmt, 2);
+			if (extents) {
+				p_dist += abs(p_off - last_poff);
+				l_dist += l_off - last_loff;
+			}
+			extents++;
+			p_dist += length;
+			l_dist += length;
+			last_poff = p_off + length - 1;
+			last_loff = l_off + length - 1;
+
+			err = sqlite3_step(ext_stmt);
+		}
+		if (err && err != SQLITE_DONE)
+			goto out;
+
+		err = sqlite3_reset(upd_stmt);
+		if (err)
+			goto out;
+		if (extents) {
+			err = sqlite3_bind_int64(upd_stmt, 1, extents);
+			if (err)
+				goto out;
+			err = sqlite3_bind_double(upd_stmt, 2, (double)p_dist / l_dist);
+			if (err)
+				goto out;
+		} else {
+			err = sqlite3_bind_int64(upd_stmt, 1, 0);
+			if (err)
+				goto out;
+			err = sqlite3_bind_double(upd_stmt, 2, 0.0);
+			if (err)
+				goto out;
+		}
+		err = sqlite3_bind_int64(upd_stmt, 3, ino);
+		if (err)
+			goto out;
+		err = sqlite3_step(upd_stmt);
+		if (err && err != SQLITE_DONE)
+			goto out;
+
+		err = sqlite3_step(ino_stmt);
+	}
+	if (err && err != SQLITE_DONE)
+		goto out;
+	err = 0;
+out:
+	err2 = sqlite3_finalize(upd_stmt);
+	if (err2 && !err)
+		err = err2;
+	err2 = sqlite3_finalize(ext_stmt);
+	if (err2 && !err)
+		err = err2;
+	err2 = sqlite3_finalize(ino_stmt);
+	if (err2 && !err)
+		err = err2;
+	wf->db_err = err;
 }

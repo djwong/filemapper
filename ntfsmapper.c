@@ -438,6 +438,8 @@ int main(int argc, char *argv[])
 	CHECK_ERROR("while indexing database");
 	finalize_fs_stats(&wf.base, fs->dev->d_name);
 	CHECK_ERROR("while finalizing database");
+	calc_inode_stats(&wf.base);
+	CHECK_ERROR("while calculating inode statistics");
 
 	/* Cache overviews. */
 	cache_overview(&wf.base, total_bytes, 2048);
