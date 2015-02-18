@@ -180,15 +180,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 
 class FsTreeNode(object):
 	'''A node in the recorded filesystem.'''
-	def __init__(self, path, ino, type, statbuf, load_fn = None, parent = None, fs = None):
+	def __init__(self, path, ino, type, load_fn = None, parent = None, fs = None):
 		if load_fn is None and parent is None:
-			raise ValueError('Provide a data loading function or a parent node.')
+			raise Exception
 		if fs is None and parent is None:
-			raise ValueError('Provide a FS summary object or a parent node.')
+			raise Exception
 		self.path = path
 		self.type = type
 		self.ino = ino
-		self.statbuf = statbuf
 		self.parent = parent
 		if load_fn is not None:
 			self.load_fn = load_fn
@@ -210,7 +209,7 @@ class FsTreeNode(object):
 		if self.loaded:
 			return
 		self.loaded = True
-		self.children = [FsTreeNode(self.path + self.fs.pathsep + de.name, de.ino, de.type, st, parent = self) for (de, st) in self.load_fn(self.path)]
+		self.children = [FsTreeNode(self.path + self.fs.pathsep + de.name, de.ino, de.type, parent = self) for de in self.load_fn(self.path)]
 
 	def row(self):
 		if self.__row is None:
@@ -225,29 +224,11 @@ class FsTreeNode(object):
 
 class FsTreeModel(QtCore.QAbstractItemModel):
 	'''Model the filesystem tree recorded in the database.'''
-	def __init__(self, fs, root, units, parent=None, *args):
-		def basename(p):
-			if len(p) == 0:
-				return '/'
-			r = p.rindex(self.fs.pathsep)
-			return p[r + 1:]
+	def __init__(self, fs, root, parent=None, *args):
 		super(FsTreeModel, self).__init__(parent, *args)
 		self.root = root
-		self.headers = ['Name', 'Extents', 'Travel Score', 'Inode']
+		self.headers = ['Name']
 		self.fs = fs
-		self.units = units
-		self.header_map = [
-			lambda x: basename(x.path),
-			lambda x: fmcli.format_size(fmcli.units_none, x.statbuf.nr_extents),
-			lambda x: fmcli.format_size(self.units, x.statbuf.travel_score),
-			lambda x: fmcli.format_size(fmcli.units_none, x.ino),
-		]
-		self.align_map = [
-			QtCore.Qt.AlignLeft,
-			QtCore.Qt.AlignRight,
-			QtCore.Qt.AlignRight,
-			QtCore.Qt.AlignRight,
-		]
 
 	def index(self, row, column, parent):
 		if not parent.isValid():
@@ -266,7 +247,7 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if not index.isValid():
 			return null_model
 		node = index.internalPointer()
-		if node is None or node.parent is None:
+		if node.parent is None:
 			return null_model
 		return self.createIndex(node.parent.row(), 0, node.parent)
 
@@ -290,19 +271,20 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 		if not index.isValid():
 			return None
 		node = index.internalPointer()
-		col = index.column()
 		if role == QtCore.Qt.DisplayRole:
 			node.load()
-			return self.header_map[col](node)
+			if index.column() == 0:
+				if len(node.path) == 0:
+					return '/'
+				r = node.path.rindex(self.fs.pathsep)
+				return node.path[r + 1:]
+			else:
+				return node.ino
 		elif role == QtCore.Qt.DecorationRole:
-			if col != 0:
-				return None
-			elif node.type == fmdb.INO_TYPE_DIR:
+			if node.type == fmdb.INO_TYPE_DIR:
 				return QtGui.QIcon.fromTheme('folder')
 			else:
 				return QtGui.QIcon.fromTheme('text-x-generic')
-		elif role == QtCore.Qt.TextAlignmentRole:
-			return self.align_map[col]
 		return None
 
 	def headerData(self, col, orientation, role):
@@ -311,12 +293,11 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			return self.headers[col]
 		return None
 
-	def change_units(self, new_units):
-		'''Change the display units of the size and length columns.'''
-		self.units = new_units
-		tl = self.createIndex(0, 0)
-		br = self.createIndex(1, 2)
-		self.dataChanged.emit(tl, br)
+def sort_dentry(dentry):
+	if dentry.type == fmdb.INO_TYPE_DIR:
+		return '0' + dentry.name
+	else:
+		return '1' + dentry.name
 
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
@@ -373,17 +354,15 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
-		i = list(self.fmdb.query_paths_stats(['/'], analyze_extents = True))
-		root = FsTreeNode(de.name, de.ino, de.type, i[0], self.load_dir_data, \
+		root = FsTreeNode(de.name, de.ino, de.type, \
+				  lambda x: sorted(self.fmdb.query_ls([x]), key = sort_dentry), \
 				  fs = self.fs)
-		self.ftm = FsTreeModel(self.fs, root, units)
+
+		self.ftm = FsTreeModel(self.fs, root)
 		self.fs_tree.setModel(self.ftm)
 		self.fs_tree.selectionModel().selectionChanged.connect(self.pick_fs_tree)
 		self.fs_tree.setRootIsDecorated(False)
 		self.fs_tree.expand(self.ftm.root_index())
-		self.fs_tree.collapsed.connect(self.tree_changed)
-		self.fs_tree.expanded.connect(self.tree_changed)
-		self.tree_changed()
 
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
@@ -450,23 +429,6 @@ class fmgui(QtGui.QMainWindow):
 		self.load_state()
 		self.overview.load()
 		self.show()
-
-	def tree_changed(self):
-		'''Auto-resize the fs tree.'''
-		for x in range(self.fs_tree.header().count()):
-			self.fs_tree.resizeColumnToContents(x)
-
-	def load_dir_data(self, path):
-		'''Load data on files in a directory.'''
-		def sort_dentry(data):
-			dentry = data[0]
-			if dentry.type == fmdb.INO_TYPE_DIR:
-				return '0' + dentry.name
-			else:
-				return '1' + dentry.name
-		stat_data = {s.ino: s for s in self.fmdb.query_dir_contents_stats([path], analyze_extents = True)}
-		l = [(de, stat_data[de.ino]) for de in self.fmdb.query_ls([path])]
-		return sorted(l, key = sort_dentry)
 
 	def change_extent_type(self, action):
 		'''Toggle display of an extent type in the overview.'''
@@ -601,8 +563,6 @@ class fmgui(QtGui.QMainWindow):
 		keymod = int(QtGui.QApplication.keyboardModifiers())
 		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
 		for m in self.fs_tree.selectedIndexes():
-			if m.column() != 0:
-				continue
 			node = m.internalPointer()
 			p = node.path if node.path != '' else '/'
 			if node.hasChildren() and not is_meta:
@@ -660,7 +620,6 @@ class fmgui(QtGui.QMainWindow):
 			fmcli.units_tib,
 		]
 		self.etm.change_units(avail_units[idx])
-		self.ftm.change_units(avail_units[idx])
 		for u in self.unit_actions:
 			u.setChecked(False)
 		self.unit_actions[idx].setChecked(True)
