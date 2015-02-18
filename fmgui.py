@@ -635,6 +635,9 @@ class fmgui(QtGui.QMainWindow):
 			'overview_font_family': str(of.family()),
 			'overview_font_points': of.pointSizeF(),
 			'extent_types': eta(),
+			'results_tab': self.results_tab.currentIndex(),
+			'extent_headers': base64.b64encode(self.extent_table.header().saveState()).decode('utf-8'),
+			'inode_headers': base64.b64encode(self.inode_table.header().saveState()).decode('utf-8'),
 		}
 		qtdata = {}
 		for qt in self.query_types:
@@ -678,6 +681,9 @@ class fmgui(QtGui.QMainWindow):
 			for x in range(0, len(fmdb.extent_types)):
 				aa[x].setChecked(x in opts)
 			self.fmdb.set_extent_types_to_show(opts)
+			self.results_tab.setCurrentIndex(data['results_tab'])
+			self.extent_table.header().restoreState(base64.b64decode(data['extent_headers'].encode('utf-8')))
+			self.inode_table.header().restoreState(base64.b64decode(data['inode_headers'].encode('utf-8')))
 		except Exception as e:
 			failed = True
 		if failed:
