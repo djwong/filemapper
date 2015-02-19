@@ -19,29 +19,19 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
-class inode_stats(object):
-	def __init__(self, fs, paths, ino, itype, nr_extents, travel_score, \
-		     atime, crtime, ctime, mtime, size):
-		self.fs = fs
-		self.paths = paths
-		self.ino = ino
-		self.itype = itype
-		self.nr_extents = nr_extents
-		self.travel_score = travel_score
-		self.atime = atime
-		self.crtime = crtime
-		self.ctime = ctime
-		self.mtime = mtime
-		self.size = size
+# Inode stat data; use a named tuple to reduce memory use
+inode_stats = namedtuple('inode_stats', ['fs', 'paths', 'ino', 'itype',
+					 'nr_extents', 'travel_score', 'atime',
+					 'crtime', 'ctime', 'mtime', 'size'])
 
-	def paths_to_str(self):
-		'''Return a string representation of the inode paths.'''
-		p = [self.fs.pathsep if x == '' else x for x in self.paths]
-		return ', '.join(p)
+def inode_paths_to_str(self):
+	'''Return a string representation of the inode paths.'''
+	p = [self.fs.pathsep if x == '' else x for x in self.paths]
+	return ', '.join(p)
 
-	def typestr(self):
-		'''Return a string representing the inode type.'''
-		return inode_types_long[self.itype]
+def inode_typestr(self):
+	'''Return a string representing the inode type.'''
+	return inode_types_long[self.itype]
 
 # Extent types
 EXT_TYPE_FILE		= 0

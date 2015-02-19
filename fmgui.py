@@ -196,25 +196,25 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_number(fmcli.units_none, x.ino),
 			lambda x: fmcli.format_number(fmcli.units_none, x.nr_extents),
 			lambda x: fmcli.format_size(self.units, x.travel_score),
-			lambda x: x.typestr(),
+			lambda x: fmdb.inode_typestr(x),
 			lambda x: fmcli.format_size(self.units, x.size),
 			lambda x: fmcli.posix_timestamp_str(x.atime, True),
 			lambda x: fmcli.posix_timestamp_str(x.crtime, True),
 			lambda x: fmcli.posix_timestamp_str(x.ctime, True),
 			lambda x: fmcli.posix_timestamp_str(x.mtime, True),
-			lambda x: x.paths_to_str(),
+			lambda x: fmdb.inode_paths_to_str(x),
 		]
 		self.sort_keys = [
 			lambda x: x.ino,
 			lambda x: x.nr_extents,
 			lambda x: x.travel_score,
-			lambda x: x.typestr(),
+			lambda x: fmdb.inode_typestr(x),
 			lambda x: x.size,
 			lambda x: x.atime,
 			lambda x: x.crtime,
 			lambda x: x.ctime,
 			lambda x: x.mtime,
-			lambda x: x.paths_to_str(),
+			lambda x: fmdb.inode_paths_to_str(x),
 		]
 		self.align_map = [
 			QtCore.Qt.AlignRight,
@@ -1002,13 +1002,13 @@ class fmgui(QtGui.QMainWindow):
 					fd.write('%d,%d,%.02f,"%s",%d,%s,%s,%s,%s,"%s"\n' % \
 						(inode.ino, inode.nr_extents, \
 						 inode.travel_score, \
-						 inode.typestr(), \
+						 fmdb.inode_typestr(inode), \
 						 inode.size, \
 						 fmcli.posix_timestamp_str(inode.atime), \
 						 fmcli.posix_timestamp_str(inode.crtime), \
 						 fmcli.posix_timestamp_str(inode.ctime), \
 						 fmcli.posix_timestamp_str(inode.mtime), \
-						 inode.paths_to_str()))
+						 fmdb.inode_paths_to_str(inode)))
 					if n > 1000:
 						self.mp.pump()
 						n = 0

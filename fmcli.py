@@ -541,28 +541,28 @@ class fmcli(code.InteractiveConsole):
 			types.add(fmdb.extent_type_strings[arg])
 		self.fmdb.set_extent_types_to_show(types)
 
-	def print_inode_stats(self, ext):
+	def print_inode_stats(self, inode):
 		'''Pretty-print inode statistics.'''
-		l = list(ext.paths)
+		l = list(inode.paths)
 		p = (l[0] if l[0] != '' else self.fs.pathsep) if len(l) > 0 else None
 		if self.machine:
 			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
-				(p, ext.ino, ext.nr_extents, ext.travel_score, \
-				 ext.typestr(),
-				 posix_timestamp_str(ext.atime), \
-				 posix_timestamp_str(ext.crtime), \
-				 posix_timestamp_str(ext.ctime), \
-				 posix_timestamp_str(ext.mtime), \
-				 ext.size))
+				(p, inode.ino, inode.nr_extents, inode.travel_score, \
+				 fmdb.inode_typestr(inode), \
+				 posix_timestamp_str(inode.atime), \
+				 posix_timestamp_str(inode.crtime), \
+				 posix_timestamp_str(inode.ctime), \
+				 posix_timestamp_str(inode.mtime), \
+				 inode.size))
 			return
 		print("'%s', %d, %s, %0.2f, %s, '%s', '%s', '%s', '%s', %s" % \
-			(p, ext.ino, ext.nr_extents, ext.travel_score, \
-			 ext.typestr(), \
-			 posix_timestamp_str(ext.atime, True), \
-			 posix_timestamp_str(ext.crtime, True), \
-			 posix_timestamp_str(ext.ctime, True), \
-			 posix_timestamp_str(ext.mtime, True), \
-			 format_size(self.units, ext.size)))
+			(p, inode.ino, inode.nr_extents, inode.travel_score, \
+			 fmdb.inode_typestr(inode), \
+			 posix_timestamp_str(inode.atime, True), \
+			 posix_timestamp_str(inode.crtime, True), \
+			 posix_timestamp_str(inode.ctime, True), \
+			 posix_timestamp_str(inode.mtime, True), \
+			 format_size(self.units, inode.size)))
 
 	def do_paths_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
