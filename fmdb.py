@@ -166,15 +166,11 @@ def extent_typestr(self):
 	return extent_types_long[self.type]
 
 # Directory entry
-class dentry(object):
-	'''Directory entry.'''
-	def __init__(self, name, ino, type):
-		self.name = name
-		self.ino = ino
-		self.type = type
+dentry = namedtuple('dentry', ['name', 'ino', 'type'])
 
-	def typestr(self):
-		return inode_types_long[self.type]
+def dentry_typestr(self):
+	'''Generate a string representation of a dentry's type.'''
+	return inode_types_long[self.type]
 
 # Database strings
 APP_ID = 0xEF54

@@ -319,10 +319,14 @@ class fmcli(code.InteractiveConsole):
 		'''Pretty-print a dentry.'''
 		if self.machine:
 			print("'%s',%d,'%s',%d,%.02f" % \
-				(de.name, de.ino, de.typestr(), st.nr_extents, st.travel_score))
+				(de.name, de.ino, fmdb.dentry_typestr(de), \
+				 st.nr_extents, st.travel_score))
 			return
 		print("'%s', %s, '%s', %s, %.02f" % \
-			(de.name, format_number(units_none, de.ino), de.typestr(), format_number(units_none, st.nr_extents), st.travel_score))
+			(de.name, format_number(units_none, de.ino), \
+			 fmdb.dentry_typestr(de), \
+			 format_number(units_none, st.nr_extents), \
+			 st.travel_score))
 
 	def do_loff_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
