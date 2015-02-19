@@ -20,13 +20,19 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'date'])
 
 class inode_stats(object):
-	def __init__(self, fs, paths, ino, itype, nr_extents, travel_score):
+	def __init__(self, fs, paths, ino, itype, nr_extents, travel_score, \
+		     atime, crtime, ctime, mtime, size):
 		self.fs = fs
 		self.paths = paths
 		self.ino = ino
 		self.itype = itype
 		self.nr_extents = nr_extents
 		self.travel_score = travel_score
+		self.atime = atime
+		self.crtime = crtime
+		self.ctime = ctime
+		self.mtime = mtime
+		self.size = size
 
 	def paths_to_str(self):
 		'''Return a string representation of the inode paths.'''
@@ -211,7 +217,7 @@ DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
 CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
 CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
-CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, FOREIGN KEY(type) REFERENCES inode_type_t(id));
+CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, atime INTEGER, crtime INTEGER, ctime INTEGER, mtime INTEGER, size INTEGER, FOREIGN KEY(type) REFERENCES inode_type_t(id));
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
@@ -426,8 +432,9 @@ class fmdb(object):
 			xtype = INO_TYPE_DIR
 		else:
 			xtype = INO_TYPE_FILE
-		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL);', \
-				(xstat.st_ino, xtype))
+		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL, ?, ?, ?, ?, ?);', \
+				(xstat.st_ino, xtype, xstat.st_atime, None, \
+				 xstat.st_ctime, xstat.st_mtime, xstat.st_size))
 		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
 				(path, xstat.st_ino))
 
@@ -1147,7 +1154,7 @@ class fmdb(object):
 						path_map[ino] = set([path])
 
 		# Go for the main query
-		qstr = 'SELECT ino, type, nr_extents, travel_score FROM inode_t %s' % isql
+		qstr = 'SELECT ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM inode_t %s' % isql
 		#print(qstr, iargs)
 		cur.execute(qstr, iargs)
 		upd = []
@@ -1155,7 +1162,7 @@ class fmdb(object):
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
-			for (ino, type, nr_extents, travel_score) in rows:
+			for (ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size) in rows:
 				nr_extents0 = nr_extents
 				travel_score0 = travel_score
 				if (travel_score is None or nr_extents is None) and analyze_extents:
@@ -1167,7 +1174,8 @@ class fmdb(object):
 				    (travel_score0 is None and travel_score != travel_score0)):
 					upd.append((nr_extents, travel_score, ino))
 				p = path_map[ino] if ino in path_map else set()
-				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score)
+				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size)
+
 		if len(upd) > 0:
 			cur.execute('BEGIN TRANSACTION')
 			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'

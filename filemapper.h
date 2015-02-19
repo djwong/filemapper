@@ -83,7 +83,8 @@ void run_batch_query(struct filemapper_t *wf, const char *sql);
 
 /* Insert an inode record into the inode and path tables */
 void insert_inode(struct filemapper_t *wf, int64_t ino, int type,
-		  const char *path);
+		  const char *path, time_t *atime, time_t *crtime,
+		  time_t *ctime, time_t *mtime, size_t *size);
 
 /* Insert a directory entry into the database. */
 void insert_dentry(struct filemapper_t *wf, int64_t dir_ino,
