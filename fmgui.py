@@ -600,7 +600,6 @@ class fmgui(QtGui.QMainWindow):
 		for x in range(0, len(actions)):
 			if actions[x].isChecked():
 				arg.add(x)
-		print(arg)
 		self.fmdb.set_extent_types_to_show(arg)
 		self.overview.render()
 

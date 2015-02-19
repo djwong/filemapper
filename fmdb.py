@@ -72,6 +72,8 @@ extent_types_long = {
 extent_type_strings = {extent_types[i]: i for i in extent_types}
 extent_type_strings_long = {extent_types_long[i]: i for i in extent_types_long}
 
+all_extent_types = set(extent_types.keys())
+
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''
 	if is_xattr:
@@ -1044,7 +1046,7 @@ class fmdb(object):
 				qstr += ' %s path_t.path %s ?' % (cond, op)
 				cond = 'OR'
 				qarg.append(p)
-			if len(qarg) > 0:
+			if len(ets) > 0 and len(qarg) > 0:
 				qstr += ')'
 		if mode == FMDB_EXTENT_SQL:
 			qstr += ' ORDER BY dentry_t.name'
@@ -1057,6 +1059,7 @@ class fmdb(object):
 		qstr, qarg = self.__query_ls_sql(paths, FMDB_EXTENT_SQL)
 		if qstr is None:
 			return
+		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -1073,11 +1076,14 @@ class fmdb(object):
 
 	def set_extent_types_to_show(self, types):
 		'''Restrict the overview and queries to showing these types of extents.'''
+		if types == all_extent_types:
+			types = None
 		self.extent_types_to_show = types
 
 	def get_extent_types_to_show(self):
 		'''Retrieve the types of extents to show in the overview and queries.'''
-		return self.extent_types_to_show
+		t = self.extent_types_to_show
+		return all_extent_types if t is None else t
 
 	def count_inode_extents(self, ino, type):
 		'''Count the number of extents of a given type and attached to an inode.'''
@@ -1127,6 +1133,7 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 
+		t0 = datetime.datetime.now()
 		# Figure out what to do with the inode sql
 		if ino_sql is not None and ino_sql != '':
 			isql = 'WHERE inode_t.ino IN (%s)' % ino_sql
@@ -1137,6 +1144,7 @@ class fmdb(object):
 			rpsql = ''
 			iargs = []
 
+		t1 = datetime.datetime.now()
 		# Do we need to reverse-map inodes to paths?
 		path_map = {}
 		if resolve_paths:
@@ -1153,6 +1161,7 @@ class fmdb(object):
 					else:
 						path_map[ino] = set([path])
 
+		t2 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM inode_t %s' % isql
 		#print(qstr, iargs)
@@ -1175,12 +1184,15 @@ class fmdb(object):
 					upd.append((nr_extents, travel_score, ino))
 				p = path_map[ino] if ino in path_map else set()
 				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size)
+		t3 = datetime.datetime.now()
 
 		if len(upd) > 0:
 			cur.execute('BEGIN TRANSACTION')
 			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
 			cur.executemany(qstr, upd)
 			cur.execute('END TRANSACTION')
+		t4 = datetime.datetime.now()
+		print_times('query_inode_stat', [t0, t1, t2, t3, t4])
 
 	def clear_calculated_values(self):
 		'''Remove all calculated values from the database.'''
