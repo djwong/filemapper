@@ -626,12 +626,14 @@ class fmdb(object):
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
-				return
+				return (None, None)
 			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
 			cond = ' AND ('
 		else:
 			ets = []
+		if mode == FMDB_INODE_SQL and len(ranges) == 0:
+			return (None, None)
 		for r in ranges:
 			if type(r) == int:
 				qstr += ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
@@ -654,6 +656,8 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_loff_range_sql(ranges, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -680,12 +684,14 @@ class fmdb(object):
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
-				return
+				return (None, None)
 			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
 			cond = ' AND ('
 		else:
 			ets = []
+		if mode == FMDB_INODE_SQL and len(ranges) == 0:
+			return (None, None)
 		for r in ranges:
 			if type(r) == int:
 				qstr += ' %s (p_off <= ? AND p_end >= ?)' % cond
@@ -708,6 +714,8 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_poff_range_sql(ranges, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		#print(qstr, qarg)
 		t0 = datetime.datetime.today()
 		cur.execute(qstr, qarg)
@@ -739,12 +747,14 @@ class fmdb(object):
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
-				return
+				return (None, None)
 			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
 			cond = ' AND ('
 		else:
 			ets = []
+		if mode == FMDB_INODE_SQL and len(paths) == 0:
+			return (None, None)
 		if '*' not in paths and '/*' not in paths:
 			for p in paths:
 				if p == self.fs.pathsep:
@@ -767,6 +777,8 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_paths_sql(paths, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
@@ -787,20 +799,21 @@ class fmdb(object):
 		'''Generate SQL to query extents given ranges of inodes.'''
 		if mode == FMDB_EXTENT_SQL:
 			qcol = 'path, p_off, l_off, length, flags, type'
-			qstr = 'SELECT %s FROM path_extent_v' % qcol
 		else:
 			qcol = 'DISTINCT ino'
-			qstr = 'SELECT %s FROM inode_t' % qcol
+		qstr = 'SELECT %s FROM path_extent_v' % qcol
 		qarg = []
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
-				return
+				return (None, None)
 			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
 			cond = ' AND ('
 		else:
 			ets = []
+		if mode == FMDB_INODE_SQL and len(ranges) == 0:
+			return (None, None)
 		for r in ranges:
 			if type(r) == int:
 				qstr += ' %s ino = ?' % cond
@@ -822,6 +835,8 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_inodes_sql(ranges, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -848,12 +863,14 @@ class fmdb(object):
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
-				return
+				return (None, None)
 			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
 			cond = ' AND ('
 		else:
 			ets = []
+		if mode == FMDB_INODE_SQL and len(ranges) == 0:
+			return (None, None)
 		for r in ranges:
 			if type(r) == int:
 				qstr += ' %s length = ?' % cond
@@ -875,6 +892,8 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_lengths_sql(ranges, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
@@ -904,6 +923,8 @@ class fmdb(object):
 		if set(types) != all_types:
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in types]))
 			qarg = types
+		if mode == FMDB_INODE_SQL and len(qarg) == 0:
+			return (None, None)
 		if mode == FMDB_EXTENT_SQL:
 			qstr += ' ORDER BY path, l_off'
 		return (qstr, qarg)
@@ -934,7 +955,6 @@ class fmdb(object):
 
 	def __query_extent_flags_sql(self, flags, exact, mode):
 		'''Generatel SQL to query extents given a set of type codes.'''
-		# XXX: should this have extent type filters?
 		if mode == FMDB_EXTENT_SQL:
 			qcol = 'path, p_off, l_off, length, flags, type'
 		else:
@@ -944,7 +964,15 @@ class fmdb(object):
 			qstr = qstr + ' = ?'
 		else:
 			qstr = qstr + ' & ? > 0'
-		return (qstr, [flags])
+		cond = 'AND'
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return (None, None)
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+		else:
+			ets = []
+		return (qstr, [flags] + ets)
 
 	def query_extent_flags(self, flags, exact = True):
 		'''Query extents given a set of type codes.'''
@@ -986,8 +1014,18 @@ class fmdb(object):
 		else:
 			qcol = 'DISTINCT dentry_t.name_ino'
 		qstr = 'SELECT %s FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino' % qcol
-		cond = 'AND ('
+		cond = 'AND'
 		qarg = []
+		if self.extent_types_to_show is not None:
+			if len(self.extent_types_to_show) == 0:
+				return (None, None)
+			ets = list(self.extent_types_to_show)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			cond = ' AND ('
+		else:
+			ets = []
+		if mode == FMDB_INODE_SQL and len(paths) == 0:
+			return (None, None)
 		if '*' not in paths and '/*' not in paths:
 			for p in paths:
 				if p == self.fs.pathsep:
@@ -1002,14 +1040,16 @@ class fmdb(object):
 			if len(qarg) > 0:
 				qstr += ')'
 		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER by dentry_t.name'
-		return (qstr, qarg)
+			qstr += ' ORDER BY dentry_t.name'
+		return (qstr, ets + qarg)
 
 	def query_ls(self, paths):
 		'''Query all paths available under a given path.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_ls_sql(paths, FMDB_EXTENT_SQL)
+		if qstr is None:
+			return
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -1094,7 +1134,7 @@ class fmdb(object):
 		path_map = {}
 		if resolve_paths:
 			qstr = 'SELECT path, ino FROM path_t %s' % rpsql
-			print(qstr, iargs)
+			#print(qstr, iargs)
 			cur.execute(qstr, iargs)
 			while True:
 				rows = cur.fetchmany()
@@ -1108,7 +1148,7 @@ class fmdb(object):
 
 		# Go for the main query
 		qstr = 'SELECT ino, type, nr_extents, travel_score FROM inode_t %s' % isql
-		print(qstr, iargs)
+		#print(qstr, iargs)
 		cur.execute(qstr, iargs)
 		upd = []
 		while True:
@@ -1181,5 +1221,3 @@ class fiemap_db(fmdb):
 			self.insert_extent)
 		self.finish_update()
 		self.finalize_fs_stats()
-
-# XXX should we return no string for FMDB_INODE_SQL if there's nothing to filter on?
