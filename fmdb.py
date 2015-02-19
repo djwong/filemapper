@@ -39,13 +39,6 @@ inode_types_long = {
 	INO_TYPE_SYMLINK:	'symbolic link',
 }
 
-primary_extent_type_for_inode = {
-	INO_TYPE_FILE:		EXT_TYPE_FILE,
-	INO_TYPE_DIR:		EXT_TYPE_DIR,
-	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
-	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
-}
-
 # Inode stat data; use a named tuple to reduce memory use
 inode_stats = namedtuple('inode_stats', ['fs', 'paths', 'ino', 'itype',
 					 'nr_extents', 'travel_score', 'atime',
@@ -84,6 +77,13 @@ extent_types_long = {
 	EXT_TYPE_METADATA:	'Metadata',
 	EXT_TYPE_XATTR:		'Extended Attribute',
 	EXT_TYPE_SYMLINK:	'Symbolic Link',
+}
+
+primary_extent_type_for_inode = {
+	INO_TYPE_FILE:		EXT_TYPE_FILE,
+	INO_TYPE_DIR:		EXT_TYPE_DIR,
+	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
+	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
 }
 
 extent_type_strings = {extent_types[i]: i for i in extent_types}
