@@ -167,6 +167,24 @@ static int walk_dir(DOS_FS *fs, DOS_FILE *start, FDSC **cp, walk_file_fn fn,
 	return 0;
 }
 
+static time_t decode_time(__u16 date, __u16 time)
+{
+	struct tm ret;
+
+	memset(&ret, 0, sizeof(ret));
+	date = le16toh(date);
+	time = le16toh(time);
+
+	ret.tm_year = ((date >> 9) & 0x7F) + 80;
+	ret.tm_mon = ((date >> 5) & 0xF) - 1;
+	ret.tm_mday = (date & 0x1F);
+	ret.tm_hour = ((time >> 11) & 0x1F);
+	ret.tm_min = ((time >> 5) & 0x3F);
+	ret.tm_sec = (time & 0x1F);
+
+	return mktime(&ret);
+}
+
 /* Handle a directory entry */
 static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data)
 {
@@ -175,6 +193,8 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 	int type;
 	uint64_t ino;
 	struct fatmap_t *wf = priv_data;
+	time_t atime, crtime, mtime;
+	ssize_t size;
 
 	if (file->lfn)
 		snprintf(name, FAT_MAX_NAME_LEN, "%s", file->lfn);
@@ -197,8 +217,14 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 		   wf->dir_ino, wf->wf_dirpath, name, file->dir_ent.attr,
 		   ino, type);
 
+	atime = decode_time(file->dir_ent.adate, 0);
+	crtime = decode_time(file->dir_ent.cdate, file->dir_ent.ctime);
+	mtime = decode_time(file->dir_ent.date, file->dir_ent.time);
+	size = le32toh(file->dir_ent.size);
+
 	snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
-	insert_inode(&wf->base, ino, type, path);
+	insert_inode(&wf->base, ino, type, path, &atime, &crtime, NULL, &mtime,
+		     &size);
 	if (wf->wf_db_err)
 		goto err;
 	insert_dentry(&wf->base, wf->dir_ino, name, ino);
@@ -273,7 +299,8 @@ static void walk_fs(struct fatmap_t *wf)
 		goto out;
 
 	/* Now inject the root inode */
-	insert_inode(&wf->base, wf->ino, INO_TYPE_DIR, wf->wf_dirpath);
+	insert_inode(&wf->base, wf->ino, INO_TYPE_DIR, wf->wf_dirpath, NULL,
+		     NULL, NULL, NULL, NULL);
 	if (wf->wf_db_err)
 		goto out;
 	wf->ino++;

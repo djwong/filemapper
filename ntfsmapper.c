@@ -134,8 +134,8 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 				    l_block + e_len == r->vcn &&
 				    e_len + r->length <= max_extent) {
 					e_len += r->length;
-					dbg_printf("R: ino=%d len=%u\n", ino,
-						   e_len);
+					dbg_printf("R: ino=%d len=%u\n",
+						   inode->mft_no, e_len);
 					continue;
 				}
 
@@ -192,16 +192,22 @@ static int walk_fs_helper(void *priv_data, const ntfschar * de_name,
 	int type;
 	struct ntfsmap_t *wf = priv_data;
 	ntfs_inode *ni = NULL;
+	time_t atime, crtime, ctime, mtime;
+	struct timespec ts;
 
 	/* Skip the 8.3 names */
 	if ((name_type & FILE_NAME_WIN32_AND_DOS) == FILE_NAME_DOS)
 		return 0;
 
 	p = name;
-	if (ntfs_ucstombs(de_name, de_name_len, &p, NTFS_MAX_NAME_LEN) < 0) {
-		wf->err = errno;
-		ntfs_log_error("Cannot represent filename in locale.");
-		return -1;
+	if (de_name) {
+		if (ntfs_ucstombs(de_name, de_name_len, &p, NTFS_MAX_NAME_LEN) < 0) {
+			wf->err = errno;
+			ntfs_log_error("Cannot represent filename in locale.");
+			return -1;
+		}
+	} else {
+		name[0] = 0;
 	}
 
 	if (!strcmp(name, ".") || !strcmp(name, ".."))
@@ -213,7 +219,7 @@ static int walk_fs_helper(void *priv_data, const ntfschar * de_name,
 		return -1;
 	}
 
-	if (MREF(mref) < FILE_first_user) {
+	if (de_name && MREF(mref) < FILE_first_user) {
 		type = INO_TYPE_METADATA;
 		goto have_type;
 	}
@@ -237,11 +243,25 @@ have_type:
 	dbg_printf("dir=%"PRIu64" name=%s/%s nametype=0x%x ino=%"PRIu64" type=%d\n",
 		   wf->dir_ino, wf->wf_dirpath, name, name_type, ni->mft_no, type);
 
-	snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
-	insert_inode(&wf->base, ni->mft_no, type, path);
+	ts = ntfs2timespec(ni->last_access_time);
+	atime = ts.tv_sec;
+	ts = ntfs2timespec(ni->creation_time);
+	crtime = ts.tv_sec;
+	ts = ntfs2timespec(ni->last_mft_change_time);
+	ctime = ts.tv_sec;
+	ts = ntfs2timespec(ni->last_data_change_time);
+	mtime = ts.tv_sec;
+
+	if (de_name)
+		snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
+	else
+		path[0] = 0;
+	insert_inode(&wf->base, ni->mft_no, type, path, &atime, &crtime, &ctime,
+		     &mtime, &ni->data_size);
 	if (wf->wf_db_err)
 		goto err;
-	insert_dentry(&wf->base, wf->dir_ino, name, ni->mft_no);
+	if (de_name)
+		insert_dentry(&wf->base, wf->dir_ino, name, ni->mft_no);
 	if (wf->wf_db_err)
 		goto err;
 
@@ -278,11 +298,6 @@ err:
 /* Walk the whole FS, looking for inodes to analyze. */
 static void walk_fs(struct ntfsmap_t *wf)
 {
-	ntfs_volume *fs = wf->fs;
-	ntfs_inode *ni;
-	s64 pos = 0;
-	int err;
-
 	wf->wf_dirpath = "";
 	wf->ino_bmap = calloc(1, wf->total_inodes / 8);
 	if (!wf->ino_bmap) {
@@ -290,30 +305,10 @@ static void walk_fs(struct ntfsmap_t *wf)
 		return;
 	}
 
-	ni = ntfs_pathname_to_inode(fs, NULL, "/");
-	if (!ni) {
-		wf->err = ENOENT;
-		goto out;
-	}
-	wf->dir_ino = ni->mft_no;
+	walk_fs_helper(wf, NULL, 0, FILE_NAME_WIN32, 0, FILE_root, NTFS_DT_DIR);
 
-	insert_inode(&wf->base, ni->mft_no, INO_TYPE_DIR, wf->wf_dirpath);
-	if (wf->wf_db_err)
-		goto out;
-
-	walk_file_mappings(wf, ni);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-
-	err = ntfs_readdir(ni, &pos, wf, walk_fs_helper);
-	if (!wf->err)
-		wf->err = err;
-	if (wf->err || wf->wf_db_err)
-		goto out;
-out:
 	free(wf->ino_bmap);
 	wf->ino_bmap = NULL;
-	ntfs_inode_close(ni);
 }
 
 #define CHECK_ERROR(msg) \
