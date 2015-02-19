@@ -19,6 +19,33 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'extents', 'pathsep', 'inodes',
 				       'date'])
 
+# Inode type codes
+INO_TYPE_FILE		= 0
+INO_TYPE_DIR		= 1
+INO_TYPE_METADATA	= 2
+INO_TYPE_SYMLINK	= 3
+
+inode_types = {
+	INO_TYPE_FILE:		'f',
+	INO_TYPE_DIR:		'd',
+	INO_TYPE_METADATA:	'm',
+	INO_TYPE_SYMLINK:	's',
+}
+
+inode_types_long = {
+	INO_TYPE_FILE:		'file',
+	INO_TYPE_DIR:		'directory',
+	INO_TYPE_METADATA:	'metadata',
+	INO_TYPE_SYMLINK:	'symbolic link',
+}
+
+primary_extent_type_for_inode = {
+	INO_TYPE_FILE:		EXT_TYPE_FILE,
+	INO_TYPE_DIR:		EXT_TYPE_DIR,
+	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
+	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
+}
+
 # Inode stat data; use a named tuple to reduce memory use
 inode_stats = namedtuple('inode_stats', ['fs', 'paths', 'ino', 'itype',
 					 'nr_extents', 'travel_score', 'atime',
@@ -137,33 +164,6 @@ def extent_flagstr(self):
 def extent_typestr(self):
 	'''Generate a string representing an extent's type.'''
 	return extent_types_long[self.type]
-
-# Inode type codes
-INO_TYPE_FILE		= 0
-INO_TYPE_DIR		= 1
-INO_TYPE_METADATA	= 2
-INO_TYPE_SYMLINK	= 3
-
-inode_types = {
-	INO_TYPE_FILE:		'f',
-	INO_TYPE_DIR:		'd',
-	INO_TYPE_METADATA:	'm',
-	INO_TYPE_SYMLINK:	's',
-}
-
-inode_types_long = {
-	INO_TYPE_FILE:		'file',
-	INO_TYPE_DIR:		'directory',
-	INO_TYPE_METADATA:	'metadata',
-	INO_TYPE_SYMLINK:	'symbolic link',
-}
-
-primary_extent_type_for_inode = {
-	INO_TYPE_FILE:		EXT_TYPE_FILE,
-	INO_TYPE_DIR:		EXT_TYPE_DIR,
-	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
-	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
-}
 
 # Directory entry
 class dentry(object):
