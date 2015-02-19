@@ -60,16 +60,16 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.format_size(self.units, x.p_off),
 			lambda x: fmcli.format_size(self.units, x.l_off),
 			lambda x: fmcli.format_size(self.units, x.length),
-			lambda x: x.flagstr(),
-			lambda x: x.typestr(),
+			lambda x: fmdb.extent_flagstr(x),
+			lambda x: fmdb.extent_typestr(x),
 			lambda x: x.path if x.path != '' else fs.pathsep
 		]
 		self.sort_keys = [
 			lambda x: x.p_off,
 			lambda x: x.l_off,
 			lambda x: x.length,
-			lambda x: x.flagstr(),
-			lambda x: x.typestr(),
+			lambda x: fmdb.extent_flagstr(x),
+			lambda x: fmdb.extent_typestr(x),
 			lambda x: x.path,
 		]
 		self.align_map = [
@@ -973,8 +973,8 @@ class fmgui(QtGui.QMainWindow):
 					fd.write('"%s",%d,%d,%d,"%s","%s"\n' % \
 						(ext.path if ext.path != '' else self.fs.pathsep, \
 						 ext.p_off, ext.l_off, ext.length, \
-						 ext.flagstr(), \
-						 ext.typestr()))
+						 fmdb.extent_flagstr(ext), \
+						 fmdb.extent_typestr(ext)))
 					if n > 1000:
 						self.mp.pump()
 						n = 0

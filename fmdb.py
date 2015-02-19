@@ -137,21 +137,16 @@ def extent_str_to_flags(string):
 		ret |= extent_flags_strings[s]
 	return ret
 
-# An extent
-class poff_row(object):
-	def __init__(self, path, p_off, l_off, length, flags, type):
-		self.path = path
-		self.p_off = p_off
-		self.l_off = l_off
-		self.length = length
-		self.flags = flags
-		self.type = type
+# An extent; named tuples consume far less memory...
+extent = namedtuple('extent', ['path', 'p_off', 'l_off', 'length', 'flags', 'type'])
 
-	def flagstr(self):
-		return extent_flags_to_str(self.flags)
+def extent_flagstr(self):
+	'''Generate a string representing an extent's flags.'''
+	return extent_flags_to_str(self.flags)
 
-	def typestr(self):
-		return extent_types_long[self.type]
+def extent_typestr(self):
+	'''Generate a string representing an extent's type.'''
+	return extent_types_long[self.type]
 
 # Inode type codes
 INO_TYPE_FILE		= 0
@@ -678,7 +673,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_loff_range_inodes(self, ranges, **kwargs):
@@ -739,7 +734,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 		t2 = datetime.datetime.today()
 		print_times('poff_range', [t0, t1, t2])
@@ -804,7 +799,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				return
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_paths_inodes(self, paths, **kwargs):
@@ -865,7 +860,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_inums_inodes(self, ranges, **kwargs):
@@ -923,7 +918,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_lengths_inodes(self, ranges, **kwargs):
@@ -964,7 +959,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_extent_types_inodes(self, types, **kwargs):
@@ -1007,7 +1002,7 @@ class fmdb(object):
 			if len(rows) == 0:
 				break
 			for row in rows:
-				yield poff_row(row[0], row[1], row[2], row[3], \
+				yield extent(row[0], row[1], row[2], row[3], \
 						row[4], row[5])
 
 	def query_extent_flags_inodes(self, flags, exact = True, **kwargs):

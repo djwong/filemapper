@@ -304,16 +304,16 @@ class fmcli(code.InteractiveConsole):
 			print("'%s',%d,%d,%d,'%s','%s'" % \
 				(ext.path if ext.path != '' else self.fs.pathsep, \
 				 ext.p_off, ext.l_off, ext.length, \
-				 ext.flagstr(), \
-				 ext.typestr()))
+				 fmdb.extent_flagstr(ext), \
+				 fmdb.extent_typestr(ext)))
 			return
 		print("'%s', %s, %s, %s, '%s', '%s'" % \
 			(ext.path if ext.path != '' else self.fs.pathsep, \
 			 format_size(self.units, ext.p_off), \
 			 format_size(self.units, ext.l_off), \
 			 format_size(self.units, ext.length), \
-			 ext.flagstr(), \
-			 ext.typestr()))
+			 fmdb.extent_flagstr(ext), \
+			 fmdb.extent_typestr(ext)))
 
 	def print_dentry(self, de, st):
 		'''Pretty-print a dentry.'''
@@ -430,7 +430,7 @@ class fmcli(code.InteractiveConsole):
 		args = parser.parse_args(argv[1:])
 		it = self.fmdb.query_paths(args.paths)
 		if args.q:
-			list(it)
+			x = list(it)
 			return
 		for ext in it:
 			self.print_extent(ext)
