@@ -11,6 +11,8 @@ import argparse
 import sys
 import fmdb
 from collections import namedtuple
+import datetime
+from dateutil import tz
 
 units = namedtuple('units', ['abbrev', 'label', 'factor'])
 
@@ -33,6 +35,8 @@ units_auto = units('a', 'auto', None)
 
 def format_size(units, num):
 	'''Pretty-format a number with base-2 suffixes.'''
+	if num is None:
+		return None
 	if units.factor is not None:
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num), \
@@ -46,6 +50,8 @@ def format_size(units, num):
 
 def format_number(units, num):
 	'''Pretty-format a number with base-10 suffixes.'''
+	if num is None:
+		return None
 	if units.factor is not None:
 		if units.factor == 1:
 			return "{:,}{}{}".format(int(num), \
@@ -56,6 +62,17 @@ def format_number(units, num):
 		if num < units_scale[i + 1].factor:
 			return format_number(units_scale[i], num)
 	return format_number(units_scale[-1], num)
+
+gmt = tz.gettz('UTC')
+def posix_timestamp_str(t, pretty = False):
+	'''Generate a string from a POSIX UTC timestamp.'''
+	if t is None:
+		return None
+	dt = datetime.datetime.utcfromtimestamp(t).replace(tzinfo = gmt)
+	if pretty:
+		dt = dt.astimezone(tz.gettz())
+		return dt.strftime('%x %X')
+	return dt.isoformat()
 
 def n2p(fs, num):
 	'''Convert a suffixed number to an integer.'''
@@ -511,13 +528,26 @@ class fmcli(code.InteractiveConsole):
 
 	def print_inode_stats(self, ext):
 		'''Pretty-print inode statistics.'''
-		p = (ext.paths[0] if ext.paths[0] != '' else self.fs.pathsep) if len(ext.paths) > 0 else None
+		l = list(ext.paths)
+		p = (l[0] if l[0] != '' else self.fs.pathsep) if len(l) > 0 else None
 		if self.machine:
-			print("'%s',%d,%s,%0.2f,%s" % \
-				(p, ext.ino, ext.nr_extents, ext.travel_score, ext.typestr()))
+			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
+				(p, ext.ino, ext.nr_extents, ext.travel_score, \
+				 ext.typestr(),
+				 posix_timestamp_str(ext.atime), \
+				 posix_timestamp_str(ext.crtime), \
+				 posix_timestamp_str(ext.ctime), \
+				 posix_timestamp_str(ext.mtime), \
+				 ext.size))
 			return
-		print("'%s', %d, %s, %0.2f, '%s'" % \
-			(p, ext.ino, ext.nr_extents, ext.travel_score, ext.typestr()))
+		print("'%s', %d, %s, %0.2f, %s, '%s', '%s', '%s', '%s', %s" % \
+			(p, ext.ino, ext.nr_extents, ext.travel_score, \
+			 ext.typestr(), \
+			 posix_timestamp_str(ext.atime, True), \
+			 posix_timestamp_str(ext.crtime, True), \
+			 posix_timestamp_str(ext.ctime, True), \
+			 posix_timestamp_str(ext.mtime, True), \
+			 format_size(self.units, ext.size)))
 
 	def do_paths_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],

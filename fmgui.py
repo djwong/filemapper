@@ -189,12 +189,19 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		super(InodeTableModel, self).__init__(parent, *args)
 		self.__data = data
 		self.headers = ['Inode Number', 'Extents', \
-				'Travel Score', 'Type', 'Paths']
+				'Travel Score', 'Type', 'Size', 'Last Access', \
+				'Creation', 'Last Metadata Change', 'Last Data Change', \
+				'Paths']
 		self.header_map = [
-			lambda x: fmcli.format_size(fmcli.units_none, x.ino),
-			lambda x: fmcli.format_size(fmcli.units_none, x.nr_extents),
+			lambda x: fmcli.format_number(fmcli.units_none, x.ino),
+			lambda x: fmcli.format_number(fmcli.units_none, x.nr_extents),
 			lambda x: fmcli.format_size(self.units, x.travel_score),
 			lambda x: x.typestr(),
+			lambda x: fmcli.format_size(self.units, x.size),
+			lambda x: fmcli.posix_timestamp_str(x.atime, True),
+			lambda x: fmcli.posix_timestamp_str(x.crtime, True),
+			lambda x: fmcli.posix_timestamp_str(x.ctime, True),
+			lambda x: fmcli.posix_timestamp_str(x.mtime, True),
 			lambda x: x.paths_to_str(),
 		]
 		self.sort_keys = [
@@ -202,6 +209,11 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: x.nr_extents,
 			lambda x: x.travel_score,
 			lambda x: x.typestr(),
+			lambda x: x.size,
+			lambda x: x.atime,
+			lambda x: x.crtime,
+			lambda x: x.ctime,
+			lambda x: x.mtime,
 			lambda x: x.paths_to_str(),
 		]
 		self.align_map = [
@@ -209,6 +221,11 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			QtCore.Qt.AlignRight,
 			QtCore.Qt.AlignRight,
 			QtCore.Qt.AlignLeft,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
+			QtCore.Qt.AlignRight,
 			QtCore.Qt.AlignLeft,
 		]
 		self.units = units
@@ -980,13 +997,18 @@ class fmgui(QtGui.QMainWindow):
 				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
-				fd.write('# Inode, Number of Extents, Travel Score, Type, Paths\n')
+				fd.write('# Inode, Number of Extents, Travel Score, Type, Size, Last Access, Creation, Last Metadata Change, Last Data Change, Paths\n')
 				n = 0
 				for inode in self.itm.inodes(None):
-					fd.write('%d,%d,%.02f,"%s","%s"\n' % \
+					fd.write('%d,%d,%.02f,"%s",%d,%s,%s,%s,%s,"%s"\n' % \
 						(inode.ino, inode.nr_extents, \
 						 inode.travel_score, \
 						 inode.typestr(), \
+						 inode.size, \
+						 fmcli.posix_timestamp_str(inode.atime), \
+						 fmcli.posix_timestamp_str(inode.crtime), \
+						 fmcli.posix_timestamp_str(inode.ctime), \
+						 fmcli.posix_timestamp_str(inode.mtime), \
 						 inode.paths_to_str()))
 					if n > 1000:
 						self.mp.pump()

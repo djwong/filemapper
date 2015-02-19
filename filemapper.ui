@@ -118,7 +118,7 @@ S = symbolic links</string>
        <item>
         <widget class="QLabel" name="label">
          <property name="text">
-          <string>&amp;Search for:</string>
+          <string> &amp;Search for:</string>
          </property>
          <property name="buddy">
           <cstring>querytype_combo</cstring>
@@ -348,6 +348,12 @@ S = symbolic links</string>
      </property>
      <item row="0" column="0">
       <widget class="QTabWidget" name="results_tab">
+       <property name="whatsThis">
+        <string>Switch the view between the extents and inodes found in the most recent query.</string>
+       </property>
+       <property name="accessibleDescription">
+        <string>Switch the view between the extents and inodes found in the most recent query.</string>
+       </property>
        <property name="tabPosition">
         <enum>QTabWidget::West</enum>
        </property>
