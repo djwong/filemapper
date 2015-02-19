@@ -473,7 +473,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	struct timespec tv;
 	time_t atime, crtime, ctime, mtime;
 	time_t *pcrtime;
-	size_t size;
+	ssize_t size;
 
 	if (!strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."))
 		return 0;
