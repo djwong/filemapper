@@ -478,7 +478,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	if (!strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."))
 		return 0;
 
-	sz = icvt(&wf->base, dirent->name, ext2fs_dirent_name_len(dirent), name,
+	sz = icvt(&wf->base, dirent->name, dirent->name_len & 0xFF, name,
 		  EXT2_NAME_LEN);
 	if (sz < 0)
 		return DIRENT_ABORT;
@@ -563,36 +563,15 @@ static void walk_fs(struct e2map_t *wf)
 {
 	ext2_filsys fs = wf->fs;
 	struct ext2_dir_entry dirent;
-	errcode_t err;
 
 	wf->wf_dirpath = "";
 
 	dirent.inode = EXT2_ROOT_INO;
 	ext2fs_set_rec_len(fs, EXT2_DIR_REC_LEN(1), &dirent);
-	ext2fs_dirent_set_name_len(&dirent, 1);
-	ext2fs_dirent_set_file_type(&dirent, EXT2_FT_DIR);
+	dirent.name_len = (EXT2_FT_DIR << 8) | 1;
 	dirent.name[0] = '/';
 	dirent.name[1] = 0;
-	err = walk_fs_helper(0, 0, &dirent, 0, 0, NULL, wf);
-	printf("err=%d\n", err);
-#if 0
-	insert_inode(&wf->base, EXT2_ROOT_INO, type_codes[EXT2_FT_DIR],
-		     wf->wf_dirpath);
-	if (wf->wf_db_err)
-		goto out;
-
-	walk_file_mappings(wf, EXT2_ROOT_INO, EXT2_FT_DIR);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-
-	err = ext2fs_dir_iterate2(fs, EXT2_ROOT_INO, 0, NULL, walk_fs_helper, wf);
-	if (!wf->err)
-		wf->err = err;
-	if (wf->err || wf->wf_db_err)
-		goto out;
-out:
-	return;
-#endif
+	walk_fs_helper(0, 0, &dirent, 0, 0, NULL, wf);
 }
 
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
