@@ -754,9 +754,13 @@ class fmdb(object):
 		'''Generate SQL to query extents used by a given path.'''
 		if mode == FMDB_EXTENT_SQL:
 			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
+			qstr = 'SELECT %s FROM path_extent_v' % qcol
+		elif mode == FMDB_INODE_SQL:
 			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
+			if self.extent_types_to_show is None:
+				qstr = 'SELECT %s FROM path_t' % qcol
+			else:
+				qstr = 'SELECT %s FROM path_extent_v' % qcol
 		qarg = []
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
@@ -813,9 +817,13 @@ class fmdb(object):
 		'''Generate SQL to query extents given ranges of inodes.'''
 		if mode == FMDB_EXTENT_SQL:
 			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
+			qstr = 'SELECT %s FROM path_extent_v' % qcol
+		elif mode == FMDB_INODE_SQL:
 			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
+			if self.extent_types_to_show is None:
+				qstr = 'SELECT %s FROM inode_t' % qcol
+			else:
+				qstr = 'SELECT %s FROM path_extent_v' % qcol
 		qarg = []
 		cond = 'WHERE'
 		if self.extent_types_to_show is not None:
