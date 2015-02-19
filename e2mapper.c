@@ -137,7 +137,7 @@ static int find_blocks(ext2_filsys fs, blk64_t *blocknr, e2_blkcnt_t blockcnt,
 		       blk64_t ref_blk, int ref_offset, void *priv_data)
 {
 	struct e2map_t *wf = priv_data;
-	unsigned long long max_extent = 1ULL / fs->blocksize;
+	unsigned long long max_extent = MAX_EXTENT_LENGTH / fs->blocksize;
 
 	/* Internal node? */
 	if (blockcnt < 0) {
@@ -189,7 +189,7 @@ static void walk_extents(struct e2map_t *wf, ext2_ino_t ino, int type)
 	ext2_extent_handle_t	handle;
 	struct ext2fs_extent	extent, last;
 	int			flags;
-	unsigned long long	max_extent = 1ULL / fs->blocksize;
+	unsigned long long	max_extent = MAX_EXTENT_LENGTH / fs->blocksize;
 
 	memset(&last, 0, sizeof(last));
 	wf->err = ext2fs_extent_open(fs, ino, &handle);

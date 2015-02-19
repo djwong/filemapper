@@ -64,7 +64,7 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 	DOS_FS *fs = wf->fs;
 	uint32_t curr, lcurr;
 	uint64_t pclus, lclus, len;
-	unsigned long long max_extent = 1ULL / fs->cluster_size;
+	unsigned long long max_extent = MAX_EXTENT_LENGTH / fs->cluster_size;
 	int type;
 
 	if (file->dir_ent.attr & ATTR_DIR)

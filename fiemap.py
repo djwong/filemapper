@@ -74,6 +74,8 @@ _fiemap = collections.namedtuple('fiemap',
 _fiemap_extent = collections.namedtuple('fiemap_extent',
 	'logical physical length flags')
 
+MAX_EXTENT_LENGTH = 2**60
+
 def fiemap2(fd, start = 0, length = None, flags = 0):
 	fe_logical = start
 	fe_length = 0
@@ -126,7 +128,7 @@ def fiemap2(fd, start = 0, length = None, flags = 0):
 			if e_physical is not None:
 				if e_physical + e_length == fe_physical and \
 				   e_logical + e_length == fe_logical and \
-				   e_length + fe_length <= 2**64 and \
+				   e_length + fe_length <= MAX_EXTENT_LENGTH and \
 				   e_flags == fe_flags:
 					e_length += fe_length
 				else:
@@ -174,7 +176,7 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 	fe_pblk = None
 	fe_lblk = None
 	fe_len = None
-	max_extent = 2**64 / block_size
+	max_extent = MAX_EXTENT_LENGTH / block_size
 	while block <= end_block:
 		indata = struct.pack('i', block)
 		res = fcntl.ioctl(fd, _FIBMAP, indata)

@@ -106,7 +106,7 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 	ntfs_attr_search_ctx *ctx;
 	runlist *runs = NULL, *r;
 	unsigned long long p_block, l_block, e_len;
-	unsigned long long max_extent = 1ULL / wf->fs->cluster_size;
+	unsigned long long max_extent = MAX_EXTENT_LENGTH / wf->fs->cluster_size;
 
 	if (ntfs_bit_get(wf->ino_bmap, inode->mft_no))
 		return;

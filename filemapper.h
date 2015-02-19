@@ -73,6 +73,8 @@ struct overview_t {
 #define EXTENT_SHARED		0x00002000 /* Space shared with other
 					    * files. */
 
+#define MAX_EXTENT_LENGTH	(1ULL << 60)
+
 /* Convert a directory pathname */
 int icvt(struct filemapper_t *wf, char *in, size_t inl, char *out, size_t outl);
 
