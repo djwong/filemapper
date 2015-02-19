@@ -74,8 +74,23 @@ def posix_timestamp_str(t, pretty = False):
 		return dt.strftime('%x %X')
 	return dt.isoformat()
 
-def n2p(fs, num):
+def n2p(maximum, num):
 	'''Convert a suffixed number to an integer.'''
+	conv = [
+		units('%', 'percent', maximum / 100.0),
+		units_none,
+		units_k,
+		units_m,
+		units_g,
+		units_t,
+	]
+	for unit in conv:
+		if num[-1].lower() == unit.abbrev.lower():
+			return int(unit.factor * float(num[:-1]))
+	return int(num)
+
+def s2p(fs, num):
+	'''Convert a suffixed size to an integer.'''
 	conv = [
 		units('%', 'percent', fs.total_bytes / 100.0),
 		units('B', 'blocks', fs.block_size),
@@ -323,9 +338,9 @@ class fmcli(code.InteractiveConsole):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
 			else:
-				ranges.append(n2p(self.fs, arg))
+				ranges.append(s2p(self.fs, arg))
 		for x in self.fmdb.query_loff_range(ranges):
 			self.print_extent(x)
 
@@ -343,9 +358,9 @@ class fmcli(code.InteractiveConsole):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
 			else:
-				ranges.append(n2p(self.fs, arg))
+				ranges.append(s2p(self.fs, arg))
 		for x in self.fmdb.query_poff_range(ranges):
 			self.print_extent(x)
 
@@ -445,9 +460,9 @@ class fmcli(code.InteractiveConsole):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+				ranges.append((n2p(self.fs.total_inodes, arg[:pos]), n2p(self.fs.total_inodes, arg[pos+1:])))
 			else:
-				ranges.append(int(arg))
+				ranges.append(n2p(self.fs.total_inodes, arg))
 		for x in self.fmdb.query_inums(ranges):
 			self.print_extent(x)
 
@@ -465,9 +480,9 @@ class fmcli(code.InteractiveConsole):
 				return
 			elif '-' in arg:
 				pos = arg.index('-')
-				ranges.append((n2p(self.fs, arg[:pos]), n2p(self.fs, arg[pos+1:])))
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
 			else:
-				ranges.append(n2p(self.fs, arg))
+				ranges.append(s2p(self.fs, arg))
 		for x in self.fmdb.query_lengths(ranges):
 			self.print_extent(x)
 

@@ -872,9 +872,9 @@ class fmgui(QtGui.QMainWindow):
 			for arg in args:
 				if '-' in arg:
 					pos = arg.index('-')
-					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
 				else:
-					ranges.append(n2p(self.fs, arg))
+					ranges.append(s2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_loff_range(ranges))
 		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
 
@@ -889,9 +889,9 @@ class fmgui(QtGui.QMainWindow):
 			for arg in args:
 				if '-' in arg:
 					pos = arg.index('-')
-					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
 				else:
-					ranges.append(n2p(self.fs, arg))
+					ranges.append(s2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_poff_range(ranges))
 		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
 
@@ -1027,9 +1027,9 @@ class fmgui(QtGui.QMainWindow):
 			for arg in args:
 				if '-' in arg:
 					pos = arg.index('-')
-					ranges.append((int(arg[:pos]), int(arg[pos+1:])))
+					ranges.append((fmcli.n2p(self.fs.total_inodes, arg[:pos]), fmcli.n2p(self.fs.total_inodes, arg[pos+1:])))
 				else:
-					ranges.append(int(arg))
+					ranges.append(fmcli.n2p(self.fs.total_inodes, arg))
 		self.load_extents(self.fmdb.query_inums(ranges))
 		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
 
@@ -1044,9 +1044,9 @@ class fmgui(QtGui.QMainWindow):
 			for arg in args:
 				if '-' in arg:
 					pos = arg.index('-')
-					ranges.append((fmcli.n2p(self.fs, arg[:pos]), fmcli.n2p(self.fs, arg[pos+1:])))
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
 				else:
-					ranges.append(fmcli.n2p(self.fs, arg))
+					ranges.append(fmcli.s2p(self.fs, arg))
 		self.load_extents(self.fmdb.query_lengths(ranges))
 		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
 
