@@ -115,6 +115,72 @@ static struct hidden_file hidden_inodes[] = {
 };
 #undef H
 
+/* Time handling stuff */
+#define EXT4_EPOCH_BITS 2
+#define EXT4_EPOCH_MASK ((1 << EXT4_EPOCH_BITS) - 1)
+#define EXT4_NSEC_MASK  (~0UL << EXT4_EPOCH_BITS)
+
+/*
+ * Extended fields will fit into an inode if the filesystem was formatted
+ * with large inodes (-I 256 or larger) and there are not currently any EAs
+ * consuming all of the available space. For new inodes we always reserve
+ * enough space for the kernel's known extended fields, but for inodes
+ * created with an old kernel this might not have been the case. None of
+ * the extended inode fields is critical for correct filesystem operation.
+ * This macro checks if a certain field fits in the inode. Note that
+ * inode-size = GOOD_OLD_INODE_SIZE + i_extra_isize
+ */
+#define EXT4_FITS_IN_INODE(ext4_inode, field)		\
+	((offsetof(typeof(*ext4_inode), field) +	\
+	  sizeof((ext4_inode)->field))			\
+	<= (EXT2_GOOD_OLD_INODE_SIZE +			\
+	    (ext4_inode)->i_extra_isize))		\
+
+static inline __u32 ext4_encode_extra_time(const struct timespec *time)
+{
+	__u32 extra = sizeof(time->tv_sec) > 4 ?
+			((time->tv_sec - (__s32)time->tv_sec) >> 32) &
+			EXT4_EPOCH_MASK : 0;
+	return extra | (time->tv_nsec << EXT4_EPOCH_BITS);
+}
+
+static inline void ext4_decode_extra_time(struct timespec *time, __u32 extra)
+{
+	if (sizeof(time->tv_sec) > 4 && (extra & EXT4_EPOCH_MASK)) {
+		__u64 extra_bits = extra & EXT4_EPOCH_MASK;
+		/*
+		 * Prior to kernel 3.14?, we had a broken decode function,
+		 * wherein we effectively did this:
+		 * if (extra_bits == 3)
+		 *     extra_bits = 0;
+		 */
+		time->tv_sec += extra_bits << 32;
+	}
+	time->tv_nsec = ((extra) & EXT4_NSEC_MASK) >> EXT4_EPOCH_BITS;
+}
+
+#define EXT4_INODE_GET_XTIME(xtime, timespec, raw_inode)		       \
+do {									       \
+	(timespec)->tv_sec = (signed)((raw_inode)->xtime);		       \
+	if (EXT4_FITS_IN_INODE(raw_inode, xtime ## _extra))		       \
+		ext4_decode_extra_time((timespec),			       \
+				       (raw_inode)->xtime ## _extra);	       \
+	else								       \
+		(timespec)->tv_nsec = 0;				       \
+} while (0)
+
+#define EXT4_EINODE_GET_XTIME(xtime, timespec, raw_inode)		       \
+do {									       \
+	if (EXT4_FITS_IN_INODE(raw_inode, xtime))			       \
+		(timespec)->tv_sec =					       \
+			(signed)((raw_inode)->xtime);			       \
+	if (EXT4_FITS_IN_INODE(raw_inode, xtime ## _extra))		       \
+		ext4_decode_extra_time((timespec),			       \
+				       (raw_inode)->xtime ## _extra);	       \
+	else								       \
+		(timespec)->tv_nsec = 0;				       \
+} while (0)
+
 /* Figure out the physical offset of an inode. */
 static uint64_t inode_offset(ext2_filsys fs, ext2_ino_t ino)
 {
@@ -403,17 +469,28 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	int type, sz;
 	struct ext2_dir_entry_2 *de2 = (struct ext2_dir_entry_2 *)dirent;
 	struct e2map_t *wf = priv_data;
-	struct ext2_inode inode;
+	struct ext2_inode_large inode;
+	struct timespec tv;
+	time_t atime, crtime, ctime, mtime;
+	time_t *pcrtime;
+	size_t size;
 
 	if (!strcmp(dirent->name, ".") || !strcmp(dirent->name, ".."))
 		return 0;
 
-	sz = icvt(&wf->base, dirent->name, dirent->name_len & 0xFF, name,
+	sz = icvt(&wf->base, dirent->name, ext2fs_dirent_name_len(dirent), name,
 		  EXT2_NAME_LEN);
 	if (sz < 0)
 		return DIRENT_ABORT;
 	dbg_printf("dir=%d name=%s/%s ino=%d type=%d\n", dir, wf->wf_dirpath, name,
 		   dirent->inode, de2->file_type);
+
+	memset(&inode, 0, sizeof(inode));
+	wf->err = ext2fs_read_inode_full(wf->fs, dirent->inode,
+					 (struct ext2_inode *)&inode,
+					 sizeof(inode));
+	if (wf->err)
+		return DIRENT_ABORT;
 
 	if (de2->file_type != 0) {
 		switch(de2->file_type) {
@@ -426,9 +503,6 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 			return 0;
 		}
 	} else {
-		wf->err = ext2fs_read_inode(wf->fs, dirent->inode, &inode);
-		if (wf->err)
-			return DIRENT_ABORT;
 		if (S_ISREG(inode.i_mode))
 			type = EXT2_FT_REG_FILE;
 		else if (S_ISDIR(inode.i_mode))
@@ -439,11 +513,27 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 			return 0;
 	}
 
-	snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
-	insert_inode(&wf->base, dirent->inode, type_codes[type], path);
+	EXT4_INODE_GET_XTIME(i_atime, &tv, &inode);
+	atime = tv.tv_sec;
+	EXT4_INODE_GET_XTIME(i_mtime, &tv, &inode);
+	mtime = tv.tv_sec;
+	EXT4_INODE_GET_XTIME(i_ctime, &tv, &inode);
+	ctime = tv.tv_sec;
+	EXT4_EINODE_GET_XTIME(i_crtime, &tv, &inode);
+	crtime = tv.tv_sec;
+	pcrtime = (EXT4_FITS_IN_INODE(&inode, i_crtime) ? &crtime : NULL);
+	size = EXT2_I_SIZE(&inode);
+
+	if (dir)
+		snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
+	else
+		path[0] = 0;
+	insert_inode(&wf->base, dirent->inode, type_codes[type], path, &atime,
+		     pcrtime, &ctime, &mtime, &size);
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
-	insert_dentry(&wf->base, dir, name, dirent->inode);
+	if (dir)
+		insert_dentry(&wf->base, dir, name, dirent->inode);
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
 
@@ -472,10 +562,20 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 static void walk_fs(struct e2map_t *wf)
 {
 	ext2_filsys fs = wf->fs;
+	struct ext2_dir_entry dirent;
 	errcode_t err;
 
 	wf->wf_dirpath = "";
 
+	dirent.inode = EXT2_ROOT_INO;
+	ext2fs_set_rec_len(fs, EXT2_DIR_REC_LEN(1), &dirent);
+	ext2fs_dirent_set_name_len(&dirent, 1);
+	ext2fs_dirent_set_file_type(&dirent, EXT2_FT_DIR);
+	dirent.name[0] = '/';
+	dirent.name[1] = 0;
+	err = walk_fs_helper(0, 0, &dirent, 0, 0, NULL, wf);
+	printf("err=%d\n", err);
+#if 0
 	insert_inode(&wf->base, EXT2_ROOT_INO, type_codes[EXT2_FT_DIR],
 		     wf->wf_dirpath);
 	if (wf->wf_db_err)
@@ -492,6 +592,7 @@ static void walk_fs(struct e2map_t *wf)
 		goto out;
 out:
 	return;
+#endif
 }
 
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
