@@ -193,19 +193,23 @@ class dentry(object):
 
 # Database strings
 APP_ID = 0xEF54
+PAGE_SIZE = 65536
+CACHE_SIZE = 256 * 1048576
+CACHE_PAGES = CACHE_SIZE / PAGE_SIZE
 def generate_op_sql():
 	'''Generate per-connection database settings.'''
-	return '''PRAGMA cache_size = 65536;
+	return '''PRAGMA cache_size = %d;
 PRAGMA mmap_size = 1073741824;
+PRAGMA journal_mode = MEMORY;
 PRAGMA synchronous = OFF;
-PRAGMA case_sensitive_like = ON;
-PRAGMA threads = 8;'''
+PRAGMA locking_mode = EXCLUSIVE;
+PRAGMA case_sensitive_like = ON;''' % CACHE_PAGES
 
 def generate_schema_sql():
 	'''Generate the database schema.'''
-	x = ['''PRAGMA page_size = 4096;
+	x = ['''PRAGMA page_size = %d;
 PRAGMA application_id = %d;
-PRAGMA journal_mode = WAL;
+PRAGMA journal_mode = MEMORY;
 DROP VIEW IF EXISTS dentry_t;
 DROP VIEW IF EXISTS path_extent_v;
 DROP TABLE IF EXISTS overview_t;
@@ -226,7 +230,7 @@ CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
 CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
-CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % APP_ID]
+CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % (PAGE_SIZE, APP_ID)]
 	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
 	z = ["INSERT INTO extent_type_t VALUES (%d, '%s');" % (x, extent_types[x]) for x in sorted(extent_types.keys())]
 	return '\n'.join(x + y + z)
@@ -242,6 +246,7 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);
 CREATE INDEX extent_ino_i ON extent_t(ino);
 CREATE INDEX overview_cell_i ON overview_t(length, cell_no);
+CREATE INDEX inode_ino_i ON inode_t(ino);
 PRAGMA foreign_key_check;
 '''
 
@@ -1149,7 +1154,7 @@ class fmdb(object):
 		path_map = {}
 		if resolve_paths:
 			qstr = 'SELECT path, ino FROM path_t %s' % rpsql
-			#print(qstr, iargs)
+			print(qstr, iargs)
 			cur.execute(qstr, iargs)
 			while True:
 				rows = cur.fetchmany()

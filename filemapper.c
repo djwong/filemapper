@@ -6,17 +6,17 @@
 #include "filemapper.h"
 
 static char *opschema = "\
-PRAGMA cache_size = 65536;\
+PRAGMA cache_size = 4096;\
 PRAGMA mmap_size = 1073741824;\
+PRAGMA journal_mode = MEMORY;\
 PRAGMA synchronous = OFF;\
 PRAGMA locking_mode = EXCLUSIVE;\
 PRAGMA case_sensitive_like = ON;\
-PRAGMA threads = 8;\
 ";
 
-static char *dbschema = "PRAGMA page_size = 4096;\
+static char *dbschema = "PRAGMA page_size = 65536;\
 PRAGMA application_id = 61268;\
-PRAGMA journal_mode = WAL;\
+PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
 DROP TABLE IF EXISTS overview_t;\
@@ -56,6 +56,7 @@ CREATE INDEX extent_poff_i ON extent_t(p_off, p_end);\
 CREATE INDEX extent_loff_i ON extent_t(l_off, length);\
 CREATE INDEX extent_ino_i ON extent_t(ino);\
 CREATE INDEX overview_cell_i ON overview_t(length, cell_no);\
+CREATE INDEX inode_ino_i ON inode_t(ino);\
 PRAGMA foreign_key_check;";
 
 static int primary_extent_type_for_inode[] = {
