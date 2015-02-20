@@ -209,11 +209,11 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: x.nr_extents,
 			lambda x: x.travel_score,
 			lambda x: fmdb.inode_typestr(x),
-			lambda x: x.size,
-			lambda x: x.atime,
-			lambda x: x.crtime,
-			lambda x: x.ctime,
-			lambda x: x.mtime,
+			lambda x: -1 if x.size is None else x.size,
+			lambda x: -1 if x.atime is None else x.atime,
+			lambda x: -1 if x.crtime is None else x.crtime,
+			lambda x: -1 if x.ctime is None else x.ctime,
+			lambda x: -1 if x.mtime is None else x.mtime,
 			lambda x: x.path,
 		]
 		self.align_map = [
