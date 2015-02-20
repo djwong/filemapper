@@ -875,7 +875,7 @@ class fmdb(object):
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
-	## Querying parts of the FS tree
+	## Querying parts of the FS tree.  We do not hide by extent type here.
 
 	def query_root(self):
 		'''Retrieve a dentry for root.'''
@@ -890,26 +890,16 @@ class fmdb(object):
 			raise ValueError('Less than one root dentry?')
 		return dentry('', rows[0][0], rows[0][1])
 
-	def __query_ls_sql(self, paths, mode):
-		'''Generate SQL to query all paths available under a given path.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'dentry_t.name, dentry_t.name_ino, dentry_t.type'
-		else:
-			qcol = 'DISTINCT dentry_t.name_ino'
-		qstr = 'SELECT %s FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino' % qcol
-		cond = 'AND'
+	def query_ls(self, paths):
+		'''Query all paths available under a given path.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'SELECT dentry_t.name, dentry_t.name_ino, dentry_t.type FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino'
 		qarg = []
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
-				return (None, None)
-			ets = list(self.extent_types_to_show)
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(paths) == 0:
-			return (None, None)
+		cond = ' AND ('
+		close_paren = False
 		if '*' not in paths and '/*' not in paths:
+			close_paren = True
 			for p in paths:
 				if p == self.fs.pathsep:
 					p = ''
@@ -917,23 +907,12 @@ class fmdb(object):
 					op = 'GLOB'
 				else:
 					op = '='
-				qstr += ' %s path_t.path %s ?' % (cond, op)
-				cond = 'OR'
+				qstr += '%spath_t.path %s ?' % (cond, op)
+				cond = ' OR '
 				qarg.append(p)
-			if len(ets) > 0 and len(qarg) > 0:
+			if close_paren:
 				qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY dentry_t.name'
-		return (qstr, ets + qarg)
-
-	def query_ls(self, paths):
-		'''Query all paths available under a given path.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_ls_sql(paths, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		#print(qstr, qarg)
+		print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -941,12 +920,6 @@ class fmdb(object):
 				break
 			for row in rows:
 				yield dentry(row[0], row[1], row[2])
-
-	def query_ls_inodes(self, paths, **kwargs):
-		'''Retrieve the inode data of all files in the given directories.'''
-		qstr, qarg = self.__query_ls_sql(paths, FMDB_INODE_SQL)
-		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
-			yield x
 
 	## Calculate optional inode fields
 
