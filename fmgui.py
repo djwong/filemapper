@@ -1385,6 +1385,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def run_query(self):
 		'''Dispatch a query to populate the extent table.'''
+		self.status_label.setText('Working...')
 		self.ost.stop()
 		self.mp.start()
 		idx = self.querytype_combo.currentIndex()
@@ -1396,6 +1397,7 @@ class fmgui(QtGui.QMainWindow):
 		finally:
 			self.mp.stop()
 		self.save_state()
+		self.do_summary()
 
 	def update_query_summary(self):
 		'''Update the query summary text in the UI.'''
