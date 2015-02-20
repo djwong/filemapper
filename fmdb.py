@@ -224,6 +224,7 @@ CREATE INDEX extent_loff_i ON extent_t(l_off, length);
 CREATE INDEX extent_ino_i ON extent_t(ino);
 CREATE INDEX overview_cell_i ON overview_t(length, cell_no);
 CREATE INDEX inode_ino_i ON inode_t(ino);
+CREATE INDEX extent_type_i ON extent_t(type);
 PRAGMA foreign_key_check;
 '''
 
@@ -918,7 +919,7 @@ class fmdb(object):
 				qarg.append(p)
 			if close_paren:
 				qstr += ')'
-		print(qstr, qarg)
+		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
