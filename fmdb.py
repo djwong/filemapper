@@ -234,8 +234,8 @@ FMDB_INODE_SQL	= 2
 
 def print_times(label, times):
 	'''Print some profiling data.'''
-	l = [str(times[i] - times[i - 1]) for i in range(1, len(times))]
-	print('%s: %s' % (label, ', '.join(l)))
+	l = ['%0.2fs' % (times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
+	print('%s: %s => %.02fs' % (label, ', '.join(l), (times[-1] - times[0]).total_seconds()))
 
 class overview_block(object):
 	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
