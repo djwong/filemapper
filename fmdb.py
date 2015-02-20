@@ -33,10 +33,10 @@ inode_types = {
 }
 
 inode_types_long = {
-	INO_TYPE_FILE:		'file',
-	INO_TYPE_DIR:		'directory',
-	INO_TYPE_METADATA:	'metadata',
-	INO_TYPE_SYMLINK:	'symbolic link',
+	INO_TYPE_FILE:		'File',
+	INO_TYPE_DIR:		'Directory',
+	INO_TYPE_METADATA:	'Metadata',
+	INO_TYPE_SYMLINK:	'Symbolic Link',
 }
 
 # Inode stat data; use a named tuple to reduce memory use
@@ -1078,6 +1078,39 @@ class fmdb(object):
 	def query_crtimes_inodes(self, ranges, **kwargs):
 		'''Query inodes given ranges of inode creation times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'crtime')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	## Querying extents and inodes for inodes with enumerable quantities
+
+	def __query_inode_types_sql(self, types, mode):
+		'''Generate SQL to query given a set of inode type codes.'''
+		if set(types) == set(extent_types):
+			qstr = None
+			qarg = []
+		elif len(types) == 1:
+			qstr = 'type = ?'
+			qarg = types
+		else:
+			qstr = 'type IN (%s)' % (', '.join(['?' for x in types]))
+			qarg = types
+		if mode == FMDB_EXTENT_SQL and qstr is not None:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM inode_t WHERE %s)' % qstr
+		return (qstr, qarg)
+
+	def query_inode_types(self, types, **kwargs):
+		'''Query extents with inodes having a set of type codes.'''
+		if len(types) == 0:
+			return
+		qstr, qarg = self.__query_inode_types_sql(types, FMDB_EXTENT_SQL)
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_inode_types_inodes(self, types, **kwargs):
+		'''Query inodes having a set of type codes.'''
+		if len(types) == 0:
+			return
+		qstr, qarg = self.__query_inode_types_sql(types, FMDB_INODE_SQL)
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 

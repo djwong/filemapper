@@ -984,6 +984,9 @@ class fmgui(QtGui.QMainWindow):
 		extent_flags = [
 			[fmdb.extent_flags_long[x], False, x] for x in sorted(fmdb.extent_flags_long.keys())
 		]
+		inode_types = [
+			[fmdb.inode_types_long[x], True, x] for x in sorted(fmdb.inode_types.keys())
+		]
 		extent_flags.append(['Exact Match', False])
 		def sq(l, q):
 			return StringQuery(l, self.query_text, q)
@@ -1007,6 +1010,7 @@ class fmgui(QtGui.QMainWindow):
 			tq('Last Access', self.query_atime),
 			tq('Inode Changed', self.query_ctime),
 			tq('Creation Time', self.query_crtime),
+			cq('Inode Type', self.query_inode_type, inode_types),
 		]
 
 		# Then the query type selector
@@ -1403,7 +1407,7 @@ class fmgui(QtGui.QMainWindow):
 		self.results_dock.setWindowTitle(s)
 
 	def query_overview(self, args):
-		'''Query for extents mapped to ranges of overview cells.'''
+		'''Query based on ranges of overview cells.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1415,7 +1419,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_poff_range_inodes(r, **self.inode_query_args))
 
 	def query_poff(self, args):
-		'''Query for extents mapped to ranges of physical bytes.'''
+		'''Query based on ranges of physical bytes.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1425,7 +1429,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
 
 	def query_loff(self, args):
-		'''Query for extents mapped to ranges of logical bytes.'''
+		'''Query based on ranges of logical bytes.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1435,7 +1439,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
 
 	def query_inodes(self, args):
-		'''Query for extents mapped to ranges of inodes.'''
+		'''Query based on ranges of inodes.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1445,7 +1449,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
 
 	def query_paths(self, args):
-		'''Query for extents mapped to a list of FS paths.'''
+		'''Query based on a list of FS paths.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1454,13 +1458,13 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_paths_inodes(args, **self.inode_query_args))
 
 	def query_extent_type(self, args):
-		'''Query for extents based on the extent type code.'''
+		'''Query based on the extent type code.'''
 		r = [x[2] for x in args if x[1]]
 		self.load_extents(self.fmdb.query_extent_types(r))
 		self.load_inodes(self.fmdb.query_extent_types_inodes(r, **self.inode_query_args))
 
 	def query_extent_flags(self, args):
-		'''Query for extents based on the extent flag code.'''
+		'''Query based on the extent flag code.'''
 		exact = args[-1][1]
 		flags = 0
 		for x in args:
@@ -1470,7 +1474,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_extent_flags_inodes(flags, exact, **self.inode_query_args))
 
 	def query_lengths(self, args):
-		'''Query for extents based on ranges of lengths.'''
+		'''Query based on ranges of lengths.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1480,7 +1484,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
 
 	def query_travel_scores(self, args):
-		'''Query for based on ranges of travel scores.'''
+		'''Query based on ranges of travel scores.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1490,7 +1494,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_travel_scores_inodes(ranges, **self.inode_query_args))
 
 	def query_nr_extents(self, args):
-		'''Query for based on ranges of primary extent counts.'''
+		'''Query based on ranges of primary extent counts.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1500,7 +1504,7 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_nr_extents_inodes(ranges, **self.inode_query_args))
 
 	def query_sizes(self, args):
-		'''Query for based on ranges of inode sizes.'''
+		'''Query based on ranges of inode sizes.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
@@ -1528,6 +1532,12 @@ class fmgui(QtGui.QMainWindow):
 		'''Query based on creation time.'''
 		self.load_extents(self.fmdb.query_crtimes([args]))
 		self.load_inodes(self.fmdb.query_crtimes_inodes([args], **self.inode_query_args))
+
+	def query_inode_type(self, args):
+		'''Query based on the inode type code.'''
+		r = [x[2] for x in args if x[1]]
+		self.load_extents(self.fmdb.query_inode_types(r))
+		self.load_inodes(self.fmdb.query_inode_types_inodes(r, **self.inode_query_args))
 
 	## Export query results
 
