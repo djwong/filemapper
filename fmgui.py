@@ -924,7 +924,12 @@ class fmgui(QtGui.QMainWindow):
 
 	def update_query_summary(self):
 		'''Update the query summary text in the UI.'''
-		self.results_dock.setWindowTitle('Query Results - %s extents; %s inodes' % (fmcli.format_number(fmcli.units_none, self.etm.extent_count()), fmcli.format_number(fmcli.units_none, self.itm.inode_count())))
+		e = self.etm.extent_count()
+		i = self.itm.inode_count()
+		s = 'Query Results: %s extents; %s inodes' % (
+				fmcli.format_number(fmcli.units_none, e),
+				fmcli.format_number(fmcli.units_none, i))
+		self.results_dock.setWindowTitle(s)
 
 	def load_inodes(self, f):
 		'''Populate the inode table.'''
