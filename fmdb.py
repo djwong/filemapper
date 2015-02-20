@@ -12,6 +12,21 @@ import fiemap
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 
+# Debugging stuff
+def print_times(label, times):
+	'''Print some profiling data.'''
+	l = ['%0.2fs' % (times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
+	print('%s: %.02fs (%s)' % (label, (times[-1] - times[0]).total_seconds(), ', '.join(l)))
+
+def print_sql(qstr, qarg):
+	'''Print some debug stuff.'''
+	return #print(qstr, qarg)
+
+# SQL generator modes
+FMDB_EXTENT_SQL	= 1
+FMDB_INODE_SQL	= 2
+
+# FS summary
 fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'total_bytes', 'free_bytes',
 				       'avail_bytes', 'total_inodes',
@@ -229,15 +244,6 @@ CREATE INDEX inode_ino_i ON inode_t(ino);
 CREATE INDEX extent_type_i ON extent_t(type);
 PRAGMA foreign_key_check;
 '''
-
-# SQL generator modes
-FMDB_EXTENT_SQL	= 1
-FMDB_INODE_SQL	= 2
-
-def print_times(label, times):
-	'''Print some profiling data.'''
-	l = ['%0.2fs' % (times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
-	print('%s: %.02fs (%s)' % (label, (times[-1] - times[0]).total_seconds(), ', '.join(l)))
 
 class overview_block(object):
 	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
@@ -922,7 +928,7 @@ class fmdb(object):
 				qarg.append(p)
 			if close_paren:
 				qstr += ')'
-		#print(qstr, qarg)
+		print_sql(qstr, qarg)
 		cur.execute(qstr, qarg)
 		while True:
 			rows = cur.fetchmany()
@@ -1136,7 +1142,7 @@ class fmdb(object):
 		def get_extents():
 			qstr = 'SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ? ORDER BY l_off'
 			qarg = [ino, primary_extent_type_for_inode[type]]
-			#print(qstr, qarg)
+			print_sql(qstr, qarg)
 			cur.execute(qstr, qarg)
 			while True:
 				rows = cur.fetchmany()
@@ -1192,7 +1198,7 @@ class fmdb(object):
 		t1 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT path, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM path_inode_v %s' % isql
-		#print(qstr, qarg)
+		print_sql(qstr, qarg)
 		cur.execute(qstr, qarg)
 		upd = []
 		while True:
@@ -1238,7 +1244,7 @@ class fmdb(object):
 		t1 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT path, ino, p_off, l_off, length, flags, type FROM path_extent_v %s ORDER BY ino, l_off' % isql
-		#print(qstr, qarg)
+		print_sql(qstr, qarg)
 		cur.execute(qstr, qarg)
 		upd = []
 		while True:
