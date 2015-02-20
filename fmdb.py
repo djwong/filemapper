@@ -573,34 +573,6 @@ class fmdb(object):
 		for row in self.cache_overview(self.overview_len):
 			yield row
 
-	## FS Summary
-
-	def query_summary(self):
-		'''Fetch the filesystem summary.'''
-		if self.fs is not None:
-			return self.fs
-
-		cur = self.conn.cursor()
-		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
-		qstr = 'SELECT COUNT(p_off) FROM extent_t WHERE type IN (%s);' % etypes
-		cur.execute(qstr)
-		rows = cur.fetchall()
-		extents = rows[0][0]
-		cur.execute('SELECT COUNT(ino) FROM inode_t;')
-		rows = cur.fetchall()
-		inodes = rows[0][0]
-
-		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp FROM fs_t;')
-		rows = cur.fetchall()
-		assert len(rows) == 1
-		res = rows[0]
-
-		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
-				 int(res[3]), int(res[4]), int(res[5]), \
-				 int(res[6]), int(res[7]), int(res[8]),
-				 int(extents), res[9], int(inodes), res[10])
-		return self.fs
-
 	def pick_cells(self, ranges):
 		'''Convert ranges of cells to ranges of bytes.'''
 		sbc = self.bytes_per_cell
@@ -633,6 +605,47 @@ class fmdb(object):
 				if i[1] > self.fs.total_bytes:
 					raise ValueError("range %d outside of fs" % i)
 				yield (int(float(i[0]) / sbc), int(float(i[1]) / sbc))
+
+	## Show or hide different types of extents in the queries
+
+	def set_extent_types_to_show(self, types):
+		'''Restrict the overview and queries to showing these types of extents.'''
+		if types == all_extent_types:
+			types = None
+		self.extent_types_to_show = types
+
+	def get_extent_types_to_show(self):
+		'''Retrieve the types of extents to show in the overview and queries.'''
+		t = self.extent_types_to_show
+		return all_extent_types if t is None else t
+
+	## FS Summary
+
+	def query_summary(self):
+		'''Fetch the filesystem summary.'''
+		if self.fs is not None:
+			return self.fs
+
+		cur = self.conn.cursor()
+		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
+		qstr = 'SELECT COUNT(p_off) FROM extent_t WHERE type IN (%s);' % etypes
+		cur.execute(qstr)
+		rows = cur.fetchall()
+		extents = rows[0][0]
+		cur.execute('SELECT COUNT(ino) FROM inode_t;')
+		rows = cur.fetchall()
+		inodes = rows[0][0]
+
+		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp FROM fs_t;')
+		rows = cur.fetchall()
+		assert len(rows) == 1
+		res = rows[0]
+
+		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
+				 int(res[3]), int(res[4]), int(res[5]), \
+				 int(res[6]), int(res[7]), int(res[8]),
+				 int(extents), res[9], int(inodes), res[10])
+		return self.fs
 
 	## Querying extents and inodes with extents that happen to overlap a range
 
@@ -934,19 +947,6 @@ class fmdb(object):
 		qstr, qarg = self.__query_ls_sql(paths, FMDB_INODE_SQL)
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
-
-	## Show or hide different types of extents in the queries
-
-	def set_extent_types_to_show(self, types):
-		'''Restrict the overview and queries to showing these types of extents.'''
-		if types == all_extent_types:
-			types = None
-		self.extent_types_to_show = types
-
-	def get_extent_types_to_show(self):
-		'''Retrieve the types of extents to show in the overview and queries.'''
-		t = self.extent_types_to_show
-		return all_extent_types if t is None else t
 
 	## Calculate optional inode fields
 
