@@ -106,6 +106,22 @@ def s2p(fs, num):
 			return int(unit.factor * float(num[:-1]))
 	return int(num)
 
+def parse_ranges(args, fn):
+	'''Parse string arguments into numeric ranges.'''
+	ranges = []
+	if 'all' in args:
+		return ranges
+	for arg in args:
+		if ':' in arg:
+			pos = arg.index(':')
+			ranges.append((fn(arg[:pos]), fn(arg[pos+1:])))
+		elif '-' in arg:
+			start = 1 if arg[0] == '-' else 0
+			pos = arg.index('-', start)
+			ranges.append((fn(arg[:pos]), fn(arg[pos+1:])))
+		else:
+			ranges.append(fn(self.fs, arg))
+	return ranges
 
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
 	"""Split a string into a an argv array, with string support.
@@ -192,6 +208,8 @@ class fmcli(code.InteractiveConsole):
 		self.machine = False
 		self.fs = self.fmdb.query_summary()
 
+	## Interpreter stuff
+
 	def init_history(self, histfile):
 		'''Initializes readline history.'''
 		readline.parse_and_bind("tab: complete")
@@ -226,7 +244,18 @@ class fmcli(code.InteractiveConsole):
 		print("Command '%s' not recognized." % args[0])
 		self.do_help(args)
 
-	# Commands
+	## Utility
+
+	def parse_size_ranges(self, args):
+		'''Parse string arguments into size ranges.'''
+		return parse_ranges(args, lambda x: s2p(self.fs, x))
+
+	def parse_number_ranges(self, args, maximum):
+		'''Parse string arguments into number ranges.'''
+		return parse_ranges(args, lambda x: n2p(maximum, x))
+
+	## Misc. Commands
+
 	def do_help(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Display an overview of commands.')
@@ -334,17 +363,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('offsets', nargs = '+', \
 			help = 'Logical offsets to look up.  This can be a single number or a range (e.g. 0-10m).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.offsets:
-			if arg == 'all':
-				for x in self.fmdb.query_loff_range([]):
-					self.print_extent(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args.offsets)
 		for x in self.fmdb.query_loff_range(ranges):
 			self.print_extent(x)
 
@@ -354,17 +373,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('offsets', nargs = '+', \
 			help = 'Physical offsets to look up.  This can be a single number or a range (e.g. 0-10k).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.offsets:
-			if arg == 'all':
-				for x in self.fmdb.query_poff_range([]):
-					self.print_extent(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args.offsets)
 		for x in self.fmdb.query_poff_range(ranges):
 			self.print_extent(x)
 
@@ -383,17 +392,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('cells', nargs = '+', \
 			help = 'Cell ranges to look up.  This can be a single number or a range (e.g. 0-10).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.cells:
-			if arg == 'all':
-				for x in self.fmdb.query_poff_range([]):
-					self.print_extent(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
-			else:
-				ranges.append(int(arg))
+		ranges = self.parse_number_args(args.cells, self.fmdb.overview_len)
 		r = list(self.fmdb.pick_cells(ranges))
 		for x in self.fmdb.query_poff_range(r):
 			self.print_extent(x)
@@ -456,17 +455,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('inodes', nargs = '+', \
 			help = 'Inodes to look up.  This can be a single number or a range (e.g. 0-10).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.inodes:
-			if arg == 'all':
-				for x in self.fmdb.query_inums([]):
-					self.print_extent(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((n2p(self.fs.total_inodes, arg[:pos]), n2p(self.fs.total_inodes, arg[pos+1:])))
-			else:
-				ranges.append(n2p(self.fs.total_inodes, arg))
+		ranges = self.parse_number_ranges(args.inodes, self.fs.total_inodes)
 		for x in self.fmdb.query_inums(ranges):
 			self.print_extent(x)
 
@@ -476,17 +465,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('lengths', nargs = '+', \
 			help = 'Lengths to look up.  This can be a single number or a range (e.g. 0-16k).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.lengths:
-			if arg == 'all':
-				for x in self.fmdb.query_lengths([]):
-					self.print_extent(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args.lengths)
 		for x in self.fmdb.query_lengths(ranges):
 			self.print_extent(x)
 
@@ -586,17 +565,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('scores', nargs = '+', \
 			help = 'Scores to look up.  This can be a single number or a range (e.g. 0-16k).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.scores:
-			if arg == 'all':
-				for x in self.fmdb.query_travel_scores_inodes([]):
-					self.print_inode_stats(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args.scores)
 		for x in self.fmdb.query_travel_scores_inodes(ranges):
 			self.print_inode_stats(x)
 
@@ -606,17 +575,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('counts', nargs = '+', \
 			help = 'Extent counts to look up.  This can be a single number or a range (e.g. 0-16k).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.counts:
-			if arg == 'all':
-				for x in self.fmdb.query_nr_extents_inodes([]):
-					self.print_inode_stats(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_number_ranges(args.counts, 2**64)
 		for x in self.fmdb.query_nr_extents_inodes(ranges):
 			self.print_inode_stats(x)
 
@@ -626,17 +585,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('sizes', nargs = '+', \
 			help = 'Sizes to look up.  This can be a single number or a range (e.g. 0-16k).')
 		args = parser.parse_args(argv[1:])
-		ranges = []
-		for arg in args.sizes:
-			if arg == 'all':
-				for x in self.fmdb.query_sizes_inodes([]):
-					self.print_inode_stats(x)
-				return
-			elif '-' in arg:
-				pos = arg.index('-')
-				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
-			else:
-				ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args.sizes)
 		for x in self.fmdb.query_sizes_inodes(ranges):
 			self.print_inode_stats(x)
 

@@ -629,6 +629,16 @@ class fmgui(QtGui.QMainWindow):
 		self.overview.load()
 		self.show()
 
+	## Utility
+
+	def parse_size_ranges(self, args):
+		'''Parse string arguments into size ranges.'''
+		return fmcli.parse_ranges(args, lambda x: fmcli.s2p(self.fs, x))
+
+	def parse_number_ranges(self, args, maximum):
+		'''Parse string arguments into number ranges.'''
+		return fmcli.parse_ranges(args, lambda x: fmcli.n2p(maximum, x))
+
 	def change_extent_type(self, action):
 		'''Toggle display of an extent type in the overview.'''
 		arg = set()
@@ -903,14 +913,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((int(arg[:pos]), int(arg[pos+1:])))
-				else:
-					ranges.append(int(arg))
+		ranges = self.parse_number_ranges(args, self.overview.total_length())
 		self.fmdb.set_overview_length(self.overview.total_length())
 		r = list(self.fmdb.pick_cells(ranges))
 		self.load_extents(self.fmdb.query_poff_range(r))
@@ -922,14 +925,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args)
 		self.load_extents(self.fmdb.query_loff_range(ranges))
 		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
 
@@ -939,14 +935,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args)
 		self.load_extents(self.fmdb.query_poff_range(ranges))
 		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
 
@@ -1082,14 +1071,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.n2p(self.fs.total_inodes, arg[:pos]), fmcli.n2p(self.fs.total_inodes, arg[pos+1:])))
-				else:
-					ranges.append(fmcli.n2p(self.fs.total_inodes, arg))
+		ranges = self.parse_number_ranges(args, self.fs.total_inodes)
 		self.load_extents(self.fmdb.query_inums(ranges))
 		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
 
@@ -1099,14 +1081,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(fmcli.s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args)
 		self.load_extents(self.fmdb.query_lengths(ranges))
 		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
 
@@ -1125,14 +1100,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(fmcli.s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args)
 		self.load_extents(self.fmdb.query_travel_scores(ranges))
 		self.load_inodes(self.fmdb.query_travel_scores_inodes(ranges, **self.inode_query_args))
 
@@ -1142,14 +1110,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(fmcli.s2p(self.fs, arg))
+		ranges = self.parse_number_ranges(args, 2**64)
 		self.load_extents(self.fmdb.query_nr_extents(ranges))
 		self.load_inodes(self.fmdb.query_nr_extents_inodes(ranges, **self.inode_query_args))
 
@@ -1159,14 +1120,7 @@ class fmgui(QtGui.QMainWindow):
 			self.load_extents([])
 			self.load_inodes([])
 			return
-		ranges = []
-		if 'all' not in args:
-			for arg in args:
-				if '-' in arg:
-					pos = arg.index('-')
-					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
-				else:
-					ranges.append(fmcli.s2p(self.fs, arg))
+		ranges = self.parse_size_ranges(args)
 		self.load_extents(self.fmdb.query_sizes(ranges))
 		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
 
