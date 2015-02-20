@@ -202,7 +202,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.posix_timestamp_str(x.crtime, True),
 			lambda x: fmcli.posix_timestamp_str(x.ctime, True),
 			lambda x: fmcli.posix_timestamp_str(x.mtime, True),
-			lambda x: fmdb.inode_paths_to_str(x),
+			lambda x: x.path,
 		]
 		self.sort_keys = [
 			lambda x: x.ino,
@@ -214,7 +214,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: x.crtime,
 			lambda x: x.ctime,
 			lambda x: x.mtime,
-			lambda x: fmdb.inode_paths_to_str(x),
+			lambda x: x.path,
 		]
 		self.align_map = [
 			QtCore.Qt.AlignRight,
@@ -280,10 +280,10 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		return len(self.headers)
 
 	def data(self, index, role):
-		def is_name_highlighted(names):
+		def is_name_highlighted(name):
 			if self.name_highlight is None:
 				return False
-			return len(names & self.name_highlight) > 0
+			return name in self.name_highlight
 		if not index.isValid():
 			return None
 		i = index.row()
@@ -292,7 +292,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		if role == QtCore.Qt.DisplayRole:
 			return self.header_map[j](row)
 		elif role == QtCore.Qt.FontRole:
-			if is_name_highlighted(row.paths):
+			if is_name_highlighted(row.path):
 				return bold_font
 			return None
 		elif role == QtCore.Qt.TextAlignmentRole:
@@ -468,7 +468,7 @@ class fmgui(QtGui.QMainWindow):
 		self.fs = self.fmdb.query_summary()
 		self.histfile = histfile
 		self.mp = MessagePump(self.mp_start, self.mp_stop)
-		self.inode_query_args = {'resolve_paths': True, 'analyze_extents': True}
+		self.inode_query_args = {'analyze_extents': True}
 
 		# Set up the menu
 		units = fmcli.units_auto
@@ -1008,7 +1008,7 @@ class fmgui(QtGui.QMainWindow):
 						 fmcli.posix_timestamp_str(inode.crtime), \
 						 fmcli.posix_timestamp_str(inode.ctime), \
 						 fmcli.posix_timestamp_str(inode.mtime), \
-						 fmdb.inode_paths_to_str(inode)))
+						 inode.path))
 					if n > 1000:
 						self.mp.pump()
 						n = 0

@@ -547,8 +547,7 @@ class fmcli(code.InteractiveConsole):
 
 	def print_inode_stats(self, inode):
 		'''Pretty-print inode statistics.'''
-		l = list(inode.paths)
-		p = (l[0] if l[0] != '' else self.fs.pathsep) if len(l) > 0 else None
+		p = inode.path if inode.path != '' else self.fs.pathsep
 		if self.machine:
 			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
 				(p, inode.ino, inode.nr_extents, inode.travel_score, \

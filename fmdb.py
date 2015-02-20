@@ -40,14 +40,9 @@ inode_types_long = {
 }
 
 # Inode stat data; use a named tuple to reduce memory use
-inode_stats = namedtuple('inode_stats', ['fs', 'paths', 'ino', 'itype',
+inode_stats = namedtuple('inode_stats', ['fs', 'path', 'ino', 'itype',
 					 'nr_extents', 'travel_score', 'atime',
 					 'crtime', 'ctime', 'mtime', 'size'])
-
-def inode_paths_to_str(self):
-	'''Return a string representation of the inode paths.'''
-	p = [self.fs.pathsep if x == '' else x for x in self.paths]
-	return ', '.join(p)
 
 def inode_typestr(self):
 	'''Return a string representing the inode type.'''
@@ -211,6 +206,7 @@ CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
 CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
+CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode_t.nr_extents, inode_t.travel_score, inode_t.atime, inode_t.crtime, inode_t.ctime, inode_t.mtime, inode_t.size FROM path_t, inode_t WHERE inode_t.ino = path_t.ino;
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % (PAGE_SIZE, APP_ID)]
 	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
 	z = ["INSERT INTO extent_type_t VALUES (%d, '%s');" % (x, extent_types[x]) for x in sorted(extent_types.keys())]
@@ -1130,7 +1126,7 @@ class fmdb(object):
 		t0 = datetime.datetime.now()
 		# Figure out what to do with the inode sql
 		if ino_sql is not None and ino_sql != '':
-			isql = 'WHERE inode_t.ino IN (%s)' % ino_sql
+			isql = 'WHERE path_inode_v.ino IN (%s)' % ino_sql
 			rpsql = 'WHERE path_t.ino IN (%s)' % ino_sql
 			iargs = ino_sql_args
 		else:
@@ -1139,25 +1135,9 @@ class fmdb(object):
 			iargs = []
 
 		t1 = datetime.datetime.now()
-		# Do we need to reverse-map inodes to paths?
-		path_map = {}
-		if resolve_paths:
-			qstr = 'SELECT path, ino FROM path_t %s' % rpsql
-			print(qstr, iargs)
-			cur.execute(qstr, iargs)
-			while True:
-				rows = cur.fetchmany()
-				if len(rows) == 0:
-					break
-				for (path, ino) in rows:
-					if ino in path_map:
-						path_map[ino].add(path)
-					else:
-						path_map[ino] = set([path])
-
 		t2 = datetime.datetime.now()
 		# Go for the main query
-		qstr = 'SELECT ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM inode_t %s' % isql
+		qstr = 'SELECT path, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM path_inode_v %s' % isql
 		#print(qstr, iargs)
 		cur.execute(qstr, iargs)
 		upd = []
@@ -1165,7 +1145,7 @@ class fmdb(object):
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
-			for (ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size) in rows:
+			for (p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size) in rows:
 				nr_extents0 = nr_extents
 				travel_score0 = travel_score
 				if (travel_score is None or nr_extents is None) and analyze_extents:
@@ -1176,7 +1156,6 @@ class fmdb(object):
 				   ((nr_extents0 is None and nr_extents != nr_extents0) or \
 				    (travel_score0 is None and travel_score != travel_score0)):
 					upd.append((nr_extents, travel_score, ino))
-				p = path_map[ino] if ino in path_map else set()
 				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size)
 		t3 = datetime.datetime.now()
 
