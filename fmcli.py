@@ -182,27 +182,31 @@ class fmcli(code.InteractiveConsole):
 		readline.set_history_length(1000)
 		self.commands = {
 			('cache', 'a'): self.do_cache_overview,
-			('cell', 'c'): self.do_cell_to_extents,
-			('overview_types', 'ot'): self.do_overview_extent_types,
+			('clear_calculated', 'cc'): self.do_clear_calculated,
 			('help', 'h', '?'): self.do_help,
-			('file', 'f'): self.do_paths,
-			('fstat', 'fs'): self.do_paths_stats,
-			('clear', 'cc'): self.do_clear_calculated,
-			('flag', 'g'): self.do_extent_flag,
-			('inode', 'i'): self.do_inodes,
-			('logical', 'l'): self.do_loff_to_extents,
 			('ls', ): self.do_ls,
 			('machine', 'm'): self.do_machine,
-			('length', 'n'): self.do_lengths,
-			('primary_extents', 'pe'): self.do_nr_extents,
-			('overview', 'o'): self.do_overview,
-			('physical', 'p'): self.do_poff_to_extents,
 			('quit', 'exit', 'q'): self.do_exit,
 			('summary', 's'): self.do_summary,
-			('size', 'sz'): self.do_inode_sizes,
-			('type', 't'): self.do_extent_type,
-			('travel_score', 'ts'): self.do_travel_scores,
 			('units', 'u'): self.do_set_units,
+
+			('overview', 'o'): self.do_overview,
+			('overview_cell', 'oc'): self.do_cell_to_extents,
+			('overview_types', 'ot'): self.do_overview_extent_types,
+
+			('extent_flag', 'ef'): self.do_extent_flag,
+			('extent_inode', 'ei'): self.do_inodes,
+			('extent_logical', 'el'): self.do_loff_to_extents,
+			('extent_physical', 'ep'): self.do_poff_to_extents,
+			('extent_length', 'esz'): self.do_lengths,
+			('extent_type', 'et'): self.do_extent_type,
+			('extent_paths', 'p'): self.do_paths,
+
+			('inode_extents', 'ie'): self.do_nr_extents,
+			('inode_type', 'it'): self.do_inode_type,
+			('inode_size', 'isz'): self.do_inode_sizes,
+			('inode_travel_score', 'its'): self.do_travel_scores,
+			('inode_paths', 'ip'): self.do_paths_stats,
 		}
 		self.done = False
 		self.units = units_auto
@@ -600,4 +604,17 @@ class fmcli(code.InteractiveConsole):
 		args = parser.parse_args(argv[1:])
 		ranges = self.parse_size_ranges(args.sizes)
 		for x in self.fmdb.query_sizes_inodes(ranges):
+			self.print_inode_stats(x)
+
+	def do_inode_type(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up inodes with a particular type.')
+		parser.add_argument('types', nargs = '+', \
+			help = 'Type codes to look up.  Valid values are: (d)irectory, (f)ile, FS (m)etadata, and (s)ymbolic links.', \
+			choices = [x for x in sorted(fmdb.inode_type_strings.keys())])
+		args = parser.parse_args(argv[1:])
+		types = set()
+		for arg in args.types:
+			types.add(fmdb.inode_type_strings[arg])
+		for x in self.fmdb.query_inode_types_inodes(list(types)):
 			self.print_inode_stats(x)

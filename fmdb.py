@@ -39,6 +39,8 @@ inode_types_long = {
 	INO_TYPE_SYMLINK:	'Symbolic Link',
 }
 
+inode_type_strings = {inode_types[i]: i for i in inode_types}
+
 # Inode stat data; use a named tuple to reduce memory use
 inode_stats = namedtuple('inode_stats', ['fs', 'path', 'ino', 'itype',
 					 'nr_extents', 'travel_score', 'atime',
