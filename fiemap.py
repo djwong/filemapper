@@ -211,25 +211,26 @@ def file_mappings(fd, start = 0, length = None, flags = 0):
 
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
-	def do_map(stat, path):
-		if stat.st_ino in seen:
+	def do_map(fstat, path):
+		if fstat.st_ino in seen:
 			return
-		seen.add(stat.st_ino)
+		seen.add(fstat.st_ino)
 		fd = os.open(path, os.O_RDONLY)
 		try:
 			if do_map.fiemap_broken:
 				for extent in fibmap2(fd, flags = flags):
-					extent_fn(stat, extent, False)
+					extent_fn(fstat, extent, False)
 				return
 			try:
 				for extent in fiemap2(fd, flags = flags):
-					extent_fn(stat, extent, False)
+					extent_fn(fstat, extent, False)
 				for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
-					extent_fn(stat, extent, True)
+					extent_fn(fstat, extent, True)
 			except:
-				do_map.fiemap_broken = True
+				if stat.S_ISREG(fstat.st_mode):
+					do_map.fiemap_broken = True
 				for extent in fibmap2(fd, flags = flags):
-					extent_fn(stat, extent, False)
+					extent_fn(fstat, extent, False)
 		finally:
 			os.close(fd)
 
