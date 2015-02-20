@@ -657,11 +657,12 @@ class fmdb(object):
 		qarg = []
 		close_paren = False
 		cond = ''
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
 				return (None, None)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			qarg += list(self.extent_types_to_show)
+			qarg += list(ets)
 			cond = ' AND ('
 			close_paren = True
 		for r in ranges:
@@ -713,11 +714,12 @@ class fmdb(object):
 			return (None, None)
 		ets_str = None
 		ets_arg = []
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
 				return (None, None)
 			ets_str = 'type IN (%s)' % (', '.join(['?' for x in ets]))
-			ets_arg = list(self.extent_types_to_show)
+			ets_arg = list(ets)
 		glob_str = None
 		glob_arg = []
 		cond = ''
@@ -769,11 +771,12 @@ class fmdb(object):
 		qarg = []
 		close_paren = False
 		cond = ''
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
 				return (None, None)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			qarg += list(self.extent_types_to_show)
+			qarg += list(ets)
 			cond = ' AND ('
 			close_paren = True
 		for r in ranges:
@@ -823,18 +826,21 @@ class fmdb(object):
 		if set(types) == set(extent_types):
 			qstr = None
 			qarg = []
+		elif len(types) == 1:
+			qstr = 'type = ?'
+			qarg = types
 		else:
-			qstr = ' WHERE type IN (%s)' % (cond, ', '.join(['?' for x in types]))
+			qstr = 'type IN (%s)' % (', '.join(['?' for x in types]))
 			qarg = types
 		if mode == FMDB_INODE_SQL and qstr is not None:
-			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t %s)' % qstr
+			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
 		return (qstr, qarg)
 
 	def query_extent_types(self, types, **kwargs):
 		'''Query extents given a set of type codes.'''
 		if len(types) == 0:
 			return
-		qstr, qarg = self.__query_extent_types_sql(flags, FMDB_EXTENT_SQL)
+		qstr, qarg = self.__query_extent_types_sql(types, FMDB_EXTENT_SQL)
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
@@ -853,12 +859,12 @@ class fmdb(object):
 		else:
 			qstr = 'flags & ? > 0'
 		qarg = [flags]
-		cond = 'AND'
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
 				return (None, None)
-			qarg += list(self.extent_types_to_show)
-			qstr += '%s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			qarg += list(ets)
+			qstr += ' AND type IN (%s)' % (', '.join(['?' for x in ets]))
 		if mode == FMDB_INODE_SQL:
 			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
 		return (qstr, qarg)
