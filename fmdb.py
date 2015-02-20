@@ -629,13 +629,15 @@ class fmdb(object):
 
 		cur = self.conn.cursor()
 		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
-		qstr = 'SELECT COUNT(p_off) FROM extent_t WHERE type IN (%s);' % etypes
-		cur.execute(qstr)
+		cur.execute('SELECT COUNT(ino) FROM extent_t WHERE type IN (%s)' % etypes)
 		rows = cur.fetchall()
 		extents = rows[0][0]
-		cur.execute('SELECT COUNT(ino) FROM inode_t;')
+
+		itypes = ', '.join(map(str, [INO_TYPE_FILE, INO_TYPE_DIR, INO_TYPE_SYMLINK]))
+		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE type IN (%s) AND size > 0' % itypes)
 		rows = cur.fetchall()
 		inodes = rows[0][0]
+		print(extents, inodes)
 
 		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp FROM fs_t;')
 		rows = cur.fetchall()
