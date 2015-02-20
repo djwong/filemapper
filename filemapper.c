@@ -58,7 +58,7 @@ CREATE INDEX extent_loff_i ON extent_t(l_off, length);\
 CREATE INDEX extent_ino_i ON extent_t(ino);\
 CREATE INDEX overview_cell_i ON overview_t(length, cell_no);\
 CREATE INDEX inode_ino_i ON inode_t(ino);\
-CREATE INDEX extent_type_i ON extent_t(type);
+CREATE INDEX extent_type_i ON extent_t(type);\
 PRAGMA foreign_key_check;";
 
 static int primary_extent_type_for_inode[] = {
