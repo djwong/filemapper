@@ -652,7 +652,7 @@ class fmdb(object):
 	## Querying extents and inodes with extents that happen to overlap a range
 
 	def __query_extent_ranges_sql(self, ranges, mode, field_start, field_end):
-		'''Generate SQL extent table criteria for a field being within a range.'''
+		'''Generate SQL criteria for an extent range being within a range.'''
 		if len(ranges) == 0:
 			return (None, None)
 		qstr = ''
@@ -685,19 +685,19 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_poff_range(self, ranges, **kwargs):
-		'''Query extents spanning ranges of physical bytes.'''
+		'''Query extents covering ranges of physical bytes.'''
 		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'p_off', 'p_end')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_poff_range_inodes(self, ranges, **kwargs):
-		'''Query inodes whose contents span ranges of physical bytes.'''
+		'''Query inodes with extents covering ranges of physical bytes.'''
 		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'p_off', 'p_end')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_loff_range(self, ranges, **kwargs):
-		'''Query extents spanning ranges of logical bytes.'''
+		'''Query extents covering ranges of logical bytes.'''
 		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'l_off', 'l_off + length - 1')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
@@ -711,7 +711,7 @@ class fmdb(object):
 	## Querying extents and inodes by path
 
 	def __query_paths_sql(self, paths, mode):
-		'''Generate SQL to query extents used by a given path.'''
+		'''Generate SQL criteria for data appearing at a given path.'''
 		if len(paths) == 0:
 			return (None, None)
 		ets_str = None
@@ -752,13 +752,13 @@ class fmdb(object):
 		return (qstr, ets_arg + glob_arg)
 
 	def query_paths(self, paths, **kwargs):
-		'''Query extents used by a given path.'''
+		'''Query extents with inodes appearing at the given paths.'''
 		qstr, qarg = self.__query_paths_sql(paths, FMDB_EXTENT_SQL)
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_paths_inodes(self, paths, **kwargs):
-		'''Retrieve the inode data for the given path specifications.'''
+		'''Query inodes appearing at the given paths.'''
 		qstr, qarg = self.__query_paths_sql(paths, FMDB_INODE_SQL)
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
@@ -766,7 +766,7 @@ class fmdb(object):
 	## Querying extents and inodes with extents with a field inside a range
 
 	def __query_extent_range_sql(self, ranges, mode, field):
-		'''Generate SQL extent table criteria for a field being within a range.'''
+		'''Generate SQL criteria for an extent field being within a range.'''
 		if len(ranges) == 0:
 			return (None, None)
 		qstr = ''
@@ -798,25 +798,25 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_inums(self, ranges, **kwargs):
-		'''Query extents given ranges of inode numbers.'''
+		'''Query extents with inodes having ranges of inode numbers.'''
 		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_EXTENT_SQL, 'ino')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_inums_inodes(self, ranges, **kwargs):
-		'''Query inodes within the given ranges of inode numbers.'''
+		'''Query inodes having ranges of inode numbers.'''
 		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_INODE_SQL, 'ino')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_lengths(self, ranges, **kwargs):
-		'''Query extents given ranges of extent lengths.'''
+		'''Query extents having ranges of extent lengths.'''
 		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_EXTENT_SQL, 'length')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_lengths_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of extent lengths.'''
+		'''Query inodes with extents having ranges of extent lengths.'''
 		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_INODE_SQL, 'length')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
@@ -824,7 +824,7 @@ class fmdb(object):
 	## Querying extents and inodes with extents with enumerable quantities
 
 	def __query_extent_types_sql(self, types, mode):
-		'''Generate SQL to query extents given a set of type codes.'''
+		'''Generate SQL criteria for extents having one of a set of type codes.'''
 		if set(types) == set(extent_types):
 			qstr = None
 			qarg = []
@@ -839,7 +839,7 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_extent_types(self, types, **kwargs):
-		'''Query extents given a set of type codes.'''
+		'''Query extents having a set of type codes.'''
 		if len(types) == 0:
 			return
 		qstr, qarg = self.__query_extent_types_sql(types, FMDB_EXTENT_SQL)
@@ -855,7 +855,7 @@ class fmdb(object):
 			yield x
 
 	def __query_extent_flags_sql(self, flags, exact, mode):
-		'''Generate SQL to query extents given a set of type codes.'''
+		'''Generate SQL criteria for extents having a set of flags.'''
 		if exact:
 			qstr = 'flags = ?'
 		else:
@@ -872,13 +872,13 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_extent_flags(self, flags, exact = True, **kwargs):
-		'''Query extents given a set of type codes.'''
+		'''Query extents having a set of type codes.'''
 		qstr, qarg = self.__query_extent_flags_sql(flags, exact, FMDB_EXTENT_SQL)
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_extent_flags_inodes(self, flags, exact = True, **kwargs):
-		'''Query extents given a set of type codes.'''
+		'''Query inodes with extents having a set of type codes.'''
 		qstr, qarg = self.__query_extent_flags_sql(flags, exact, FMDB_INODE_SQL)
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
@@ -886,7 +886,7 @@ class fmdb(object):
 	## Querying parts of the FS tree.  We do not hide by extent type here.
 
 	def query_root(self):
-		'''Retrieve a dentry for root.'''
+		'''Retrieve the directory entry for root.'''
 		cur = self.conn.cursor()
 		qstr = 'SELECT inode_t.ino, inode_t.type FROM inode_t, path_t WHERE inode_t.ino = path_t.ino AND path_t.path = ?'
 		qarg = ['']
@@ -899,7 +899,7 @@ class fmdb(object):
 		return dentry('', rows[0][0], rows[0][1])
 
 	def query_ls(self, paths):
-		'''Query all paths available under a given path.'''
+		'''Query all directory entries available under the given paths.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'SELECT dentry_t.name, dentry_t.name_ino, dentry_t.type FROM dentry_t, path_t WHERE dentry_t.dir_ino = path_t.ino'
@@ -964,37 +964,37 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_travel_scores(self, ranges, **kwargs):
-		'''Query extents given ranges of inode travel scores.'''
+		'''Query extents with inodes having ranges of inode travel scores.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'travel_score')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_travel_scores_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode travel scores.'''
+		'''Query inodes having ranges of inode travel scores.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'travel_score')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_nr_extents(self, ranges, **kwargs):
-		'''Query extents given ranges of inode primary extent counts.'''
+		'''Query extents with inodes having ranges of inode primary extent counts.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'nr_extents')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_nr_extents_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode primary extent counts.'''
+		'''Query inodes having ranges of inode primary extent counts.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'nr_extents')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_sizes(self, ranges, **kwargs):
-		'''Query extents given ranges of inode sizes.'''
+		'''Query extents with inodes having ranges of inode sizes.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'size')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_sizes_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode sizes.'''
+		'''Query inodes having ranges of inode sizes.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'size')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
@@ -1034,49 +1034,49 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_atimes(self, ranges, **kwargs):
-		'''Query extents given ranges of inode last access times.'''
+		'''Query extents with inodes having ranges of inode last access times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'atime')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_atimes_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode last access times.'''
+		'''Query inodes having ranges of inode last access times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'atime')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_ctimes(self, ranges, **kwargs):
-		'''Query extents given ranges of inode change times.'''
+		'''Query extents with inodes having ranges of inode change times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'ctime')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_ctimes_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode change times.'''
+		'''Query inodes having ranges of inode change times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'ctime')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_mtimes(self, ranges, **kwargs):
-		'''Query extents given ranges of inode data change times.'''
+		'''Query extents with inodes having ranges of inode data change times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'mtime')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_mtimes_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode data change times.'''
+		'''Query inodes having ranges of inode data change times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'mtime')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
 	def query_crtimes(self, ranges, **kwargs):
-		'''Query extents given ranges of inode creation times.'''
+		'''Query extents with inodes having ranges of inode creation times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'crtime')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
 	def query_crtimes_inodes(self, ranges, **kwargs):
-		'''Query inodes given ranges of inode creation times.'''
+		'''Query inodes having ranges of inode creation times.'''
 		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'crtime')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
@@ -1084,7 +1084,7 @@ class fmdb(object):
 	## Querying extents and inodes for inodes with enumerable quantities
 
 	def __query_inode_types_sql(self, types, mode):
-		'''Generate SQL to query given a set of inode type codes.'''
+		'''Generate SQL criteria for inodes having one of a set of inode type codes.'''
 		if set(types) == set(extent_types):
 			qstr = None
 			qarg = []
@@ -1099,7 +1099,7 @@ class fmdb(object):
 		return (qstr, qarg)
 
 	def query_inode_types(self, types, **kwargs):
-		'''Query extents with inodes having a set of type codes.'''
+		'''Query extents with inodes having one of a set of type codes.'''
 		if len(types) == 0:
 			return
 		qstr, qarg = self.__query_inode_types_sql(types, FMDB_EXTENT_SQL)
@@ -1107,7 +1107,7 @@ class fmdb(object):
 			yield x
 
 	def query_inode_types_inodes(self, types, **kwargs):
-		'''Query inodes having a set of type codes.'''
+		'''Query inodes having one of a set of type codes.'''
 		if len(types) == 0:
 			return
 		qstr, qarg = self.__query_inode_types_sql(types, FMDB_INODE_SQL)
