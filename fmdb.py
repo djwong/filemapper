@@ -963,13 +963,13 @@ class fmdb(object):
 			qstr = 'ino IN (SELECT DISTINCT ino FROM inode_t WHERE %s)' % qstr
 		return (qstr, qarg)
 
-	def query_travel_score(self, ranges, **kwargs):
+	def query_travel_scores(self, ranges, **kwargs):
 		'''Query extents given ranges of inode travel scores.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'travel_score')
 		for x in self.query_extents(qstr, qarg, **kwargs):
 			yield x
 
-	def query_travel_score_inodes(self, ranges, **kwargs):
+	def query_travel_scores_inodes(self, ranges, **kwargs):
 		'''Query inodes given ranges of inode travel scores.'''
 		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'travel_score')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):

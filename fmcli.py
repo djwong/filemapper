@@ -589,7 +589,7 @@ class fmcli(code.InteractiveConsole):
 		ranges = []
 		for arg in args.scores:
 			if arg == 'all':
-				for x in self.fmdb.query_travel_score_inodes([]):
+				for x in self.fmdb.query_travel_scores_inodes([]):
 					self.print_inode_stats(x)
 				return
 			elif '-' in arg:
@@ -597,7 +597,7 @@ class fmcli(code.InteractiveConsole):
 				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
 			else:
 				ranges.append(s2p(self.fs, arg))
-		for x in self.fmdb.query_travel_score_inodes(ranges):
+		for x in self.fmdb.query_travel_scores_inodes(ranges):
 			self.print_inode_stats(x)
 
 	def do_nr_extents(self, argv):

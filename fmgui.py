@@ -595,6 +595,9 @@ class fmgui(QtGui.QMainWindow):
 			cq('Extent Types', self.query_extent_type, extent_types),
 			cq('Extent Flags', self.query_extent_flags, extent_flags),
 			sq('Extent Lengths', self.query_lengths),
+			sq('Travel Scores', self.query_travel_scores),
+			sq('# Primary Extents', self.query_nr_extents),
+			sq('File Sizes', self.query_sizes),
 		]
 
 		# Then the query type selector
@@ -1115,6 +1118,57 @@ class fmgui(QtGui.QMainWindow):
 			return
 		self.load_extents(self.fmdb.query_paths(args))
 		self.load_inodes(self.fmdb.query_paths_inodes(args, **self.inode_query_args))
+
+	def query_travel_scores(self, args):
+		'''Query for based on ranges of travel scores.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = []
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(fmcli.s2p(self.fs, arg))
+		self.load_extents(self.fmdb.query_travel_scores(ranges))
+		self.load_inodes(self.fmdb.query_travel_scores_inodes(ranges, **self.inode_query_args))
+
+	def query_nr_extents(self, args):
+		'''Query for based on ranges of primary extent counts.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = []
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(fmcli.s2p(self.fs, arg))
+		self.load_extents(self.fmdb.query_nr_extents(ranges))
+		self.load_inodes(self.fmdb.query_nr_extents_inodes(ranges, **self.inode_query_args))
+
+	def query_sizes(self, args):
+		'''Query for based on ranges of inode sizes.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = []
+		if 'all' not in args:
+			for arg in args:
+				if '-' in arg:
+					pos = arg.index('-')
+					ranges.append((fmcli.s2p(self.fs, arg[:pos]), fmcli.s2p(self.fs, arg[pos+1:])))
+				else:
+					ranges.append(fmcli.s2p(self.fs, arg))
+		self.load_extents(self.fmdb.query_sizes(ranges))
+		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
