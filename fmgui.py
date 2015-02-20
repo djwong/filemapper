@@ -49,6 +49,26 @@ class MessagePump(object):
 		self.last = None
 		self.interval = None
 
+def addReturnPressedEvents(widget):
+	'''Add a returnPressed event to a Qt widget.'''
+	class ReturnKeyEater(QtCore.QObject):
+		__rpsig = QtCore.pyqtSignal()
+
+		def __init__(self, widget):
+			super(ReturnKeyEater, self).__init__(widget)
+			self.widget = widget
+			self.widget.returnPressed = self.__rpsig
+
+		def eventFilter(self, obj, event):
+			if event.type() == QtCore.QEvent.KeyRelease and \
+			   event.key() in [QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter]:
+				self.__rpsig.emit()
+				return True
+			return False
+
+	m = ReturnKeyEater(widget)
+	widget.installEventFilter(m)
+
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
 	def __init__(self, fs, data, units, rows_to_show=500, parent=None, *args):
@@ -535,7 +555,12 @@ class fmgui(QtGui.QMainWindow):
 		self.xle = XLineEdit(self.query_text)
 		self.xle.returnPressed.connect(self.run_query)
 		self.query_text.setLineEdit(self.xle)
-		self.query_text.activated.connect(self.run_query)
+		#XXX only run query if someone picked something off the popup... self.query_text.activated.connect(self.run_query)
+		self.query_text.completer().setCompletionMode(QtGui.QCompleter.PopupCompletion)
+
+		# Next the checklist thing
+		addReturnPressedEvents(self.query_checklist)
+		self.query_checklist.returnPressed.connect(self.run_query)
 
 		# Next, the query button
 		self.query_btn.clicked.connect(self.run_query)
@@ -1347,19 +1372,19 @@ class StringQuery(FmQuery):
 
 	def add_to_history(self, string):
 		'''Add a string to the history.'''
-		if len(self.history) > 0 and self.history[-1] == string:
+		if len(self.history) > 0 and self.history[0] == string:
 			return
 		if string in self.history:
 			self.history.remove(string)
 		r = self.ctl.findText(string)
 		if r >= 0:
 			self.ctl.removeItem(r)
-		self.history.append(string)
-		self.ctl.addItem(string)
+		self.history.insert(0, string)
+		self.ctl.insertItem(0, string)
 		self.ctl.setCurrentIndex(self.history.index(string))
 
 	def export_state(self):
-		return {'edit_string': str(self.edit_string), 'history': self.history[-100:]}
+		return {'edit_string': str(self.edit_string), 'history': self.history[:100]}
 
 	def import_state(self, data):
 		self.edit_string = data['edit_string']
