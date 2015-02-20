@@ -315,18 +315,15 @@ class fmcli(code.InteractiveConsole):
 			 fmdb.extent_flagstr(ext), \
 			 fmdb.extent_typestr(ext)))
 
-	def print_dentry(self, de, st):
+	def print_dentry(self, de):
 		'''Pretty-print a dentry.'''
 		if self.machine:
-			print("'%s',%d,'%s',%d,%.02f" % \
-				(de.name, de.ino, fmdb.dentry_typestr(de), \
-				 st.nr_extents, st.travel_score))
+			print("'%s',%d,'%s'" % \
+				(de.name, de.ino, fmdb.dentry_typestr(de)))
 			return
-		print("'%s', %s, '%s', %s, %.02f" % \
+		print("'%s', %s, '%s'" % \
 			(de.name, format_number(units_none, de.ino), \
-			 fmdb.dentry_typestr(de), \
-			 format_number(units_none, st.nr_extents), \
-			 st.travel_score))
+			 fmdb.dentry_typestr(de)))
 
 	def do_loff_to_extents(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -394,7 +391,7 @@ class fmcli(code.InteractiveConsole):
 				ranges.append((int(arg[:pos]), int(arg[pos+1:])))
 			else:
 				ranges.append(int(arg))
-		r = self.fmdb.pick_cells(ranges)
+		r = list(self.fmdb.pick_cells(ranges))
 		for x in self.fmdb.query_poff_range(r):
 			self.print_extent(x)
 
@@ -500,7 +497,7 @@ class fmcli(code.InteractiveConsole):
 		types = set()
 		for arg in args.types:
 			types.add(fmdb.extent_type_strings[arg])
-		for x in self.fmdb.query_extent_types(types):
+		for x in self.fmdb.query_extent_types(list(types)):
 			self.print_extent(x)
 
 	def do_extent_flag(self, argv):
@@ -523,10 +520,9 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('dirnames', nargs = '+', \
 			help = 'Directory names to look up.')
 		args = parser.parse_args(argv[1:])
-		stat_data = {statbuf.ino: statbuf for statbuf in self.fmdb.query_dir_contents_stats(args.dirnames, analyze_extents = True)}
-		for de in self.fmdb.query_ls(args.dirnames):
-			st = stat_data[de.ino] if de.ino in stat_data else None
-			self.print_dentry(de, st)
+		x = [x if x[-1] != '/' else x[:-1] for x in args.dirnames]
+		for de in self.fmdb.query_ls(x):
+			self.print_dentry(de)
 
 	def do_overview_extent_types(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -574,7 +570,7 @@ class fmcli(code.InteractiveConsole):
 			help = 'Paths to look up.')
 		parser.add_argument('-q', action = 'store_true', help = 'Quiet mode.  Calculate and cache the results, but do not print them.')
 		args = parser.parse_args(argv[1:])
-		i = self.fmdb.query_paths_inodes(args.paths, resolve_paths = True, analyze_extents = True)
+		i = self.fmdb.query_paths_inodes(args.paths, analyze_extents = True)
 		if args.q:
 			list(i)
 			return
