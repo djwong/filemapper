@@ -254,6 +254,57 @@ class fmcli(code.InteractiveConsole):
 		'''Parse string arguments into number ranges.'''
 		return parse_ranges(args, lambda x: n2p(maximum, x))
 
+	## Pretty printers
+
+	def print_extent(self, ext):
+		'''Pretty-print an extent.'''
+		if self.machine:
+			print("'%s',%d,%d,%d,'%s','%s'" % \
+				(ext.path if ext.path != '' else self.fs.pathsep, \
+				 ext.p_off, ext.l_off, ext.length, \
+				 fmdb.extent_flagstr(ext), \
+				 fmdb.extent_typestr(ext)))
+			return
+		print("'%s', %s, %s, %s, '%s', '%s'" % \
+			(ext.path if ext.path != '' else self.fs.pathsep, \
+			 format_size(self.units, ext.p_off), \
+			 format_size(self.units, ext.l_off), \
+			 format_size(self.units, ext.length), \
+			 fmdb.extent_flagstr(ext), \
+			 fmdb.extent_typestr(ext)))
+
+	def print_dentry(self, de):
+		'''Pretty-print a dentry.'''
+		if self.machine:
+			print("'%s',%d,'%s'" % \
+				(de.name, de.ino, fmdb.dentry_typestr(de)))
+			return
+		print("'%s', %s, '%s'" % \
+			(de.name, format_number(units_none, de.ino), \
+			 fmdb.dentry_typestr(de)))
+
+	def print_inode_stats(self, inode):
+		'''Pretty-print inode statistics.'''
+		p = inode.path if inode.path != '' else self.fs.pathsep
+		if self.machine:
+			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
+				(p, inode.ino, inode.nr_extents, inode.travel_score, \
+				 fmdb.inode_typestr(inode), \
+				 posix_timestamp_str(inode.atime), \
+				 posix_timestamp_str(inode.crtime), \
+				 posix_timestamp_str(inode.ctime), \
+				 posix_timestamp_str(inode.mtime), \
+				 inode.size))
+			return
+		print("'%s', %d, %s, %0.2f, %s, '%s', '%s', '%s', '%s', %s" % \
+			(p, inode.ino, inode.nr_extents, inode.travel_score, \
+			 fmdb.inode_typestr(inode), \
+			 posix_timestamp_str(inode.atime, True), \
+			 posix_timestamp_str(inode.crtime, True), \
+			 posix_timestamp_str(inode.ctime, True), \
+			 posix_timestamp_str(inode.mtime, True), \
+			 format_size(self.units, inode.size)))
+
 	## Misc. Commands
 
 	def do_help(self, argv):
@@ -275,19 +326,6 @@ class fmcli(code.InteractiveConsole):
 			print("Available commands:")
 			for key in sorted(self.commands):
 				print(key[0])
-
-	def do_overview(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Show the block overview.')
-		parser.add_argument('blocks', nargs='?', metavar = 'N', \
-			type = int, default = None, \
-			help = 'Number of blocks to print.  Default is 2048.')
-		args = parser.parse_args(argv[1:])
-		if args.blocks is not None:
-			self.fmdb.set_overview_length(args.blocks)
-		for ov in self.fmdb.query_overview():
-			sys.stdout.write(ov.to_letter())
-		sys.stdout.write('\n')
 
 	def do_exit(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -330,73 +368,6 @@ class fmcli(code.InteractiveConsole):
 		extents = res.extents if res.extents != 0 else 1
 		print("Fragmentation:\t\t%.1f%%" % ((100.0 * extents / inodes) - 100))
 
-	def print_extent(self, ext):
-		'''Pretty-print an extent.'''
-		if self.machine:
-			print("'%s',%d,%d,%d,'%s','%s'" % \
-				(ext.path if ext.path != '' else self.fs.pathsep, \
-				 ext.p_off, ext.l_off, ext.length, \
-				 fmdb.extent_flagstr(ext), \
-				 fmdb.extent_typestr(ext)))
-			return
-		print("'%s', %s, %s, %s, '%s', '%s'" % \
-			(ext.path if ext.path != '' else self.fs.pathsep, \
-			 format_size(self.units, ext.p_off), \
-			 format_size(self.units, ext.l_off), \
-			 format_size(self.units, ext.length), \
-			 fmdb.extent_flagstr(ext), \
-			 fmdb.extent_typestr(ext)))
-
-	def print_dentry(self, de):
-		'''Pretty-print a dentry.'''
-		if self.machine:
-			print("'%s',%d,'%s'" % \
-				(de.name, de.ino, fmdb.dentry_typestr(de)))
-			return
-		print("'%s', %s, '%s'" % \
-			(de.name, format_number(units_none, de.ino), \
-			 fmdb.dentry_typestr(de)))
-
-	def do_loff_to_extents(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up extents of a given range of logical offsets.')
-		parser.add_argument('offsets', nargs = '+', \
-			help = 'Logical offsets to look up.  This can be a single number or a range (e.g. 0-10m).')
-		args = parser.parse_args(argv[1:])
-		ranges = self.parse_size_ranges(args.offsets)
-		for x in self.fmdb.query_loff_range(ranges):
-			self.print_extent(x)
-
-	def do_poff_to_extents(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up extents of a given range of physical offsets.')
-		parser.add_argument('offsets', nargs = '+', \
-			help = 'Physical offsets to look up.  This can be a single number or a range (e.g. 0-10k).')
-		args = parser.parse_args(argv[1:])
-		ranges = self.parse_size_ranges(args.offsets)
-		for x in self.fmdb.query_poff_range(ranges):
-			self.print_extent(x)
-
-	def do_cache_overview(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Create caches of the overview table.')
-		parser.add_argument('lengths', nargs = '+', \
-			help = 'Lengths of the overview tables.')
-		args = parser.parse_args(argv[1:])
-		for arg in args.lengths:
-			self.fmdb.cache_overview(arg)
-
-	def do_cell_to_extents(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up extents of a given range of overview cells.')
-		parser.add_argument('cells', nargs = '+', \
-			help = 'Cell ranges to look up.  This can be a single number or a range (e.g. 0-10).')
-		args = parser.parse_args(argv[1:])
-		ranges = self.parse_number_args(args.cells, self.fmdb.overview_len)
-		r = list(self.fmdb.pick_cells(ranges))
-		for x in self.fmdb.query_poff_range(r):
-			self.print_extent(x)
-
 	def do_set_units(self, argv):
 		avail_units = [
 			units_auto,
@@ -424,6 +395,117 @@ class fmcli(code.InteractiveConsole):
 		print("Unrecognized unit '%s'.  Available units:" % args.units)
 		print(', '.join(unit_list))
 
+	def do_machine(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Toggle machine-friendly output mode.')
+		parser.add_argument('mode', choices = ['yes', 'no', 'on', 'off', '1', '0'], \
+			help = 'Paths to look up.')
+		args = parser.parse_args(argv[1:])
+		if args.mode == 'yes' or args.mode == 'on' or args.mode == '1':
+			self.machine = True
+		else:
+			self.machine = False
+
+	def do_ls(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up directories in the filesystem tree.')
+		parser.add_argument('dirnames', nargs = '+', \
+			help = 'Directory names to look up.')
+		args = parser.parse_args(argv[1:])
+		x = [x if x[-1] != '/' else x[:-1] for x in args.dirnames]
+		for de in self.fmdb.query_ls(x):
+			self.print_dentry(de)
+
+	def do_clear_calculated(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Erase all calculated values.')
+		args = parser.parse_args(argv[1:])
+		self.fmdb.clear_calculated_values()
+
+	## Overview management
+
+	def do_overview(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Show the block overview.')
+		parser.add_argument('blocks', nargs='?', metavar = 'N', \
+			type = int, default = None, \
+			help = 'Number of blocks to print.  Default is 2048.')
+		args = parser.parse_args(argv[1:])
+		if args.blocks is not None:
+			self.fmdb.set_overview_length(args.blocks)
+		for ov in self.fmdb.query_overview():
+			sys.stdout.write(ov.to_letter())
+		sys.stdout.write('\n')
+
+	def do_cache_overview(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Create caches of the overview table.')
+		parser.add_argument('lengths', nargs = '+', \
+			help = 'Lengths of the overview tables.')
+		args = parser.parse_args(argv[1:])
+		for arg in args.lengths:
+			self.fmdb.cache_overview(arg)
+
+	def do_cell_to_extents(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of overview cells.')
+		parser.add_argument('cells', nargs = '+', \
+			help = 'Cell ranges to look up.  This can be a single number or a range (e.g. 0-10).')
+		args = parser.parse_args(argv[1:])
+		ranges = self.parse_number_args(args.cells, self.fmdb.overview_len)
+		r = list(self.fmdb.pick_cells(ranges))
+		for x in self.fmdb.query_poff_range(r):
+			self.print_extent(x)
+
+	def do_overview_extent_types(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Restrict the overview display to particular types of extents.')
+		t = [x for x in sorted(fmdb.extent_type_strings.keys())]
+		t.append('all')
+		parser.add_argument('types', nargs = '+', \
+			help = 'Type codes to look up.  Valid values are: (d)irectory, (e)xtent map, (f)ile, FS (m)etadata, (s)ymbolic links, and e(x)tended attributes.  Use "all" to display all types.', \
+			choices = t)
+		args = parser.parse_args(argv[1:])
+		if 'all' in args:
+			self.fmdb.set_extent_types_to_show(None)
+			return
+		types = set()
+		for arg in args.types:
+			types.add(fmdb.extent_type_strings[arg])
+		self.fmdb.set_extent_types_to_show(types)
+
+	## Queries
+
+	def do_poff_to_extents(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of physical offsets.')
+		parser.add_argument('offsets', nargs = '+', \
+			help = 'Physical offsets to look up.  This can be a single number or a range (e.g. 0-10k).')
+		args = parser.parse_args(argv[1:])
+		ranges = self.parse_size_ranges(args.offsets)
+		for x in self.fmdb.query_poff_range(ranges):
+			self.print_extent(x)
+
+	def do_loff_to_extents(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of logical offsets.')
+		parser.add_argument('offsets', nargs = '+', \
+			help = 'Logical offsets to look up.  This can be a single number or a range (e.g. 0-10m).')
+		args = parser.parse_args(argv[1:])
+		ranges = self.parse_size_ranges(args.offsets)
+		for x in self.fmdb.query_loff_range(ranges):
+			self.print_extent(x)
+
+	def do_inodes(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up extents of a given range of inodes.')
+		parser.add_argument('inodes', nargs = '+', \
+			help = 'Inodes to look up.  This can be a single number or a range (e.g. 0-10).')
+		args = parser.parse_args(argv[1:])
+		ranges = self.parse_number_ranges(args.inodes, self.fs.total_inodes)
+		for x in self.fmdb.query_inums(ranges):
+			self.print_extent(x)
+
 	def do_paths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Look up extents of a given path.')
@@ -437,27 +519,6 @@ class fmcli(code.InteractiveConsole):
 			return
 		for ext in it:
 			self.print_extent(ext)
-
-	def do_machine(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Toggle machine-friendly output mode.')
-		parser.add_argument('mode', choices = ['yes', 'no', 'on', 'off', '1', '0'], \
-			help = 'Paths to look up.')
-		args = parser.parse_args(argv[1:])
-		if args.mode == 'yes' or args.mode == 'on' or args.mode == '1':
-			self.machine = True
-		else:
-			self.machine = False		
-
-	def do_inodes(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up extents of a given range of inodes.')
-		parser.add_argument('inodes', nargs = '+', \
-			help = 'Inodes to look up.  This can be a single number or a range (e.g. 0-10).')
-		args = parser.parse_args(argv[1:])
-		ranges = self.parse_number_ranges(args.inodes, self.fs.total_inodes)
-		for x in self.fmdb.query_inums(ranges):
-			self.print_extent(x)
 
 	def do_lengths(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -495,55 +556,6 @@ class fmcli(code.InteractiveConsole):
 			flags |= fmdb.extent_flags_strings[arg]
 		for x in self.fmdb.query_extent_flags(flags, args.e):
 			self.print_extent(x)
-
-	def do_ls(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Look up directories in the filesystem tree.')
-		parser.add_argument('dirnames', nargs = '+', \
-			help = 'Directory names to look up.')
-		args = parser.parse_args(argv[1:])
-		x = [x if x[-1] != '/' else x[:-1] for x in args.dirnames]
-		for de in self.fmdb.query_ls(x):
-			self.print_dentry(de)
-
-	def do_overview_extent_types(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Restrict the overview display to particular types of extents.')
-		t = [x for x in sorted(fmdb.extent_type_strings.keys())]
-		t.append('all')
-		parser.add_argument('types', nargs = '+', \
-			help = 'Type codes to look up.  Valid values are: (d)irectory, (e)xtent map, (f)ile, FS (m)etadata, (s)ymbolic links, and e(x)tended attributes.  Use "all" to display all types.', \
-			choices = t)
-		args = parser.parse_args(argv[1:])
-		if 'all' in args:
-			self.fmdb.set_extent_types_to_show(None)
-			return
-		types = set()
-		for arg in args.types:
-			types.add(fmdb.extent_type_strings[arg])
-		self.fmdb.set_extent_types_to_show(types)
-
-	def print_inode_stats(self, inode):
-		'''Pretty-print inode statistics.'''
-		p = inode.path if inode.path != '' else self.fs.pathsep
-		if self.machine:
-			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
-				(p, inode.ino, inode.nr_extents, inode.travel_score, \
-				 fmdb.inode_typestr(inode), \
-				 posix_timestamp_str(inode.atime), \
-				 posix_timestamp_str(inode.crtime), \
-				 posix_timestamp_str(inode.ctime), \
-				 posix_timestamp_str(inode.mtime), \
-				 inode.size))
-			return
-		print("'%s', %d, %s, %0.2f, %s, '%s', '%s', '%s', '%s', %s" % \
-			(p, inode.ino, inode.nr_extents, inode.travel_score, \
-			 fmdb.inode_typestr(inode), \
-			 posix_timestamp_str(inode.atime, True), \
-			 posix_timestamp_str(inode.crtime, True), \
-			 posix_timestamp_str(inode.ctime, True), \
-			 posix_timestamp_str(inode.mtime, True), \
-			 format_size(self.units, inode.size)))
 
 	def do_paths_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
@@ -588,9 +600,3 @@ class fmcli(code.InteractiveConsole):
 		ranges = self.parse_size_ranges(args.sizes)
 		for x in self.fmdb.query_sizes_inodes(ranges):
 			self.print_inode_stats(x)
-
-	def do_clear_calculated(self, argv):
-		parser = argparse.ArgumentParser(prog = argv[0],
-			description = 'Erase all calculated values.')
-		args = parser.parse_args(argv[1:])
-		self.fmdb.clear_calculated_values()
