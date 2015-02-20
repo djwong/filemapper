@@ -235,7 +235,7 @@ FMDB_INODE_SQL	= 2
 def print_times(label, times):
 	'''Print some profiling data.'''
 	l = ['%0.2fs' % (times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
-	print('%s: %s => %.02fs' % (label, ', '.join(l), (times[-1] - times[0]).total_seconds()))
+	print('%s: %.02fs (%s)' % (label, (times[-1] - times[0]).total_seconds(), ', '.join(l)))
 
 class overview_block(object):
 	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
@@ -928,6 +928,76 @@ class fmdb(object):
 				break
 			for row in rows:
 				yield dentry(row[0], row[1], row[2])
+
+	## Query inode features
+
+	def __query_inode_range_sql(self, ranges, mode, field):
+		'''Generate SQL criteria for an inode field being within a range.'''
+		if len(ranges) == 0:
+			return (None, None)
+		qstr = ''
+		qarg = []
+		close_paren = False
+		cond = ''
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
+				return (None, None)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			qarg += list(ets)
+			cond = ' AND ('
+			close_paren = True
+		for r in ranges:
+			if type(r) == int:
+				qstr += ' %s %s = ?' % (cond, field)
+				cond = 'OR'
+				qarg.append(r)
+			else:
+				qstr += ' %s %s BETWEEN ? AND ?' % (cond, field)
+				cond = 'OR'
+				qarg.append(r[0])
+				qarg.append(r[1])
+		if close_paren:
+			qstr += ')'
+		if mode == FMDB_EXTENT_SQL:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM inode_t WHERE %s)' % qstr
+		return (qstr, qarg)
+
+	def query_travel_score(self, ranges, **kwargs):
+		'''Query extents given ranges of inode travel scores.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'travel_score')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_travel_score_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode travel scores.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'travel_score')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_nr_extents(self, ranges, **kwargs):
+		'''Query extents given ranges of inode primary extent counts.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'nr_extents')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_nr_extents_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode primary extent counts.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'nr_extents')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_sizes(self, ranges, **kwargs):
+		'''Query extents given ranges of inode sizes.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_EXTENT_SQL, 'size')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_sizes_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode sizes.'''
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'size')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
 
 	## Calculate optional inode fields
 

@@ -177,11 +177,14 @@ class fmcli(code.InteractiveConsole):
 			('ls', ): self.do_ls,
 			('machine', 'm'): self.do_machine,
 			('length', 'n'): self.do_lengths,
+			('primary_extents', 'pe'): self.do_nr_extents,
 			('overview', 'o'): self.do_overview,
 			('physical', 'p'): self.do_poff_to_extents,
 			('quit', 'exit', 'q'): self.do_exit,
 			('summary', 's'): self.do_summary,
+			('size', 'sz'): self.do_inode_sizes,
 			('type', 't'): self.do_extent_type,
+			('travel_score', 'ts'): self.do_travel_scores,
 			('units', 'u'): self.do_set_units,
 		}
 		self.done = False
@@ -575,6 +578,66 @@ class fmcli(code.InteractiveConsole):
 			list(i)
 			return
 		for x in i:
+			self.print_inode_stats(x)
+
+	def do_travel_scores(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up inodes of a given range of travel scores.')
+		parser.add_argument('scores', nargs = '+', \
+			help = 'Scores to look up.  This can be a single number or a range (e.g. 0-16k).')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.scores:
+			if arg == 'all':
+				for x in self.fmdb.query_travel_score_inodes([]):
+					self.print_inode_stats(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(s2p(self.fs, arg))
+		for x in self.fmdb.query_travel_score_inodes(ranges):
+			self.print_inode_stats(x)
+
+	def do_nr_extents(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up inodes of a given range of primary extent counts.  The extent type of a primary extent matches the type of the inode, e.g. file extents for files.')
+		parser.add_argument('counts', nargs = '+', \
+			help = 'Extent counts to look up.  This can be a single number or a range (e.g. 0-16k).')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.counts:
+			if arg == 'all':
+				for x in self.fmdb.query_nr_extents_inodes([]):
+					self.print_inode_stats(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(s2p(self.fs, arg))
+		for x in self.fmdb.query_nr_extents_inodes(ranges):
+			self.print_inode_stats(x)
+
+	def do_inode_sizes(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Look up inodes of a given range of inode sizes.')
+		parser.add_argument('sizes', nargs = '+', \
+			help = 'Sizes to look up.  This can be a single number or a range (e.g. 0-16k).')
+		args = parser.parse_args(argv[1:])
+		ranges = []
+		for arg in args.sizes:
+			if arg == 'all':
+				for x in self.fmdb.query_sizes_inodes([]):
+					self.print_inode_stats(x)
+				return
+			elif '-' in arg:
+				pos = arg.index('-')
+				ranges.append((s2p(self.fs, arg[:pos]), s2p(self.fs, arg[pos+1:])))
+			else:
+				ranges.append(s2p(self.fs, arg))
+		for x in self.fmdb.query_sizes_inodes(ranges):
 			self.print_inode_stats(x)
 
 	def do_clear_calculated(self, argv):
