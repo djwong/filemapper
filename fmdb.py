@@ -638,7 +638,7 @@ class fmdb(object):
 		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE ino IN (SELECT DISTINCT ino FROM extent_t WHERE extent_t.type IN (%s))' % etypes)
 		rows = cur.fetchall()
 		inodes = rows[0][0]
-		print(extents, inodes)
+		#print(extents, inodes)
 
 		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp FROM fs_t;')
 		rows = cur.fetchall()
@@ -1192,7 +1192,7 @@ class fmdb(object):
 		t1 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT path, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM path_inode_v %s' % isql
-		print(qstr, qarg)
+		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		upd = []
 		while True:
@@ -1238,7 +1238,7 @@ class fmdb(object):
 		t1 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT path, ino, p_off, l_off, length, flags, type FROM path_extent_v %s ORDER BY ino, l_off' % isql
-		print(qstr, qarg)
+		#print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		upd = []
 		while True:

@@ -833,7 +833,6 @@ class TimestampQuery(FmQuery):
 		return [a, b, self.range_enabled]
 
 	def import_state(self, data):
-		print("import",dateutil.parser.parse(data[0]))
 		if data[0] != 'None':
 			self.start = dateutil.parser.parse(data[0])
 		if data[1] != 'None':
