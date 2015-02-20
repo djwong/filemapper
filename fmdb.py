@@ -633,8 +633,7 @@ class fmdb(object):
 		rows = cur.fetchall()
 		extents = rows[0][0]
 
-		itypes = ', '.join(map(str, [INO_TYPE_FILE, INO_TYPE_DIR, INO_TYPE_SYMLINK]))
-		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE type IN (%s) AND size > 0' % itypes)
+		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE ino IN (SELECT DISTINCT ino FROM extent_t WHERE extent_t.type IN (%s))' % etypes)
 		rows = cur.fetchall()
 		inodes = rows[0][0]
 		print(extents, inodes)
