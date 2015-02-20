@@ -200,7 +200,7 @@ PRAGMA case_sensitive_like = ON;''' % CACHE_PAGES
 
 def generate_schema_sql():
 	'''Generate the database schema.'''
-	x = ['''PRAGMA page_size = %d;
+	a = ['''PRAGMA page_size = %d;
 PRAGMA application_id = %d;
 PRAGMA journal_mode = MEMORY;
 DROP VIEW IF EXISTS dentry_t;
@@ -228,7 +228,7 @@ CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % (PAGE_SIZE, APP_ID)]
 	y = ["INSERT INTO inode_type_t VALUES (%d, '%s');" % (x, inode_types[x]) for x in sorted(inode_types.keys())]
 	z = ["INSERT INTO extent_type_t VALUES (%d, '%s');" % (x, extent_types[x]) for x in sorted(extent_types.keys())]
-	return '\n'.join(x + y + z)
+	return '\n'.join(a + y + z)
 
 def generate_index_sql():
 	'''Generate SQL for the indexes.'''
