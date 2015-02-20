@@ -191,6 +191,14 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		for r in rows:
 			yield self.__data[r]
 
+	def inodes_extents(self, inodes):
+		'''Retrieve a range of extents for some inodes.'''
+		if inodes is None or len(inodes) == 0:
+			return
+		for r in self.__data:
+			if r.ino in inodes:
+				yield r
+
 	def extent_count(self):
 		'''Return the number of rows in the dataset.'''
 		return len(self.__data)
@@ -532,7 +540,7 @@ class fmgui(QtGui.QMainWindow):
 		# Set up the inode view
 		self.itm = InodeTableModel(self.fs, [], units)
 		self.inode_table.setModel(self.itm)
-		#XXX self.inode_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
+		self.inode_table.selectionModel().selectionChanged.connect(self.pick_inode_table)
 		self.extent_table.sortByColumn(-1)
 
 		# Set up the fs tree view
@@ -786,6 +794,25 @@ class fmgui(QtGui.QMainWindow):
 		t0 = datetime.datetime.today()
 		rows = {m.row() for m in self.extent_table.selectedIndexes()}
 		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.extents(rows)]
+		t1 = datetime.datetime.today()
+		self.overview.highlight_ranges(ranges)
+		t2 = datetime.datetime.today()
+		fmdb.print_times('pick_ex', [t0, t1, t2])
+
+	def pick_inode_table(self, n, o):
+		'''Handle the selection of inode table rows.'''
+		self.mp.start()
+		try:
+			self.__pick_inodes()
+		finally:
+			self.mp.stop()
+
+	def __pick_inodes(self):
+		'''Tell the overview to highlight the selected inodes' extents.'''
+		t0 = datetime.datetime.today()
+		rows = [m.row() for m in self.inode_table.selectedIndexes()]
+		inodes = {i.ino for i in self.itm.inodes(rows)}
+		ranges = [(ex.p_off, ex.p_off + ex.length - 1) for ex in self.etm.inodes_extents(inodes)]
 		t1 = datetime.datetime.today()
 		self.overview.highlight_ranges(ranges)
 		t2 = datetime.datetime.today()

@@ -150,7 +150,7 @@ def extent_str_to_flags(string):
 	return ret
 
 # An extent; named tuples consume far less memory...
-extent = namedtuple('extent', ['path', 'p_off', 'l_off', 'length', 'flags', 'type'])
+extent = namedtuple('extent', ['path', 'ino', 'p_off', 'l_off', 'length', 'flags', 'type'])
 
 def extent_flagstr(self):
 	'''Generate a string representing an extent's flags.'''
@@ -1051,7 +1051,7 @@ class fmdb(object):
 
 		t1 = datetime.datetime.now()
 		# Go for the main query
-		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v %s ORDER BY ino, l_off' % isql
+		qstr = 'SELECT path, ino, p_off, l_off, length, flags, type FROM path_extent_v %s ORDER BY ino, l_off' % isql
 		print(qstr, qarg)
 		cur.execute(qstr, qarg)
 		upd = []
@@ -1061,7 +1061,7 @@ class fmdb(object):
 				break
 			for row in rows:
 				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+						row[4], row[5], row[6])
 		t2 = datetime.datetime.now()
 		print_times('query_extents', [t0, t1, t2])
 
