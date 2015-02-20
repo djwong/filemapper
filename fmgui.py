@@ -800,7 +800,6 @@ class TimestampQuery(FmQuery):
 	def __init__(self, label, ctl, query_fn, start_ctl, end_ctl, range_ctl, start = None, end = None, range_enabled = False, parent=None, *args):
 		super(TimestampQuery, self).__init__(label, ctl, query_fn)
 		self.nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmcli.tz_gmt)
-		print("ctr",self.nowgmt)
 		self.start = self.nowgmt if start is None else start
 		self.end = self.nowgmt if end is None else end
 		self.range_enabled = range_enabled
@@ -809,24 +808,24 @@ class TimestampQuery(FmQuery):
 		self.range_ctl = range_ctl
 
 	def load_query(self):
-		print("load",self.start.astimezone(fmcli.tz_local))
 		self.start_ctl.setDateTime(self.start.astimezone(fmcli.tz_local))
 		self.end_ctl.setDateTime(self.end.astimezone(fmcli.tz_local))
 		self.range_ctl.setCheckState(QtCore.Qt.Checked if self.range_enabled else QtCore.Qt.Unchecked)
 		self.ctl.show()
 
 	def save_query(self):
+		self.ctl.hide()
+		self.parse_query()
+
+	def parse_query(self):
 		def x(d):
 			return d.dateTime().toPyDateTime().replace(microsecond = 0, tzinfo = fmcli.tz_local).astimezone(fmcli.tz_gmt)
-		self.ctl.hide()
 		self.range_enabled = self.range_ctl.checkState() == QtCore.Qt.Checked
 		self.start = x(self.start_ctl)
 		self.end = x(self.end_ctl)
-
-	def parse_query(self):
 		if self.range_enabled:
-			return [self.start]
-		return [self.start, self.end]
+			return (self.start, self.end)
+		return self.start
 
 	def export_state(self):
 		a = 'None' if self.start == self.nowgmt else self.start.isoformat()
@@ -1005,6 +1004,9 @@ class fmgui(QtGui.QMainWindow):
 			sq('# Primary Extents', self.query_nr_extents),
 			sq('File Sizes', self.query_sizes),
 			tq('Data Changed', self.query_mtime),
+			tq('Last Access', self.query_atime),
+			tq('Inode Changed', self.query_ctime),
+			tq('Creation', self.query_crtime),
 		]
 
 		# Then the query type selector
@@ -1507,15 +1509,24 @@ class fmgui(QtGui.QMainWindow):
 		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
 
 	def query_mtime(self, args):
-		'''Query based on mtime.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		print(args)
-		#ranges = self.parse_size_ranges(args)
-		#self.load_extents(self.fmdb.query_sizes(ranges))
-		#self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
+		'''Query based on last data change time.'''
+		self.load_extents(self.fmdb.query_mtimes([args]))
+		self.load_inodes(self.fmdb.query_mtimes_inodes([args], **self.inode_query_args))
+
+	def query_atime(self, args):
+		'''Query based on last access time.'''
+		self.load_extents(self.fmdb.query_atimes([args]))
+		self.load_inodes(self.fmdb.query_atimes_inodes([args], **self.inode_query_args))
+
+	def query_ctime(self, args):
+		'''Query based on last metadata change time.'''
+		self.load_extents(self.fmdb.query_ctimes([args]))
+		self.load_inodes(self.fmdb.query_ctimes_inodes([args], **self.inode_query_args))
+
+	def query_crtime(self, args):
+		'''Query based on creation time.'''
+		self.load_extents(self.fmdb.query_crtimes([args]))
+		self.load_inodes(self.fmdb.query_crtimes_inodes([args], **self.inode_query_args))
 
 	## Export query results
 

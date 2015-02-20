@@ -72,7 +72,7 @@ def posix_timestamp_str(t, pretty = False):
 	dt = datetime.datetime.utcfromtimestamp(t).replace(tzinfo = tz_gmt)
 	if pretty:
 		dt = dt.astimezone(tz_local)
-		return dt.strftime('%x %X')
+		return dt.strftime('%d %b %Y %H:%M:%S')
 	return dt.isoformat()
 
 def n2p(maximum, num):

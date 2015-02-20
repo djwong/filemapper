@@ -999,6 +999,88 @@ class fmdb(object):
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
+	## Query inode timestamps
+
+	def __query_inode_times_sql(self, ranges, mode, field):
+		'''Generate SQL criteria for an inode timestamp being within a range.'''
+		if len(ranges) == 0:
+			return (None, None)
+		qstr = ''
+		qarg = []
+		close_paren = False
+		cond = ''
+		ets = self.extent_types_to_show
+		if ets is not None:
+			if len(ets) == 0:
+				return (None, None)
+			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			qarg += list(ets)
+			cond = ' AND ('
+			close_paren = True
+		for r in ranges:
+			if type(r) == datetime.datetime:
+				qstr += ' %s %s = ?' % (cond, field)
+				cond = 'OR'
+				qarg.append(r.timestamp())
+			else:
+				qstr += ' %s %s BETWEEN ? AND ?' % (cond, field)
+				cond = 'OR'
+				qarg.append(r[0].timestamp())
+				qarg.append(r[1].timestamp())
+		if close_paren:
+			qstr += ')'
+		if mode == FMDB_EXTENT_SQL:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM inode_t WHERE %s)' % qstr
+		return (qstr, qarg)
+
+	def query_atimes(self, ranges, **kwargs):
+		'''Query extents given ranges of inode last access times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'atime')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_atimes_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode last access times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'atime')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_ctimes(self, ranges, **kwargs):
+		'''Query extents given ranges of inode change times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'ctime')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_ctimes_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode change times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'ctime')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_mtimes(self, ranges, **kwargs):
+		'''Query extents given ranges of inode data change times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'mtime')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_mtimes_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode data change times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'mtime')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_crtimes(self, ranges, **kwargs):
+		'''Query extents given ranges of inode creation times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_EXTENT_SQL, 'crtime')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_crtimes_inodes(self, ranges, **kwargs):
+		'''Query inodes given ranges of inode creation times.'''
+		qstr, qarg = self.__query_inode_times_sql(ranges, FMDB_INODE_SQL, 'crtime')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
 	## Calculate optional inode fields
 
 	def count_inode_extents(self, ino, type):

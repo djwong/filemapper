@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1057</width>
-    <height>729</height>
+    <width>972</width>
+    <height>656</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -180,7 +180,7 @@ S = symbolic links</string>
          <property name="minimumSize">
           <size>
            <width>0</width>
-           <height>1</height>
+           <height>2</height>
           </size>
          </property>
          <property name="whatsThis">
@@ -197,12 +197,6 @@ S = symbolic links</string>
          </property>
          <property name="horizontalScrollBarPolicy">
           <enum>Qt::ScrollBarAlwaysOff</enum>
-         </property>
-         <property name="dragDropMode">
-          <enum>QAbstractItemView::NoDragDrop</enum>
-         </property>
-         <property name="movement">
-          <enum>QListView::Static</enum>
          </property>
          <property name="flow">
           <enum>QListView::LeftToRight</enum>
@@ -288,8 +282,11 @@ S = symbolic links</string>
             <property name="accessibleDescription">
              <string>The end of the range of time stamps to query.</string>
             </property>
+            <property name="wrapping">
+             <bool>true</bool>
+            </property>
             <property name="displayFormat">
-             <string>M/d/yyyy h:mm AP</string>
+             <string>d MMM yyyy hh:mm:ss</string>
             </property>
             <property name="calendarPopup">
              <bool>true</bool>
@@ -320,6 +317,9 @@ S = symbolic links</string>
             <property name="accessibleDescription">
              <string>The end of the range of time stamps to query.</string>
             </property>
+            <property name="wrapping">
+             <bool>true</bool>
+            </property>
             <property name="dateTime">
              <datetime>
               <hour>17</hour>
@@ -331,7 +331,7 @@ S = symbolic links</string>
              </datetime>
             </property>
             <property name="displayFormat">
-             <string>M/d/yyyy h:mm AP</string>
+             <string>d MMM yyyy hh:mm:ss</string>
             </property>
             <property name="calendarPopup">
              <bool>true</bool>
@@ -608,7 +608,7 @@ S = symbolic links</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1057</width>
+     <width>972</width>
      <height>23</height>
     </rect>
    </property>
