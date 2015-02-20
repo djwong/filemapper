@@ -303,6 +303,28 @@ class overview_block(object):
 		return '(f:%d d:%d e:%d m:%d x:%d s:%d)' % (ov.files, ov.dirs, \
 				ov.mappings, ov.metadata, ov.xattrs, ov.symlinks)
 
+## Main database object
+#
+# Manage FM data.  That means handling the overview, updating data,
+# calculating missing pieces, and (mostly) making queries.
+#
+# Main query plan:
+# a. SELECT <extentcolumns> FROM path_extent_v WHERE	<extentcriteria>;
+# b. SELECT <inodecolumns> FROM path_inode_v WHERE	<inodecriteria>;
+#
+# c. SELECT <inodecolumns> FROM path_inode_v WHERE	ino IN (SELECT DISTINCT ino FROM extent_t WHERE <extentcriteria>);
+# d. SELECT <extentcolumns> FROM path_extent_v WHERE	ino IN (SELECT DISTINCT ino FROM inode_t WHERE <inodecriteria>);
+#
+# e. SELECT <inodecolumns> FROM path_inode_v WHERE	path GLOB <fubar>;
+# f. SELECT <extentcolumns> FROM path_extent_v WHERE	path GLOB <fubar>;
+#
+# g. SELECT <inodecolumns> FROM path_inode_v WHERE	ino IN (SELECT DISTINCT ino FROM extent_t WHERE <extenttype>) AND path GLOB <fubar>;
+# h. SELECT <extentcolumns> FROM path_extent_v WHERE	<extenttype> AND path GLOB <fubar>;
+#
+#a/c: overview/poff/loff/length/type/flags
+#f/e: paths
+#d/b: nrextents/travelscore/times/size
+#h/g: paths w/ extents to show
 class fmdb(object):
 	'''filemapper database'''
 	def __init__(self, fspath, dbpath, dbwrite):
@@ -355,6 +377,8 @@ class fmdb(object):
 		'''Destroy database object.'''
 		if self.conn is not None:
 			self.conn.close()
+
+	## Functions for updating the database
 
 	def start_update(self):
 		'''Start an update process.'''
@@ -432,6 +456,8 @@ class fmdb(object):
 			    (stat.st_ino, extent.physical, extent.logical, \
 			     extent.flags, extent.length, \
 			     code, extent.physical + extent.length - 1))
+
+	## Overview control
 
 	def set_overview_length(self, length):
 		'''Set the overview length.'''
@@ -547,6 +573,8 @@ class fmdb(object):
 		for row in self.cache_overview(self.overview_len):
 			yield row
 
+	## FS Summary
+
 	def query_summary(self):
 		'''Fetch the filesystem summary.'''
 		if self.fs is not None:
@@ -606,151 +634,82 @@ class fmdb(object):
 					raise ValueError("range %d outside of fs" % i)
 				yield (int(float(i[0]) / sbc), int(float(i[1]) / sbc))
 
-	def __query_loff_range_sql(self, ranges, mode):
-		'''Generate SQL to query extents spanning ranges of logical bytes.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
-			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
+	## Querying extents and inodes with extents that happen to overlap a range
+
+	def __query_extent_ranges_sql(self, ranges, mode, field_start, field_end):
+		'''Generate SQL extent table criteria for a field being within a range.'''
+		if len(ranges) == 0:
+			return (None, None)
+		qstr = ''
 		qarg = []
-		cond = 'WHERE'
+		close_paren = False
+		cond = ''
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
 				return (None, None)
-			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			qarg += list(self.extent_types_to_show)
 			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(ranges) == 0:
-			return (None, None)
+			close_paren = True
 		for r in ranges:
 			if type(r) == int:
-				qstr += ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				qstr += ' %s (%s <= ? AND %s >= ?)' % (cond, field_start, field_end)
 				cond = 'OR'
 				qarg.append(r)
 				qarg.append(r)
 			else:
-				qstr += ' %s (l_off <= ? AND l_off + length - 1 >= ?)' % cond
+				qstr += ' %s (%s <= ? AND %s >= ?)' % (cond, field_start, field_end)
 				cond = 'OR'
 				qarg.append(r[1])
 				qarg.append(r[0])
-		if len(ets) > 0 and len(qarg) > 0:
+		if close_paren:
 			qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
-		return (qstr, ets + qarg)
+		if mode == FMDB_INODE_SQL:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
+		return (qstr, qarg)
 
-	def query_loff_range(self, ranges):
+	def query_loff_range(self, ranges, **kwargs):
 		'''Query extents spanning ranges of logical bytes.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_loff_range_sql(ranges, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'l_off', 'l_off + length - 1')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_loff_range_inodes(self, ranges, **kwargs):
 		'''Query inodes with extents covering ranges of logical bytes.'''
-		qstr, qarg = self.__query_loff_range_sql(ranges, FMDB_INODE_SQL)
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'l_off', 'l_off + length - 1')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
-	def __query_poff_range_sql(self, ranges, mode):
-		'''Generate SQL to query extents based on physical offsets.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
-			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
-		qarg = []
-		cond = 'WHERE'
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
-				return (None, None)
-			ets = list(self.extent_types_to_show)
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(ranges) == 0:
-			return (None, None)
-		for r in ranges:
-			if type(r) == int:
-				qstr += ' %s (p_off <= ? AND p_end >= ?)' % cond
-				cond = 'OR'
-				qarg.append(r)
-				qarg.append(r)
-			else:
-				qstr += ' %s (p_off <= ? AND p_end >= ?)' % cond
-				cond = 'OR'
-				qarg.append(r[1])
-				qarg.append(r[0])
-		if len(ets) > 0 and len(qarg) > 0:
-			qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
-		return (qstr, ets + qarg)
-
-	def query_poff_range(self, ranges):
+	def query_poff_range(self, ranges, **kwargs):
 		'''Query extents spanning ranges of physical bytes.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_poff_range_sql(ranges, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		#print(qstr, qarg)
-		t0 = datetime.datetime.today()
-		cur.execute(qstr, qarg)
-		t1 = datetime.datetime.today()
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
-		t2 = datetime.datetime.today()
-		print_times('poff_range', [t0, t1, t2])
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'p_off', 'p_end')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_poff_range_inodes(self, ranges, **kwargs):
 		'''Query inodes whose contents span ranges of physical bytes.'''
-		qstr, qarg = self.__query_poff_range_sql(ranges, FMDB_INODE_SQL)
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'p_off', 'p_end')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
+	## Querying extents and inodes by path
+
 	def __query_paths_sql(self, paths, mode):
 		'''Generate SQL to query extents used by a given path.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-			qstr = 'SELECT %s FROM path_extent_v' % qcol
-		elif mode == FMDB_INODE_SQL:
-			qcol = 'DISTINCT ino'
-			if self.extent_types_to_show is None:
-				qstr = 'SELECT %s FROM path_t' % qcol
-			else:
-				qstr = 'SELECT %s FROM path_extent_v' % qcol
-		qarg = []
-		cond = 'WHERE'
+		if len(paths) == 0:
+			return (None, None)
+		ets_str = None
+		ets_arg = []
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
 				return (None, None)
-			ets = list(self.extent_types_to_show)
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(paths) == 0:
-			return (None, None)
+			ets_str = 'type IN (%s)' % (', '.join(['?' for x in ets]))
+			ets_arg = list(self.extent_types_to_show)
+		glob_str = None
+		glob_arg = []
+		cond = ''
 		if '*' not in paths and '/*' not in paths:
+			glob_str = ''
 			for p in paths:
 				if p == self.fs.pathsep:
 					p = ''
@@ -758,31 +717,28 @@ class fmdb(object):
 					op = 'GLOB'
 				else:
 					op = '='
-				qstr = qstr + ' %s path %s ?' % (cond, op)
-				cond = 'OR'
-				qarg.append(p)
-			if len(ets) > 0 and len(qarg) > 0:
-				qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
-		return (qstr, ets + qarg)
+				glob_str += '%spath %s ?' % (cond, op)
+				cond = ' OR '
+				glob_arg.append(p)
+		if ets_str is None:
+			# glob_str can be set or None
+			return (glob_str, glob_arg)
+		if glob_str is None: # and ets is not None
+			if mode == FMDB_INODE_SQL:
+				ets_str = 'ino IN (SELECT DISTINCT INO FROM extent_t WHERE %s)' % ets_str
+			return (ets_str, ets_arg)
+		# ets and glob are both set
+		if mode == FMDB_INODE_SQL:
+			qstr = 'ino IN (SELECT DISTINCT INO FROM extent_t WHERE %s) AND (%s)' % (ets_str, glob_str)
+		else:
+			qstr = '%s AND (%s)' % (ets_str, glob_str)
+		return (qstr, ets_arg + glob_arg)
 
-	def query_paths(self, paths):
+	def query_paths(self, paths, **kwargs):
 		'''Query extents used by a given path.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_paths_sql(paths, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		#print(qstr, qarg)
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				return
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_paths_inodes(self, paths, **kwargs):
 		'''Retrieve the inode data for the given path specifications.'''
@@ -790,159 +746,84 @@ class fmdb(object):
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
-	def __query_inodes_sql(self, ranges, mode):
-		'''Generate SQL to query extents given ranges of inodes.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-			qstr = 'SELECT %s FROM path_extent_v' % qcol
-		elif mode == FMDB_INODE_SQL:
-			qcol = 'DISTINCT ino'
-			if self.extent_types_to_show is None:
-				qstr = 'SELECT %s FROM inode_t' % qcol
-			else:
-				qstr = 'SELECT %s FROM path_extent_v' % qcol
+	## Querying extents and inodes with extents with a field inside a range
+
+	def __query_extent_range_sql(self, ranges, mode, field):
+		'''Generate SQL extent table criteria for a field being within a range.'''
+		if len(ranges) == 0:
+			return (None, None)
+		qstr = ''
 		qarg = []
-		cond = 'WHERE'
+		close_paren = False
+		cond = ''
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
 				return (None, None)
-			ets = list(self.extent_types_to_show)
 			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+			qarg += list(self.extent_types_to_show)
 			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(ranges) == 0:
-			return (None, None)
+			close_paren = True
 		for r in ranges:
 			if type(r) == int:
-				qstr += ' %s ino = ?' % cond
+				qstr += ' %s %s = ?' % (cond, field)
 				cond = 'OR'
 				qarg.append(r)
 			else:
-				qstr += ' %s ino BETWEEN ? AND ?' % cond
+				qstr += ' %s %s BETWEEN ? AND ?' % (cond, field)
 				cond = 'OR'
 				qarg.append(r[0])
 				qarg.append(r[1])
-		if len(ets) > 0 and len(qarg) > 0:
+		if close_paren:
 			qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
-		return (qstr, ets + qarg)
+		if mode == FMDB_INODE_SQL:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
+		return (qstr, qarg)
 
-	def query_inums(self, ranges):
-		'''Query extents given ranges of inodes.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_inodes_sql(ranges, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+	def query_inums(self, ranges, **kwargs):
+		'''Query extents given ranges of inode numbers.'''
+		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_EXTENT_SQL, 'ino')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_inums_inodes(self, ranges, **kwargs):
 		'''Query inodes within the given ranges of inode numbers.'''
-		qstr, qarg = self.__query_inodes_sql(ranges, FMDB_INODE_SQL)
+		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_INODE_SQL, 'ino')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
-	def __query_lengths_sql(self, ranges, mode):
-		'''Generate SQl to query extents given ranges of lengths.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
-			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
-		qarg = []
-		cond = 'WHERE'
-		if self.extent_types_to_show is not None:
-			if len(self.extent_types_to_show) == 0:
-				return (None, None)
-			ets = list(self.extent_types_to_show)
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-			cond = ' AND ('
-		else:
-			ets = []
-		if mode == FMDB_INODE_SQL and len(ranges) == 0:
-			return (None, None)
-		for r in ranges:
-			if type(r) == int:
-				qstr += ' %s length = ?' % cond
-				cond = 'OR'
-				qarg.append(r)
-			else:
-				qstr += ' %s length BETWEEN ? AND ?' % cond
-				cond = 'OR'
-				qarg.append(r[0])
-				qarg.append(r[1])
-		if len(ets) > 0 and len(qarg) > 0:
-			qstr += ')'
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
-		return (qstr, ets + qarg)
-
-	def query_lengths(self, ranges):
+	def query_lengths(self, ranges, **kwargs):
 		'''Query extents given ranges of extent lengths.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_lengths_sql(ranges, FMDB_EXTENT_SQL)
-		if qstr is None:
-			return
-		#print(qstr, qarg)
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_EXTENT_SQL, 'length')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_lengths_inodes(self, ranges, **kwargs):
 		'''Query inodes given ranges of extent lengths.'''
-		qstr, qarg = self.__query_lengths_sql(ranges, FMDB_INODE_SQL)
+		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_INODE_SQL, 'length')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
+	## Querying extents and inodes with extents with enumerable quantities
+
 	def __query_extent_types_sql(self, types, mode):
 		'''Generate SQL to query extents given a set of type codes.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
+		if set(types) == set(extent_types):
+			qstr = None
+			qarg = []
 		else:
-			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v' % qcol
-		qarg = []
-		all_types = set(extent_types)
-		cond = 'WHERE'
-		if set(types) != all_types:
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in types]))
+			qstr = ' WHERE type IN (%s)' % (cond, ', '.join(['?' for x in types]))
 			qarg = types
-		if mode == FMDB_INODE_SQL and len(qarg) == 0:
-			return (None, None)
-		if mode == FMDB_EXTENT_SQL:
-			qstr += ' ORDER BY path, l_off'
+		if mode == FMDB_INODE_SQL and qstr is not None:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t %s)' % qstr
 		return (qstr, qarg)
 
-	def query_extent_types(self, types):
+	def query_extent_types(self, types, **kwargs):
 		'''Query extents given a set of type codes.'''
 		if len(types) == 0:
 			return
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
-		qstr, qarg = self.__query_extent_types_sql(types, FMDB_EXTENT_SQL)
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+		qstr, qarg = self.__query_extent_types_sql(flags, FMDB_EXTENT_SQL)
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_extent_types_inodes(self, types, **kwargs):
 		'''Query inodes with extents having a set of type codes.'''
@@ -953,45 +834,35 @@ class fmdb(object):
 			yield x
 
 	def __query_extent_flags_sql(self, flags, exact, mode):
-		'''Generatel SQL to query extents given a set of type codes.'''
-		if mode == FMDB_EXTENT_SQL:
-			qcol = 'path, p_off, l_off, length, flags, type'
-		else:
-			qcol = 'DISTINCT ino'
-		qstr = 'SELECT %s FROM path_extent_v WHERE flags' % qcol
+		'''Generate SQL to query extents given a set of type codes.'''
 		if exact:
-			qstr = qstr + ' = ?'
+			qstr = 'flags = ?'
 		else:
-			qstr = qstr + ' & ? > 0'
+			qstr = 'flags & ? > 0'
+		qarg = [flags]
 		cond = 'AND'
 		if self.extent_types_to_show is not None:
 			if len(self.extent_types_to_show) == 0:
 				return (None, None)
-			ets = list(self.extent_types_to_show)
-			qstr += ' %s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
-		else:
-			ets = []
-		return (qstr, [flags] + ets)
+			qarg += list(self.extent_types_to_show)
+			qstr += '%s type IN (%s)' % (cond, ', '.join(['?' for x in ets]))
+		if mode == FMDB_INODE_SQL:
+			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
+		return (qstr, qarg)
 
-	def query_extent_flags(self, flags, exact = True):
+	def query_extent_flags(self, flags, exact = True, **kwargs):
 		'''Query extents given a set of type codes.'''
-		cur = self.conn.cursor()
-		cur.arraysize = self.result_batch_size
 		qstr, qarg = self.__query_extent_flags_sql(flags, exact, FMDB_EXTENT_SQL)
-		cur.execute(qstr, qarg)
-		while True:
-			rows = cur.fetchmany()
-			if len(rows) == 0:
-				break
-			for row in rows:
-				yield extent(row[0], row[1], row[2], row[3], \
-						row[4], row[5])
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
 
 	def query_extent_flags_inodes(self, flags, exact = True, **kwargs):
 		'''Query extents given a set of type codes.'''
 		qstr, qarg = self.__query_extent_flags_sql(flags, exact, FMDB_INODE_SQL)
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
+
+	## Querying parts of the FS tree
 
 	def query_root(self):
 		'''Retrieve a dentry for root.'''
@@ -1064,6 +935,8 @@ class fmdb(object):
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
+	## Show or hide different types of extents in the queries
+
 	def set_extent_types_to_show(self, types):
 		'''Restrict the overview and queries to showing these types of extents.'''
 		if types == all_extent_types:
@@ -1074,6 +947,8 @@ class fmdb(object):
 		'''Retrieve the types of extents to show in the overview and queries.'''
 		t = self.extent_types_to_show
 		return all_extent_types if t is None else t
+
+	## Calculate optional inode fields
 
 	def count_inode_extents(self, ino, type):
 		'''Count the number of extents of a given type and attached to an inode.'''
@@ -1118,7 +993,21 @@ class fmdb(object):
 			return (0, 0.0)
 		return (extents, float(p_dist) / l_dist)
 
-	def query_inodes_stats(self, ino_sql, ino_sql_args, resolve_paths = False, count_extents = False, analyze_extents = False):
+	def clear_calculated_values(self):
+		'''Remove all calculated values from the database.'''
+		if not self.writable:
+			raise Exception('Database is not writable.')
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+		qstr = 'UPDATE inode_t SET nr_extents = NULL, travel_score = NULL'
+		cur.execute('BEGIN TRANSACTION')
+		cur.execute(qstr)
+		cur.execute('END TRANSACTION')
+
+	## Return inodes or extents, given some query parameters.
+	## (These are internal functions)
+
+	def query_inodes_stats(self, ino_sql, ino_sql_args, count_extents = False, analyze_extents = False):
 		'''Retrieve the inode statistic data, given a query to select inodes.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
@@ -1126,20 +1015,17 @@ class fmdb(object):
 		t0 = datetime.datetime.now()
 		# Figure out what to do with the inode sql
 		if ino_sql is not None and ino_sql != '':
-			isql = 'WHERE path_inode_v.ino IN (%s)' % ino_sql
-			rpsql = 'WHERE path_t.ino IN (%s)' % ino_sql
-			iargs = ino_sql_args
+			isql = 'WHERE %s' % ino_sql
+			qarg = ino_sql_args
 		else:
 			isql = ''
-			rpsql = ''
-			iargs = []
+			qarg = []
 
 		t1 = datetime.datetime.now()
-		t2 = datetime.datetime.now()
 		# Go for the main query
 		qstr = 'SELECT path, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size FROM path_inode_v %s' % isql
-		#print(qstr, iargs)
-		cur.execute(qstr, iargs)
+		print(qstr, qarg)
+		cur.execute(qstr, qarg)
 		upd = []
 		while True:
 			rows = cur.fetchmany()
@@ -1157,26 +1043,45 @@ class fmdb(object):
 				    (travel_score0 is None and travel_score != travel_score0)):
 					upd.append((nr_extents, travel_score, ino))
 				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size)
-		t3 = datetime.datetime.now()
+		t2 = datetime.datetime.now()
 
 		if len(upd) > 0:
 			cur.execute('BEGIN TRANSACTION')
 			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
 			cur.executemany(qstr, upd)
 			cur.execute('END TRANSACTION')
-		t4 = datetime.datetime.now()
-		print_times('query_inode_stat', [t0, t1, t2, t3, t4])
+		t3 = datetime.datetime.now()
+		print_times('query_inode_stat', [t0, t1, t2, t3])
 
-	def clear_calculated_values(self):
-		'''Remove all calculated values from the database.'''
-		if not self.writable:
-			raise Exception('Database is not writable.')
+	def query_extents(self, ext_sql, ext_sql_args):
+		'''Retrieve extent data given some criteria.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		qstr = 'UPDATE inode_t SET nr_extents = NULL, travel_score = NULL'
-		cur.execute('BEGIN TRANSACTION')
-		cur.execute(qstr)
-		cur.execute('END TRANSACTION')
+
+		t0 = datetime.datetime.now()
+		# Figure out what to do with the extent sql
+		if ext_sql is not None and ext_sql != '':
+			isql = 'WHERE %s' % ext_sql
+			qarg = ext_sql_args
+		else:
+			isql = ''
+			qarg = []
+
+		t1 = datetime.datetime.now()
+		# Go for the main query
+		qstr = 'SELECT path, p_off, l_off, length, flags, type FROM path_extent_v %s ORDER BY ino, l_off' % isql
+		print(qstr, qarg)
+		cur.execute(qstr, qarg)
+		upd = []
+		while True:
+			rows = cur.fetchmany()
+			if len(rows) == 0:
+				break
+			for row in rows:
+				yield extent(row[0], row[1], row[2], row[3], \
+						row[4], row[5])
+		t2 = datetime.datetime.now()
+		print_times('query_extents', [t0, t1, t2])
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
