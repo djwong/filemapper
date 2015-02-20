@@ -1006,10 +1006,11 @@ class fmgui(QtGui.QMainWindow):
 			tq('Data Changed', self.query_mtime),
 			tq('Last Access', self.query_atime),
 			tq('Inode Changed', self.query_ctime),
-			tq('Creation', self.query_crtime),
+			tq('Creation Time', self.query_crtime),
 		]
 
 		# Then the query type selector
+		self.querytype_combo.setMaxVisibleItems(len(self.query_types))
 		self.querytype_combo.insertItems(0, [x.label for x in self.query_types])
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 		self.query_checklist.hide()
