@@ -18,8 +18,34 @@ null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
 bold_font.setBold(True)
 
+def addReturnPressedEvents(widget):
+	'''Add a returnPressed event to a Qt widget.'''
+	class ReturnKeyEater(QtCore.QObject):
+		__rpsig = QtCore.pyqtSignal()
+
+		def __init__(self, widget):
+			super(ReturnKeyEater, self).__init__(widget)
+			self.widget = widget
+			self.widget.returnPressed = self.__rpsig
+
+		def eventFilter(self, obj, event):
+			if event.type() == QtCore.QEvent.KeyRelease and \
+			   event.key() in [QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter]:
+				self.__rpsig.emit()
+				return True
+			return False
+
+	m = ReturnKeyEater(widget)
+	widget.installEventFilter(m)
+
+def sort_dentry(dentry):
+	if dentry.type == fmdb.INO_TYPE_DIR:
+		return '0' + dentry.name
+	else:
+		return '1' + dentry.name
+
 class MessagePump(object):
-	'''Helper class to prime the QT message queue periodically.'''
+	'''Helper class to prime the Qt message queue periodically.'''
 	def __init__(self, on_fn, off_fn):
 		self.last = None
 		self.interval = None
@@ -49,25 +75,7 @@ class MessagePump(object):
 		self.last = None
 		self.interval = None
 
-def addReturnPressedEvents(widget):
-	'''Add a returnPressed event to a Qt widget.'''
-	class ReturnKeyEater(QtCore.QObject):
-		__rpsig = QtCore.pyqtSignal()
-
-		def __init__(self, widget):
-			super(ReturnKeyEater, self).__init__(widget)
-			self.widget = widget
-			self.widget.returnPressed = self.__rpsig
-
-		def eventFilter(self, obj, event):
-			if event.type() == QtCore.QEvent.KeyRelease and \
-			   event.key() in [QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter]:
-				self.__rpsig.emit()
-				return True
-			return False
-
-	m = ReturnKeyEater(widget)
-	widget.installEventFilter(m)
+## Data models
 
 class ExtentTableModel(QtCore.QAbstractTableModel):
 	'''Render and highlight an extent table.'''
@@ -475,11 +483,211 @@ class FsTreeModel(QtCore.QAbstractItemModel):
 			return self.headers[col]
 		return None
 
-def sort_dentry(dentry):
-	if dentry.type == fmdb.INO_TYPE_DIR:
-		return '0' + dentry.name
-	else:
-		return '1' + dentry.name
+class ChecklistModel(QtCore.QAbstractTableModel):
+	'''A list model for checkable items.'''
+	def __init__(self, items, parent=None, *args):
+		super(ChecklistModel, self).__init__(parent, *args)
+		self.rows = items
+
+	def rowCount(self, parent):
+		return len(self.rows)
+
+	def columnCount(self, parent):
+		return 1
+
+	def data(self, index, role):
+		i = index.row()
+		j = index.column()
+		if j != 0:
+			return None
+		if role == QtCore.Qt.DisplayRole:
+			return self.rows[i][0]
+		elif role == QtCore.Qt.CheckStateRole:
+			return QtCore.Qt.Checked if self.rows[i][1] else QtCore.Qt.Unchecked
+		else:
+			return None
+
+	def flags(self, index):
+		return super(ChecklistModel, self).flags(index) | QtCore.Qt.ItemIsUserCheckable
+
+	def setData(self, index, value, role):
+		if role != QtCore.Qt.CheckStateRole:
+			return None
+		row = index.row()
+		# N.B. Weird comparison because Python2 returns QVariant, not bool
+		self.rows[row][1] = not (value == False)
+		return True
+
+	def items(self):
+		return self.rows
+
+## Query classes
+
+class FmQuery(object):
+	'''Abstract base class to manage query context and UI.'''
+	def __init__(self, label, ctl, query_fn):
+		self.label = label
+		self.ctl = ctl
+		self.query_fn = query_fn
+
+	@abstractmethod
+	def load_query(self):
+		'''Load ourselves into the UI.'''
+		raise NotImplementedError()
+
+	@abstractmethod
+	def save_query(self):
+		'''Save UI contents.'''
+		raise NotImplementedError()
+
+	@abstractmethod
+	def parse_query(self):
+		'''Parse query contents into some meaningful form.'''
+		raise NotImplementedError()
+
+	def run_query(self):
+		'''Run a query.'''
+		args = self.parse_query()
+		#print("QUERY:", self.label, args)
+		self.query_fn(args)
+
+	@abstractmethod
+	def export_state(self):
+		'''Export state data for serializeation.'''
+		raise NotImplementedError()
+
+	@abstractmethod
+	def import_state(self, data):
+		'''Import state data for serialization.'''
+		raise NotImplementedError()
+
+	def summarize(self):
+		'''Summarize the state of this query as a string.'''
+		return self.label + ': '
+
+class StringQuery(FmQuery):
+	'''Handle queries that are free-form text.'''
+	def __init__(self, label, ctl, query_fn, edit_string = '', history = None, parent=None, *args):
+		super(StringQuery, self).__init__(label, ctl, query_fn)
+		if history is None:
+			self.history = []
+		else:
+			self.history = history
+		self.edit_string = edit_string
+
+	def load_query(self):
+		self.ctl.clear()
+		self.ctl.addItems(self.history)
+		if self.edit_string in self.history:
+			self.ctl.setCurrentIndex(self.history.index(self.edit_string))
+		else:
+			self.ctl.setEditText(self.edit_string)
+		self.ctl.show()
+
+	def save_query(self):
+		self.ctl.hide()
+		self.edit_string = str(self.ctl.currentText())
+
+	def parse_query(self):
+		a = str(self.ctl.currentText())
+		self.edit_string = a
+		self.add_to_history(a)
+		return fmcli.split_unescape(str(a), ' ', ('"', "'"))
+
+	def add_to_history(self, string):
+		'''Add a string to the history.'''
+		if len(self.history) > 0 and self.history[0] == string:
+			return
+		if string in self.history:
+			self.history.remove(string)
+		r = self.ctl.findText(string)
+		if r >= 0:
+			self.ctl.removeItem(r)
+		self.history.insert(0, string)
+		self.ctl.insertItem(0, string)
+		self.ctl.setCurrentIndex(self.history.index(string))
+
+	def export_state(self):
+		return {'edit_string': str(self.edit_string), 'history': self.history[:100]}
+
+	def import_state(self, data):
+		self.edit_string = data['edit_string']
+		self.history = data['history']
+
+	def summarize(self):
+		x = super(StringQuery, self).summarize()
+		return x + self.edit_string
+
+class ChecklistQuery(FmQuery):
+	'''Handle queries comprising a selection of discrete items.'''
+	def __init__(self, label, ctl, query_fn, items, parent=None, *args):
+		super(ChecklistQuery, self).__init__(label, ctl, query_fn)
+		self.items = items
+		self.model = ChecklistModel(items)
+
+	def load_query(self):
+		self.ctl.setModel(self.model)
+		self.ctl.show()
+
+	def save_query(self):
+		self.ctl.hide()
+
+	def parse_query(self):
+		return self.items
+
+	def export_state(self):
+		return [{'label': x[0], 'state': x[1]} for x in self.items]
+
+	def import_state(self, data):
+		for d in data:
+			for i in self.items:
+				if i[0] == d['label']:
+					i[1] = d['state']
+					break
+
+	def summarize(self):
+		x = super(StringQuery, self).summarize()
+		return x + ', '.join([x for x in self.items if x[1]])
+
+## Custom widgets
+
+class XLineEdit(QtGui.QLineEdit):
+	'''QLineEdit with clear button, which appears when user enters text.'''
+	def __init__(self, parent=None):
+		super(XLineEdit, self).__init__(parent)
+		self.layout = QtGui.QHBoxLayout(self)
+		self.image = QtGui.QLabel(self)
+		self.image.setCursor(QtCore.Qt.ArrowCursor)
+		self.image.setFocusPolicy(QtCore.Qt.NoFocus)
+		self.image.setStyleSheet("border: none;")
+		pixmap = QtGui.QIcon.fromTheme('locationbar-erase').pixmap(16, 16)
+		self.image.setPixmap(pixmap)
+		self.image.setSizePolicy(
+			QtGui.QSizePolicy.Expanding,
+			QtGui.QSizePolicy.Expanding)
+		self.image.adjustSize()
+		self.image.setScaledContents(True)
+		self.layout.addWidget(
+			self.image, alignment=QtCore.Qt.AlignRight)
+		self.textChanged.connect(self.changed)
+		self.image.hide()
+		self.image.mouseReleaseEvent = self.clear_mouse_release
+		qm = self.textMargins()
+		qm.setRight(qm.right() + 24)
+		self.setTextMargins(qm)
+
+	def clear_mouse_release(self, ev):
+		QtGui.QLabel.mouseReleaseEvent(self.image, ev)
+		if ev.button() == QtCore.Qt.LeftButton:
+			self.clear()
+
+	def changed(self, text):
+		if len(text) > 0:
+			self.image.show()
+		else:
+			self.image.hide()
+
+## GUI
 
 class fmgui(QtGui.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
@@ -639,16 +847,6 @@ class fmgui(QtGui.QMainWindow):
 		'''Parse string arguments into number ranges.'''
 		return fmcli.parse_ranges(args, lambda x: fmcli.n2p(maximum, x))
 
-	def change_extent_type(self, action):
-		'''Toggle display of an extent type in the overview.'''
-		arg = set()
-		actions = self.extent_type_actions.actions()
-		for x in range(0, len(actions)):
-			if actions[x].isChecked():
-				arg.add(x)
-		self.fmdb.set_extent_types_to_show(arg)
-		self.overview.render()
-
 	def mp_start(self):
 		'''Disable UI elements during message pumping.'''
 		self.query_frame.setEnabled(False)
@@ -663,24 +861,34 @@ class fmgui(QtGui.QMainWindow):
 		self.fs_tree.setEnabled(True)
 		self.extent_type_actions.setEnabled(True)
 
-	def change_font(self):
-		'''Change the overview font.'''
-		y = self.overview_text.document().defaultFont()
-		if y.family() == 'Source Code Pro,monospace':
-			y.setFamily('monospace')
-		(f, x) = QtGui.QFontDialog.getFont(y)
-		if x:
-			y.setFamily(f.family())
-			y.setPointSizeF(f.pointSizeF())
-			self.overview_text.document().setDefaultFont(y)
-			self.overview.font_changed()
-		self.save_state()
+	def do_summary(self):
+		'''Load the FS summary into the status line.'''
+		tb = self.fs.total_bytes
+		fb = self.fs.free_bytes
+		if tb == 0:
+			fb = 1
+			tb = 1
+		ti = self.fs.total_inodes
+		fi = self.fs.free_inodes
+		if ti == 0:
+			fi = 1
+			ti = 1
+		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
+		extents = self.fs.extents if self.fs.extents != 0 else 1
+		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell; %.1f%% fragmentation" % \
+			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
+			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
+			 100 * (1.0 - (float(fb) / tb)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes - self.fs.free_inodes), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
+			 100 * (1.0 - (float(fi) / ti)), \
+			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
+			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
+			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
+			 100.0 * extents / inodes - 100)
+		self.status_label.setText(s)
 
-	def closeEvent(self, ev):
-		qt = self.query_types[self.querytype_combo.currentIndex()]
-		qt.save_query()
-		self.save_state()
-		super(fmgui, self).closeEvent(ev)
+	## Load and save UI state
 
 	def save_state(self):
 		'''Save the state of the UI.'''
@@ -757,9 +965,63 @@ class fmgui(QtGui.QMainWindow):
 		if self.querytype_combo.currentIndex() == 0:
 			self.change_querytype(0)
 
-	def change_zoom(self, idx):
-		'''Handle a change in the zoom selector.'''
-		self.overview.set_zoom(self.zoom_levels[idx][1])
+	## Load data into models
+
+	def load_extents(self, f):
+		'''Populate the extent table.'''
+		t0 = datetime.datetime.today()
+		if isinstance(f, list):
+			new_data = f
+		else:
+			n = 0
+			new_data = []
+			for x in f:
+				new_data.append(x)
+				if n > 1000:
+					self.mp.pump()
+					n = 0
+				n += 1
+		t1 = datetime.datetime.today()
+		self.extent_table.sortByColumn(-1)
+		t2 = datetime.datetime.today()
+		self.etm.revise(new_data)
+		self.actionExportExtents.setEnabled(len(new_data) > 0)
+		t3 = datetime.datetime.today()
+		for x in range(self.etm.columnCount(None)):
+			self.extent_table.resizeColumnToContents(x)
+		t4 = datetime.datetime.today()
+		self.update_query_summary()
+		t5 = datetime.datetime.today()
+		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
+
+	def load_inodes(self, f):
+		'''Populate the inode table.'''
+		t0 = datetime.datetime.today()
+		if isinstance(f, list):
+			new_data = f
+		else:
+			n = 0
+			new_data = []
+			for x in f:
+				new_data.append(x)
+				if n > 1000:
+					self.mp.pump()
+					n = 0
+				n += 1
+		t1 = datetime.datetime.today()
+		self.inode_table.sortByColumn(-1)
+		t2 = datetime.datetime.today()
+		self.itm.revise(new_data)
+		self.actionExportInodes.setEnabled(len(new_data) > 0)
+		t3 = datetime.datetime.today()
+		for x in range(self.itm.columnCount(None)):
+			self.inode_table.resizeColumnToContents(x)
+		t4 = datetime.datetime.today()
+		self.update_query_summary()
+		t5 = datetime.datetime.today()
+		fmdb.print_times('load_stats', [t0, t1, t2, t3, t4, t5])
+
+	## Change the overview highlight after selecting some widgets
 
 	def enter_query(self, fn, text):
 		'''Load the query UI elements.'''
@@ -794,14 +1056,6 @@ class fmgui(QtGui.QMainWindow):
 		self.enter_query(self.query_paths, ' '.join(query_paths))
 		self.run_query()
 
-	def pick_extent_table(self, n, o):
-		'''Handle the selection of extent table rows.'''
-		self.mp.start()
-		try:
-			self.__pick_extents()
-		finally:
-			self.mp.stop()
-
 	def __pick_extents(self):
 		'''Tell the overview to highlight the selected extents.'''
 		t0 = datetime.datetime.today()
@@ -812,11 +1066,11 @@ class fmgui(QtGui.QMainWindow):
 		t2 = datetime.datetime.today()
 		fmdb.print_times('pick_ex', [t0, t1, t2])
 
-	def pick_inode_table(self, n, o):
-		'''Handle the selection of inode table rows.'''
+	def pick_extent_table(self, n, o):
+		'''Handle the selection of extent table rows.'''
 		self.mp.start()
 		try:
-			self.__pick_inodes()
+			self.__pick_extents()
 		finally:
 			self.mp.stop()
 
@@ -830,6 +1084,34 @@ class fmgui(QtGui.QMainWindow):
 		self.overview.highlight_ranges(ranges)
 		t2 = datetime.datetime.today()
 		fmdb.print_times('pick_ex', [t0, t1, t2])
+
+	def pick_inode_table(self, n, o):
+		'''Handle the selection of inode table rows.'''
+		self.mp.start()
+		try:
+			self.__pick_inodes()
+		finally:
+			self.mp.stop()
+
+	def select_overview(self):
+		'''Handle the user making a physical block selection in
+		   the overview.'''
+		cursor = self.overview_text.textCursor()
+		start = cursor.selectionStart()
+		end = cursor.selectionEnd()
+		if start == end:
+			return
+		if self.old_ostart == start and self.old_oend == end:
+			return
+		self.old_ostart = start
+		self.old_oend = end
+		if start + 1 == end:
+			self.enter_query(self.query_overview, "%s" % start)
+		else:
+			self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
+		self.ost.start(500)
+
+	## React to UI changes
 
 	def change_querytype(self, idx):
 		'''Handle a change in the query type selector.'''
@@ -859,23 +1141,40 @@ class fmgui(QtGui.QMainWindow):
 			u.setChecked(False)
 		self.unit_actions[idx].setChecked(True)
 
-	def select_overview(self):
-		'''Handle the user making a physical block selection in
-		   the overview.'''
-		cursor = self.overview_text.textCursor()
-		start = cursor.selectionStart()
-		end = cursor.selectionEnd()
-		if start == end:
-			return
-		if self.old_ostart == start and self.old_oend == end:
-			return
-		self.old_ostart = start
-		self.old_oend = end
-		if start + 1 == end:
-			self.enter_query(self.query_overview, "%s" % start)
-		else:
-			self.enter_query(self.query_overview, "%s-%s" % (start, end - 1))
-		self.ost.start(500)
+	def change_extent_type(self, action):
+		'''Toggle display of an extent type in the overview.'''
+		arg = set()
+		actions = self.extent_type_actions.actions()
+		for x in range(0, len(actions)):
+			if actions[x].isChecked():
+				arg.add(x)
+		self.fmdb.set_extent_types_to_show(arg)
+		self.overview.render()
+
+	def change_font(self):
+		'''Change the overview font.'''
+		y = self.overview_text.document().defaultFont()
+		if y.family() == 'Source Code Pro,monospace':
+			y.setFamily('monospace')
+		(f, x) = QtGui.QFontDialog.getFont(y)
+		if x:
+			y.setFamily(f.family())
+			y.setPointSizeF(f.pointSizeF())
+			self.overview_text.document().setDefaultFont(y)
+			self.overview.font_changed()
+		self.save_state()
+
+	def closeEvent(self, ev):
+		qt = self.query_types[self.querytype_combo.currentIndex()]
+		qt.save_query()
+		self.save_state()
+		super(fmgui, self).closeEvent(ev)
+
+	def change_zoom(self, idx):
+		'''Handle a change in the zoom selector.'''
+		self.overview.set_zoom(self.zoom_levels[idx][1])
+
+	## Queries
 
 	def run_query(self):
 		'''Dispatch a query to populate the extent table.'''
@@ -890,6 +1189,66 @@ class fmgui(QtGui.QMainWindow):
 		finally:
 			self.mp.stop()
 		self.save_state()
+
+	def update_query_summary(self):
+		'''Update the query summary text in the UI.'''
+		e = self.etm.extent_count()
+		i = self.itm.inode_count()
+		s = 'Query Results: %s extents; %s inodes' % (
+				fmcli.format_number(fmcli.units_none, e),
+				fmcli.format_number(fmcli.units_none, i))
+		self.results_dock.setWindowTitle(s)
+
+	def query_overview(self, args):
+		'''Query for extents mapped to ranges of overview cells.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_number_ranges(args, self.overview.total_length())
+		self.fmdb.set_overview_length(self.overview.total_length())
+		r = list(self.fmdb.pick_cells(ranges))
+		self.load_extents(self.fmdb.query_poff_range(r))
+		self.load_inodes(self.fmdb.query_poff_range_inodes(r, **self.inode_query_args))
+
+	def query_poff(self, args):
+		'''Query for extents mapped to ranges of physical bytes.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_size_ranges(args)
+		self.load_extents(self.fmdb.query_poff_range(ranges))
+		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
+
+	def query_loff(self, args):
+		'''Query for extents mapped to ranges of logical bytes.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_size_ranges(args)
+		self.load_extents(self.fmdb.query_loff_range(ranges))
+		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
+
+	def query_inodes(self, args):
+		'''Query for extents mapped to ranges of inodes.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_number_ranges(args, self.fs.total_inodes)
+		self.load_extents(self.fmdb.query_inums(ranges))
+		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
+
+	def query_paths(self, args):
+		'''Query for extents mapped to a list of FS paths.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		self.load_extents(self.fmdb.query_paths(args))
+		self.load_inodes(self.fmdb.query_paths_inodes(args, **self.inode_query_args))
 
 	def query_extent_type(self, args):
 		'''Query for extents based on the extent type code.'''
@@ -907,100 +1266,47 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_extent_flags(flags, exact))
 		self.load_inodes(self.fmdb.query_extent_flags_inodes(flags, exact, **self.inode_query_args))
 
-	def query_overview(self, args):
-		'''Query for extents mapped to ranges of overview cells.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_number_ranges(args, self.overview.total_length())
-		self.fmdb.set_overview_length(self.overview.total_length())
-		r = list(self.fmdb.pick_cells(ranges))
-		self.load_extents(self.fmdb.query_poff_range(r))
-		self.load_inodes(self.fmdb.query_poff_range_inodes(r, **self.inode_query_args))
-
-	def query_loff(self, args):
-		'''Query for extents mapped to ranges of logical bytes.'''
+	def query_lengths(self, args):
+		'''Query for extents based on ranges of lengths.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
 			return
 		ranges = self.parse_size_ranges(args)
-		self.load_extents(self.fmdb.query_loff_range(ranges))
-		self.load_inodes(self.fmdb.query_loff_range_inodes(ranges, **self.inode_query_args))
+		self.load_extents(self.fmdb.query_lengths(ranges))
+		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
 
-	def query_poff(self, args):
-		'''Query for extents mapped to ranges of physical bytes.'''
+	def query_travel_scores(self, args):
+		'''Query for based on ranges of travel scores.'''
 		if len(args) == 0:
 			self.load_extents([])
 			self.load_inodes([])
 			return
 		ranges = self.parse_size_ranges(args)
-		self.load_extents(self.fmdb.query_poff_range(ranges))
-		self.load_inodes(self.fmdb.query_poff_range_inodes(ranges, **self.inode_query_args))
+		self.load_extents(self.fmdb.query_travel_scores(ranges))
+		self.load_inodes(self.fmdb.query_travel_scores_inodes(ranges, **self.inode_query_args))
 
-	def load_extents(self, f):
-		'''Populate the extent table.'''
-		t0 = datetime.datetime.today()
-		if isinstance(f, list):
-			new_data = f
-		else:
-			n = 0
-			new_data = []
-			for x in f:
-				new_data.append(x)
-				if n > 1000:
-					self.mp.pump()
-					n = 0
-				n += 1
-		t1 = datetime.datetime.today()
-		self.extent_table.sortByColumn(-1)
-		t2 = datetime.datetime.today()
-		self.etm.revise(new_data)
-		self.actionExportExtents.setEnabled(len(new_data) > 0)
-		t3 = datetime.datetime.today()
-		for x in range(self.etm.columnCount(None)):
-			self.extent_table.resizeColumnToContents(x)
-		t4 = datetime.datetime.today()
-		self.update_query_summary()
-		t5 = datetime.datetime.today()
-		fmdb.print_times('load_extents', [t0, t1, t2, t3, t4, t5])
+	def query_nr_extents(self, args):
+		'''Query for based on ranges of primary extent counts.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_number_ranges(args, 2**64)
+		self.load_extents(self.fmdb.query_nr_extents(ranges))
+		self.load_inodes(self.fmdb.query_nr_extents_inodes(ranges, **self.inode_query_args))
 
-	def update_query_summary(self):
-		'''Update the query summary text in the UI.'''
-		e = self.etm.extent_count()
-		i = self.itm.inode_count()
-		s = 'Query Results: %s extents; %s inodes' % (
-				fmcli.format_number(fmcli.units_none, e),
-				fmcli.format_number(fmcli.units_none, i))
-		self.results_dock.setWindowTitle(s)
+	def query_sizes(self, args):
+		'''Query for based on ranges of inode sizes.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		ranges = self.parse_size_ranges(args)
+		self.load_extents(self.fmdb.query_sizes(ranges))
+		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
 
-	def load_inodes(self, f):
-		'''Populate the inode table.'''
-		t0 = datetime.datetime.today()
-		if isinstance(f, list):
-			new_data = f
-		else:
-			n = 0
-			new_data = []
-			for x in f:
-				new_data.append(x)
-				if n > 1000:
-					self.mp.pump()
-					n = 0
-				n += 1
-		t1 = datetime.datetime.today()
-		self.inode_table.sortByColumn(-1)
-		t2 = datetime.datetime.today()
-		self.itm.revise(new_data)
-		self.actionExportInodes.setEnabled(len(new_data) > 0)
-		t3 = datetime.datetime.today()
-		for x in range(self.itm.columnCount(None)):
-			self.inode_table.resizeColumnToContents(x)
-		t4 = datetime.datetime.today()
-		self.update_query_summary()
-		t5 = datetime.datetime.today()
-		fmdb.print_times('load_stats', [t0, t1, t2, t3, t4, t5])
+	## Export query results
 
 	def export_extents_csv(self):
 		'''Export extents to a CSV file.'''
@@ -1064,92 +1370,6 @@ class fmgui(QtGui.QMainWindow):
 					n += 1
 		finally:
 			self.mp.stop()
-
-	def query_inodes(self, args):
-		'''Query for extents mapped to ranges of inodes.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_number_ranges(args, self.fs.total_inodes)
-		self.load_extents(self.fmdb.query_inums(ranges))
-		self.load_inodes(self.fmdb.query_inums_inodes(ranges, **self.inode_query_args))
-
-	def query_lengths(self, args):
-		'''Query for extents based on ranges of lengths.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_size_ranges(args)
-		self.load_extents(self.fmdb.query_lengths(ranges))
-		self.load_inodes(self.fmdb.query_lengths_inodes(ranges, **self.inode_query_args))
-
-	def query_paths(self, args):
-		'''Query for extents mapped to a list of FS paths.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		self.load_extents(self.fmdb.query_paths(args))
-		self.load_inodes(self.fmdb.query_paths_inodes(args, **self.inode_query_args))
-
-	def query_travel_scores(self, args):
-		'''Query for based on ranges of travel scores.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_size_ranges(args)
-		self.load_extents(self.fmdb.query_travel_scores(ranges))
-		self.load_inodes(self.fmdb.query_travel_scores_inodes(ranges, **self.inode_query_args))
-
-	def query_nr_extents(self, args):
-		'''Query for based on ranges of primary extent counts.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_number_ranges(args, 2**64)
-		self.load_extents(self.fmdb.query_nr_extents(ranges))
-		self.load_inodes(self.fmdb.query_nr_extents_inodes(ranges, **self.inode_query_args))
-
-	def query_sizes(self, args):
-		'''Query for based on ranges of inode sizes.'''
-		if len(args) == 0:
-			self.load_extents([])
-			self.load_inodes([])
-			return
-		ranges = self.parse_size_ranges(args)
-		self.load_extents(self.fmdb.query_sizes(ranges))
-		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
-
-	def do_summary(self):
-		'''Load the FS summary into the status line.'''
-		tb = self.fs.total_bytes
-		fb = self.fs.free_bytes
-		if tb == 0:
-			fb = 1
-			tb = 1
-		ti = self.fs.total_inodes
-		fi = self.fs.free_inodes
-		if ti == 0:
-			fi = 1
-			ti = 1
-		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
-		extents = self.fs.extents if self.fs.extents != 0 else 1
-		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell; %.1f%% fragmentation" % \
-			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
-			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
-			 100 * (1.0 - (float(fb) / tb)), \
-			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes - self.fs.free_inodes), \
-			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
-			 100 * (1.0 - (float(fi) / ti)), \
-			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
-			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
-			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
-			 100.0 * extents / inodes - 100)
-		self.status_label.setText(s)
 
 class OverviewModel(QtCore.QObject):
 	'''Render the overview into a text field.'''
@@ -1295,203 +1515,3 @@ class OverviewModel(QtCore.QObject):
 		if old_highlight == self.range_highlight:
 			return
 		self.render()
-
-class ChecklistModel(QtCore.QAbstractTableModel):
-	'''A list model for checkable items.'''
-	def __init__(self, items, parent=None, *args):
-		super(ChecklistModel, self).__init__(parent, *args)
-		self.rows = items
-
-	def rowCount(self, parent):
-		return len(self.rows)
-
-	def columnCount(self, parent):
-		return 1
-
-	def data(self, index, role):
-		i = index.row()
-		j = index.column()
-		if j != 0:
-			return None
-		if role == QtCore.Qt.DisplayRole:
-			return self.rows[i][0]
-		elif role == QtCore.Qt.CheckStateRole:
-			return QtCore.Qt.Checked if self.rows[i][1] else QtCore.Qt.Unchecked
-		else:
-			return None
-
-	def flags(self, index):
-		return super(ChecklistModel, self).flags(index) | QtCore.Qt.ItemIsUserCheckable
-
-	def setData(self, index, value, role):
-		if role != QtCore.Qt.CheckStateRole:
-			return None
-		row = index.row()
-		# N.B. Weird comparison because Python2 returns QVariant, not bool
-		self.rows[row][1] = not (value == False)
-		return True
-
-	def items(self):
-		return self.rows
-
-class FmQuery(object):
-	'''Abstract base class to manage query context and UI.'''
-	def __init__(self, label, ctl, query_fn):
-		self.label = label
-		self.ctl = ctl
-		self.query_fn = query_fn
-
-	@abstractmethod
-	def load_query(self):
-		'''Load ourselves into the UI.'''
-		raise NotImplementedError()
-
-	@abstractmethod
-	def save_query(self):
-		'''Save UI contents.'''
-		raise NotImplementedError()
-
-	@abstractmethod
-	def parse_query(self):
-		'''Parse query contents into some meaningful form.'''
-		raise NotImplementedError()
-
-	def run_query(self):
-		'''Run a query.'''
-		args = self.parse_query()
-		#print("QUERY:", self.label, args)
-		self.query_fn(args)
-
-	@abstractmethod
-	def export_state(self):
-		'''Export state data for serializeation.'''
-		raise NotImplementedError()
-
-	@abstractmethod
-	def import_state(self, data):
-		'''Import state data for serialization.'''
-		raise NotImplementedError()
-
-	def summarize(self):
-		'''Summarize the state of this query as a string.'''
-		return self.label + ': '
-
-class StringQuery(FmQuery):
-	'''Handle queries that are free-form text.'''
-	def __init__(self, label, ctl, query_fn, edit_string = '', history = None, parent=None, *args):
-		super(StringQuery, self).__init__(label, ctl, query_fn)
-		if history is None:
-			self.history = []
-		else:
-			self.history = history
-		self.edit_string = edit_string
-
-	def load_query(self):
-		self.ctl.clear()
-		self.ctl.addItems(self.history)
-		if self.edit_string in self.history:
-			self.ctl.setCurrentIndex(self.history.index(self.edit_string))
-		else:
-			self.ctl.setEditText(self.edit_string)
-		self.ctl.show()
-
-	def save_query(self):
-		self.ctl.hide()
-		self.edit_string = str(self.ctl.currentText())
-
-	def parse_query(self):
-		a = str(self.ctl.currentText())
-		self.edit_string = a
-		self.add_to_history(a)
-		return fmcli.split_unescape(str(a), ' ', ('"', "'"))
-
-	def add_to_history(self, string):
-		'''Add a string to the history.'''
-		if len(self.history) > 0 and self.history[0] == string:
-			return
-		if string in self.history:
-			self.history.remove(string)
-		r = self.ctl.findText(string)
-		if r >= 0:
-			self.ctl.removeItem(r)
-		self.history.insert(0, string)
-		self.ctl.insertItem(0, string)
-		self.ctl.setCurrentIndex(self.history.index(string))
-
-	def export_state(self):
-		return {'edit_string': str(self.edit_string), 'history': self.history[:100]}
-
-	def import_state(self, data):
-		self.edit_string = data['edit_string']
-		self.history = data['history']
-
-	def summarize(self):
-		x = super(StringQuery, self).summarize()
-		return x + self.edit_string
-
-class ChecklistQuery(FmQuery):
-	'''Handle queries comprising a selection of discrete items.'''
-	def __init__(self, label, ctl, query_fn, items, parent=None, *args):
-		super(ChecklistQuery, self).__init__(label, ctl, query_fn)
-		self.items = items
-		self.model = ChecklistModel(items)
-
-	def load_query(self):
-		self.ctl.setModel(self.model)
-		self.ctl.show()
-
-	def save_query(self):
-		self.ctl.hide()
-
-	def parse_query(self):
-		return self.items
-
-	def export_state(self):
-		return [{'label': x[0], 'state': x[1]} for x in self.items]
-
-	def import_state(self, data):
-		for d in data:
-			for i in self.items:
-				if i[0] == d['label']:
-					i[1] = d['state']
-					break
-
-	def summarize(self):
-		x = super(StringQuery, self).summarize()
-		return x + ', '.join([x for x in self.items if x[1]])
-
-class XLineEdit(QtGui.QLineEdit):
-	'''QLineEdit with clear button, which appears when user enters text.'''
-	def __init__(self, parent=None):
-		super(XLineEdit, self).__init__(parent)
-		self.layout = QtGui.QHBoxLayout(self)
-		self.image = QtGui.QLabel(self)
-		self.image.setCursor(QtCore.Qt.ArrowCursor)
-		self.image.setFocusPolicy(QtCore.Qt.NoFocus)
-		self.image.setStyleSheet("border: none;")
-		pixmap = QtGui.QIcon.fromTheme('locationbar-erase').pixmap(16, 16)
-		self.image.setPixmap(pixmap)
-		self.image.setSizePolicy(
-			QtGui.QSizePolicy.Expanding,
-			QtGui.QSizePolicy.Expanding)
-		self.image.adjustSize()
-		self.image.setScaledContents(True)
-		self.layout.addWidget(
-			self.image, alignment=QtCore.Qt.AlignRight)
-		self.textChanged.connect(self.changed)
-		self.image.hide()
-		self.image.mouseReleaseEvent = self.clear_mouse_release
-		qm = self.textMargins()
-		qm.setRight(qm.right() + 24)
-		self.setTextMargins(qm)
-
-	def clear_mouse_release(self, ev):
-		QtGui.QLabel.mouseReleaseEvent(self.image, ev)
-		if ev.button() == QtCore.Qt.LeftButton:
-			self.clear()
-
-	def changed(self, text):
-		if len(text) > 0:
-			self.image.show()
-		else:
-			self.image.hide()
