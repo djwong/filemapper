@@ -684,18 +684,6 @@ class fmdb(object):
 			qstr = 'ino IN (SELECT DISTINCT ino FROM extent_t WHERE %s)' % qstr
 		return (qstr, qarg)
 
-	def query_loff_range(self, ranges, **kwargs):
-		'''Query extents spanning ranges of logical bytes.'''
-		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'l_off', 'l_off + length - 1')
-		for x in self.query_extents(qstr, qarg, **kwargs):
-			yield x
-
-	def query_loff_range_inodes(self, ranges, **kwargs):
-		'''Query inodes with extents covering ranges of logical bytes.'''
-		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'l_off', 'l_off + length - 1')
-		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
-			yield x
-
 	def query_poff_range(self, ranges, **kwargs):
 		'''Query extents spanning ranges of physical bytes.'''
 		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'p_off', 'p_end')
@@ -705,6 +693,18 @@ class fmdb(object):
 	def query_poff_range_inodes(self, ranges, **kwargs):
 		'''Query inodes whose contents span ranges of physical bytes.'''
 		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'p_off', 'p_end')
+		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
+			yield x
+
+	def query_loff_range(self, ranges, **kwargs):
+		'''Query extents spanning ranges of logical bytes.'''
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_EXTENT_SQL, 'l_off', 'l_off + length - 1')
+		for x in self.query_extents(qstr, qarg, **kwargs):
+			yield x
+
+	def query_loff_range_inodes(self, ranges, **kwargs):
+		'''Query inodes with extents covering ranges of logical bytes.'''
+		qstr, qarg = self. __query_extent_ranges_sql(ranges, FMDB_INODE_SQL, 'l_off', 'l_off + length - 1')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
