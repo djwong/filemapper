@@ -219,6 +219,129 @@ S = symbolic links</string>
         </widget>
        </item>
        <item>
+        <widget class="QFrame" name="query_timestamp">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_5">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item row="1" column="1">
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string> S&amp;tarting at:</string>
+            </property>
+            <property name="buddy">
+             <cstring>query_startTimeStamp</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="4">
+           <widget class="QCheckBox" name="query_endTimeEnabled">
+            <property name="whatsThis">
+             <string>Enable querying a range of time stamps.</string>
+            </property>
+            <property name="accessibleName">
+             <string>Enable time stamp range query</string>
+            </property>
+            <property name="accessibleDescription">
+             <string>Enable querying a range of time stamps.</string>
+            </property>
+            <property name="text">
+             <string>&amp;ending at:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="5">
+           <widget class="QDateTimeEdit" name="query_endTimeStamp">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="whatsThis">
+             <string>The end of the range of time stamps to query.</string>
+            </property>
+            <property name="accessibleName">
+             <string>End timestamp</string>
+            </property>
+            <property name="accessibleDescription">
+             <string>The end of the range of time stamps to query.</string>
+            </property>
+            <property name="displayFormat">
+             <string>M/d/yyyy h:mm AP</string>
+            </property>
+            <property name="calendarPopup">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QLabel" name="label_3">
+            <property name="text">
+             <string>and</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QDateTimeEdit" name="query_startTimeStamp">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="whatsThis">
+             <string>The start of the range of time stamps to query.</string>
+            </property>
+            <property name="accessibleName">
+             <string>Start timestamp</string>
+            </property>
+            <property name="accessibleDescription">
+             <string>The end of the range of time stamps to query.</string>
+            </property>
+            <property name="dateTime">
+             <datetime>
+              <hour>17</hour>
+              <minute>0</minute>
+              <second>0</second>
+              <year>2000</year>
+              <month>1</month>
+              <day>1</day>
+             </datetime>
+            </property>
+            <property name="displayFormat">
+             <string>M/d/yyyy h:mm AP</string>
+            </property>
+            <property name="calendarPopup">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QPushButton" name="query_btn">
          <property name="whatsThis">
           <string>Runs the extent query, showing results in the extent list and highlighting the associated overview cells. (Alt+Q)</string>
@@ -914,6 +1037,22 @@ S = symbolic links</string>
     <hint type="destinationlabel">
      <x>514</x>
      <y>31</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>query_endTimeEnabled</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>query_endTimeStamp</receiver>
+   <slot>setEnabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>642</x>
+     <y>466</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>758</x>
+     <y>467</y>
     </hint>
    </hints>
   </connection>

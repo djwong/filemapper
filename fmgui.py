@@ -13,6 +13,7 @@ import os.path
 import json
 import base64
 from abc import ABCMeta, abstractmethod
+import dateutil.parser
 
 null_model = QtCore.QModelIndex()
 bold_font = QtGui.QFont()
@@ -521,6 +522,151 @@ class ChecklistModel(QtCore.QAbstractTableModel):
 	def items(self):
 		return self.rows
 
+class OverviewModel(QtCore.QObject):
+	'''Render the overview into a text field.'''
+	rendered = QtCore.pyqtSignal()
+
+	def __init__(self, fmdb, ctl, precision = 65536, parent = None, yield_fn = None):
+		super(OverviewModel, self).__init__(parent)
+		self.fmdb = fmdb
+		self.fs = self.fmdb.query_summary()
+		self.ctl = ctl
+		self.ctl.resizeEvent = self.resize_ctl
+		self.length = None
+		self.zoom = 1.0
+		self.precision = precision
+		self.overview_big = None
+		self.rst = QtCore.QTimer()
+		self.rst.timeout.connect(self.delayed_resize)
+		self.range_highlight = None
+		self.yield_fn = yield_fn
+		self.__do_resize()
+
+	def load(self):
+		'''Query the DB for the high-res overview data.'''
+		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
+		self.fmdb.set_overview_length(olen)
+		self.overview_big = [ov for ov in self.fmdb.query_overview()]
+
+	def set_zoom(self, zoom):
+		'''Set the zoom factor for the overview.'''
+		self.zoom = zoom
+		self.render()
+
+	def total_length(self):
+		'''The total length of the overview.'''
+		return self.length * self.zoom
+
+	def render(self):
+		'''Render the overview into the text view.'''
+		def is_highlighted(cell):
+			if range_highlight is None:
+				return False
+			for start, end in range_highlight:
+				if cell >= start and cell <= end:
+					return True
+			return False
+
+		t0 = datetime.datetime.today()
+		if self.overview_big is None:
+			return
+		olen = int(self.length * self.zoom)
+		#print(self.length, self.zoom)
+		o2s = float(len(self.overview_big)) / olen
+		ov_str = []
+		t1 = datetime.datetime.today()
+		h = False
+		for i in range(0, olen):
+			x = int(round(i * o2s))
+			y = int(round((i + 1) * o2s))
+			ss = self.overview_big[x:y]
+			rh = self.range_highlight[x:y] if self.range_highlight is not None else [0]
+			ovs = fmdb.overview_block(self.fmdb.get_extent_types_to_show())
+			for s in ss:
+				ovs.add(s)
+			if sum(rh) > 0:
+				if not h:
+					ov_str.append('<span style="background: #e0e0e0; font-weight: bold;">')
+				h = True
+			else:
+				if h:
+					ov_str.append('</span>')
+				h = False
+			ov_str.append(ovs.to_letter())
+		if h:
+			ov_str.append('</b>')
+		t2 = datetime.datetime.today()
+		fmdb.print_times('render', [t0, t1, t2])
+		cursor = self.ctl.textCursor()
+		start = cursor.selectionStart()
+		end = cursor.selectionEnd()
+		vs = self.ctl.verticalScrollBar()
+		old_v = vs.value()
+		old_max = vs.maximum()
+		self.ctl.setText(''.join(ov_str))
+		if old_max > 0:
+			if vs.maximum() == old_max:
+				vs.setValue(old_v)
+			else:
+				vs.setValue(int(vs.maximum() * float(old_v) / old_max))
+		self.rendered.emit()
+
+	def resize_ctl(self, event):
+		'''Handle the resizing of the text view control.'''
+		QtGui.QTextEdit.resizeEvent(self.ctl, event)
+		self.__do_resize()
+		self.rst.start(40)
+
+	def font_changed(self):
+		'''Call this if the font changes.'''
+		self.__do_resize()
+		self.render()
+
+	def __do_resize(self):
+		'''Recalculate the overview size.'''
+		sz = self.ctl.viewport().size()
+		qfm = QtGui.QFontMetrics(self.ctl.document().defaultFont())
+		overview_font_width = qfm.width('M')
+		overview_font_height = qfm.height()
+		# Cheat with the textedit width/height -- use one less
+		# column than we probably could, and force wrapping at
+		# that column.
+		w = (sz.width() // overview_font_width) - 1
+		h = (sz.height() // overview_font_height) - 1
+		self.ctl.setLineWrapColumnOrWidth(w)
+		#print("overview; %f x %f = %f" % (w, h, w * h))
+		self.length = w * h
+
+	def delayed_resize(self):
+		self.rst.stop()
+		self.render()
+
+	def highlight_ranges(self, ranges):
+		'''Highlight a range of physical extents in the overview.'''
+		old_highlight = self.range_highlight
+		# Figure out which ranges we're playing with
+		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
+		self.fmdb.set_overview_length(olen)
+
+		# Compress that into a set
+		rset = set()
+		n = 0
+		for x in self.fmdb.pick_bytes(ranges):
+			if type(x) == int:
+				start = end = x
+			else:
+				start, end = x
+			for x in range(start, end + 1):
+				rset.add(x)
+			if n > 1000:
+				self.yield_fn()
+				n = 0
+			n += 1
+		self.range_highlight =  [(1 if n in rset else 0) for n in range(0, olen)]
+		if old_highlight == self.range_highlight:
+			return
+		self.render()
+
 ## Query classes
 
 class FmQuery(object):
@@ -648,6 +794,56 @@ class ChecklistQuery(FmQuery):
 	def summarize(self):
 		x = super(StringQuery, self).summarize()
 		return x + ', '.join([x for x in self.items if x[1]])
+
+class TimestampQuery(FmQuery):
+	'''Handle queries comprising a range of timestamps.'''
+	def __init__(self, label, ctl, query_fn, start_ctl, end_ctl, range_ctl, start = None, end = None, range_enabled = False, parent=None, *args):
+		super(TimestampQuery, self).__init__(label, ctl, query_fn)
+		self.nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmcli.tz_gmt)
+		print("ctr",self.nowgmt)
+		self.start = self.nowgmt if start is None else start
+		self.end = self.nowgmt if end is None else end
+		self.range_enabled = range_enabled
+		self.start_ctl = start_ctl
+		self.end_ctl = end_ctl
+		self.range_ctl = range_ctl
+
+	def load_query(self):
+		print("load",self.start.astimezone(fmcli.tz_local))
+		self.start_ctl.setDateTime(self.start.astimezone(fmcli.tz_local))
+		self.end_ctl.setDateTime(self.end.astimezone(fmcli.tz_local))
+		self.range_ctl.setCheckState(QtCore.Qt.Checked if self.range_enabled else QtCore.Qt.Unchecked)
+		self.ctl.show()
+
+	def save_query(self):
+		def x(d):
+			return d.dateTime().toPyDateTime().replace(microsecond = 0, tzinfo = fmcli.tz_local).astimezone(fmcli.tz_gmt)
+		self.ctl.hide()
+		self.range_enabled = self.range_ctl.checkState() == QtCore.Qt.Checked
+		self.start = x(self.start_ctl)
+		self.end = x(self.end_ctl)
+
+	def parse_query(self):
+		if self.range_enabled:
+			return [self.start]
+		return [self.start, self.end]
+
+	def export_state(self):
+		a = 'None' if self.start == self.nowgmt else self.start.isoformat()
+		b = 'None' if self.end == self.nowgmt else self.end.isoformat()
+		return [a, b, self.range_enabled]
+
+	def import_state(self, data):
+		print("import",dateutil.parser.parse(data[0]))
+		if data[0] != 'None':
+			self.start = dateutil.parser.parse(data[0])
+		if data[1] != 'None':
+			self.end = dateutil.parser.parse(data[1])
+		self.range_enabled = data[2] == True
+
+	def summarize(self):
+		x = super(StringQuery, self).summarize()
+		return x + ', '.join(self.export_state())
 
 ## Custom widgets
 
@@ -794,6 +990,8 @@ class fmgui(QtGui.QMainWindow):
 			return StringQuery(l, self.query_text, q)
 		def cq(l, q, x):
 			return ChecklistQuery(l, self.query_checklist, q, x)
+		def tq(l, q):
+			return TimestampQuery(l, self.query_timestamp, q, self.query_startTimeStamp, self.query_endTimeStamp, self.query_endTimeEnabled)
 		self.query_types = [
 			sq('Overview Cells', self.query_overview),
 			sq('Physical Offsets', self.query_poff),
@@ -806,6 +1004,7 @@ class fmgui(QtGui.QMainWindow):
 			sq('Travel Scores', self.query_travel_scores),
 			sq('# Primary Extents', self.query_nr_extents),
 			sq('File Sizes', self.query_sizes),
+			tq('Data Changed', self.query_mtime),
 		]
 
 		# Then the query type selector
@@ -813,6 +1012,7 @@ class fmgui(QtGui.QMainWindow):
 		self.querytype_combo.currentIndexChanged.connect(self.change_querytype)
 		self.query_checklist.hide()
 		self.query_text.hide()
+		self.query_timestamp.hide()
 		self.old_querytype = None
 
 		# Finally move the query UI to the toolbar
@@ -1306,6 +1506,17 @@ class fmgui(QtGui.QMainWindow):
 		self.load_extents(self.fmdb.query_sizes(ranges))
 		self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
 
+	def query_mtime(self, args):
+		'''Query based on mtime.'''
+		if len(args) == 0:
+			self.load_extents([])
+			self.load_inodes([])
+			return
+		print(args)
+		#ranges = self.parse_size_ranges(args)
+		#self.load_extents(self.fmdb.query_sizes(ranges))
+		#self.load_inodes(self.fmdb.query_sizes_inodes(ranges, **self.inode_query_args))
+
 	## Export query results
 
 	def export_extents_csv(self):
@@ -1370,148 +1581,3 @@ class fmgui(QtGui.QMainWindow):
 					n += 1
 		finally:
 			self.mp.stop()
-
-class OverviewModel(QtCore.QObject):
-	'''Render the overview into a text field.'''
-	rendered = QtCore.pyqtSignal()
-
-	def __init__(self, fmdb, ctl, precision = 65536, parent = None, yield_fn = None):
-		super(OverviewModel, self).__init__(parent)
-		self.fmdb = fmdb
-		self.fs = self.fmdb.query_summary()
-		self.ctl = ctl
-		self.ctl.resizeEvent = self.resize_ctl
-		self.length = None
-		self.zoom = 1.0
-		self.precision = precision
-		self.overview_big = None
-		self.rst = QtCore.QTimer()
-		self.rst.timeout.connect(self.delayed_resize)
-		self.range_highlight = None
-		self.yield_fn = yield_fn
-		self.__do_resize()
-
-	def load(self):
-		'''Query the DB for the high-res overview data.'''
-		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
-		self.fmdb.set_overview_length(olen)
-		self.overview_big = [ov for ov in self.fmdb.query_overview()]
-
-	def set_zoom(self, zoom):
-		'''Set the zoom factor for the overview.'''
-		self.zoom = zoom
-		self.render()
-
-	def total_length(self):
-		'''The total length of the overview.'''
-		return self.length * self.zoom
-
-	def render(self):
-		'''Render the overview into the text view.'''
-		def is_highlighted(cell):
-			if range_highlight is None:
-				return False
-			for start, end in range_highlight:
-				if cell >= start and cell <= end:
-					return True
-			return False
-
-		t0 = datetime.datetime.today()
-		if self.overview_big is None:
-			return
-		olen = int(self.length * self.zoom)
-		#print(self.length, self.zoom)
-		o2s = float(len(self.overview_big)) / olen
-		ov_str = []
-		t1 = datetime.datetime.today()
-		h = False
-		for i in range(0, olen):
-			x = int(round(i * o2s))
-			y = int(round((i + 1) * o2s))
-			ss = self.overview_big[x:y]
-			rh = self.range_highlight[x:y] if self.range_highlight is not None else [0]
-			ovs = fmdb.overview_block(self.fmdb.get_extent_types_to_show())
-			for s in ss:
-				ovs.add(s)
-			if sum(rh) > 0:
-				if not h:
-					ov_str.append('<span style="background: #e0e0e0; font-weight: bold;">')
-				h = True
-			else:
-				if h:
-					ov_str.append('</span>')
-				h = False
-			ov_str.append(ovs.to_letter())
-		if h:
-			ov_str.append('</b>')
-		t2 = datetime.datetime.today()
-		fmdb.print_times('render', [t0, t1, t2])
-		cursor = self.ctl.textCursor()
-		start = cursor.selectionStart()
-		end = cursor.selectionEnd()
-		vs = self.ctl.verticalScrollBar()
-		old_v = vs.value()
-		old_max = vs.maximum()
-		self.ctl.setText(''.join(ov_str))
-		if old_max > 0:
-			if vs.maximum() == old_max:
-				vs.setValue(old_v)
-			else:
-				vs.setValue(int(vs.maximum() * float(old_v) / old_max))
-		self.rendered.emit()
-
-	def resize_ctl(self, event):
-		'''Handle the resizing of the text view control.'''
-		QtGui.QTextEdit.resizeEvent(self.ctl, event)
-		self.__do_resize()
-		self.rst.start(40)
-
-	def font_changed(self):
-		'''Call this if the font changes.'''
-		self.__do_resize()
-		self.render()
-
-	def __do_resize(self):
-		'''Recalculate the overview size.'''
-		sz = self.ctl.viewport().size()
-		qfm = QtGui.QFontMetrics(self.ctl.document().defaultFont())
-		overview_font_width = qfm.width('M')
-		overview_font_height = qfm.height()
-		# Cheat with the textedit width/height -- use one less
-		# column than we probably could, and force wrapping at
-		# that column.
-		w = (sz.width() // overview_font_width) - 1
-		h = (sz.height() // overview_font_height) - 1
-		self.ctl.setLineWrapColumnOrWidth(w)
-		#print("overview; %f x %f = %f" % (w, h, w * h))
-		self.length = w * h
-
-	def delayed_resize(self):
-		self.rst.stop()
-		self.render()
-
-	def highlight_ranges(self, ranges):
-		'''Highlight a range of physical extents in the overview.'''
-		old_highlight = self.range_highlight
-		# Figure out which ranges we're playing with
-		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
-		self.fmdb.set_overview_length(olen)
-
-		# Compress that into a set
-		rset = set()
-		n = 0
-		for x in self.fmdb.pick_bytes(ranges):
-			if type(x) == int:
-				start = end = x
-			else:
-				start, end = x
-			for x in range(start, end + 1):
-				rset.add(x)
-			if n > 1000:
-				self.yield_fn()
-				n = 0
-			n += 1
-		self.range_highlight =  [(1 if n in rset else 0) for n in range(0, olen)]
-		if old_highlight == self.range_highlight:
-			return
-		self.render()

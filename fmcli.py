@@ -63,14 +63,15 @@ def format_number(units, num):
 			return format_number(units_scale[i], num)
 	return format_number(units_scale[-1], num)
 
-gmt = tz.gettz('UTC')
+tz_gmt = tz.gettz('UTC')
+tz_local = tz.gettz()
 def posix_timestamp_str(t, pretty = False):
 	'''Generate a string from a POSIX UTC timestamp.'''
 	if t is None:
 		return None
-	dt = datetime.datetime.utcfromtimestamp(t).replace(tzinfo = gmt)
+	dt = datetime.datetime.utcfromtimestamp(t).replace(tzinfo = tz_gmt)
 	if pretty:
-		dt = dt.astimezone(tz.gettz())
+		dt = dt.astimezone(tz_local)
 		return dt.strftime('%x %X')
 	return dt.isoformat()
 
