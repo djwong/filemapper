@@ -217,15 +217,23 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 		seen.add(stat.st_ino)
 		fd = os.open(path, os.O_RDONLY)
 		try:
-			for extent in fiemap2(fd, flags = flags):
-				extent_fn(stat, extent, False)
-			for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
-				extent_fn(stat, extent, True)
-		except:
-			for extent in fibmap2(fd, flags = flags):
-				extent_fn(stat, extent, False)
-		os.close(fd)
+			if do_map.fiemap_broken:
+				for extent in fibmap2(fd, flags = flags):
+					extent_fn(stat, extent, False)
+				return
+			try:
+				for extent in fiemap2(fd, flags = flags):
+					extent_fn(stat, extent, False)
+				for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
+					extent_fn(stat, extent, True)
+			except:
+				do_map.fiemap_broken = True
+				for extent in fibmap2(fd, flags = flags):
+					extent_fn(stat, extent, False)
+		finally:
+			os.close(fd)
 
+	do_map.fiemap_broken = False
 	seen = set()
 	# Careful - we have to pass a byte string to os.walk so that
 	# it'll return byte strings, which we can then decode ourselves.
