@@ -19,6 +19,7 @@ PRAGMA application_id = 61268;\
 PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
+DROP VIEW IF EXISTS path_inode_v;\
 DROP TABLE IF EXISTS overview_t;\
 DROP TABLE IF EXISTS dentry_t;\
 DROP TABLE IF EXISTS extent_t;\
