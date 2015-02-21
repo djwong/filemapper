@@ -196,6 +196,10 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 	time_t atime, crtime, mtime;
 	ssize_t size;
 
+	/* Ignore volume labels */
+	if (file->dir_ent.attr & 0x8)
+		return 0;
+
 	if (file->lfn)
 		snprintf(name, FAT_MAX_NAME_LEN, "%s", file->lfn);
 	else
@@ -227,6 +231,7 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 		     &size);
 	if (wf->wf_db_err)
 		goto err;
+
 	insert_dentry(&wf->base, wf->dir_ino, name, ino);
 	if (wf->wf_db_err)
 		goto err;
@@ -240,7 +245,6 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 		FDSC **n;
 		const char *old_dirpath;
 		uint64_t old_dir_ino;
-		int err;
 
 		old_dir_ino = wf->dir_ino;
 		old_dirpath = wf->wf_dirpath;
@@ -251,9 +255,7 @@ static int walk_fs_helper(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *priv_data
 		if (wf->err)
 			goto err;
 
-		err = walk_dir(fs, file->first, n, walk_fs_helper, wf);
-		if (!wf->err)
-			wf->err = err;
+		walk_dir(fs, file->first, n, walk_fs_helper, wf);
 		if (wf->err || wf->wf_db_err)
 			goto err;
 
@@ -275,7 +277,6 @@ static void walk_fs(struct fatmap_t *wf)
 	DOS_FILE **chain;
 	FDSC **n;
 	int i;
-	int err;
 
 	wf->wf_dirpath = "";
 	wf->ino = wf->dir_ino = ROOT_DIR_INO;
@@ -311,9 +312,7 @@ static void walk_fs(struct fatmap_t *wf)
 	if (wf->err)
 		goto out;
 
-	err = walk_dir(fs, root->first, n, walk_fs_helper, wf);
-	if (!wf->err)
-		wf->err = err;
+	walk_dir(fs, root->first, n, walk_fs_helper, wf);
 	if (wf->err || wf->wf_db_err)
 		goto out;
 out:
