@@ -189,7 +189,7 @@ def dentry_typestr(self):
 	return inode_types_long[self.type]
 
 # Database strings
-APP_ID = 0xEF54
+APP_ID = 0xEF56
 PAGE_SIZE = 65536
 CACHE_SIZE = 256 * 1048576
 CACHE_PAGES = CACHE_SIZE / PAGE_SIZE

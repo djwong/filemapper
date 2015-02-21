@@ -1,5 +1,5 @@
 CFLAGS=-Wall -O3 -g
-VERSION=0.5
+VERSION=0.6
 
 prefix = /usr
 exec_prefix = ${prefix}
@@ -10,7 +10,7 @@ mandir = ${exec_prefix}/man
 man1dir = ${mandir}/man1
 appdir = ${exec_prefix}/share/applications
 
-all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsmapper
+all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsmapper ntfsmapper.1.gz
 
 %.1.gz: %.1
 	gzip -9 < $< > $@
@@ -42,13 +42,13 @@ filemapper.desktop: filemapper.desktop.in
 
 install: all
 	install -d $(DESTDIR)$(bindir)
-	install -s e2mapper $(DESTDIR)$(bindir)
+	install -s e2mapper ntfsmapper $(DESTDIR)$(bindir)
 	install filemapper $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(fmlibdir)
 	install -m 0644 fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
 	install -m 0644 filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 	install -d $(DESTDIR)$(man1dir)
-	install -m 0644 e2mapper.1.gz filemapper.1.gz $(DESTDIR)$(man1dir)
+	install -m 0644 e2mapper.1.gz filemapper.1.gz ntfsmapper.1.gz $(DESTDIR)$(man1dir)
 	install -d $(DESTDIR)$(appdir)
 	install -m 0644 filemapper.desktop $(DESTDIR)$(appdir)
 

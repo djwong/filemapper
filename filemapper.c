@@ -17,7 +17,7 @@ PRAGMA case_sensitive_like = ON;\
 ";
 
 static char *dbschema = "PRAGMA page_size = 65536;\
-PRAGMA application_id = 61268;\
+PRAGMA application_id = 61270;\
 PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\

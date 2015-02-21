@@ -57,4 +57,4 @@ if __name__ == "__main__":
 		for c in args.commands:
 			fmcli.push(c)
 		if len(args.commands) == 0:
-			fmcli.interact('filemapper v0.5')
+			fmcli.interact('filemapper v0.6')

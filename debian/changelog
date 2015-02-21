@@ -1,3 +1,22 @@
+filemapper (0.6-1) unstable; urgency=low
+
+  * Enable queries of inode data, and update the GUI to retrieve both when
+    querying the FS
+  * Sneak in a bunch of performance improvements.
+  * Increase database page size for faster accesses.
+  * Add NTFS/FAT32 raw support.
+  * Wire up a bunch of new query types (dates, inode fields, more extent fields.
+  * Store more inode metadata.
+  * Analyze inode->extent relations to assess block allocator performance.
+  * Reduce memory usage.
+  * Shift the sorting algorithms for faster query responses.
+  * Cache overview snapshots for much faster rendering.
+  * Actual tool tips in the GUI.
+  * Straighten out the code and group functions together.
+  * Fix the fragmentation report!
+
+ -- Darrick J. Wong <djwong@djwong.org>  Sat, 21 Feb 2015 01:22:00 -0800
+
 filemapper (0.5-1) unstable; urgency=low
 
   * Initial release.
