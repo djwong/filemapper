@@ -3,6 +3,8 @@
  * Copyright 2015 Darrick J. Wong.
  * Licensed under the GPLv2+.
  */
+#undef DEBUG
+#include <inttypes.h>
 #include "filemapper.h"
 
 static char *opschema = "\
@@ -552,22 +554,16 @@ void index_db(struct filemapper_t *wf)
 void calc_inode_stats(struct filemapper_t *wf)
 {
 	sqlite3 *db = wf->db;
-	sqlite3_stmt *ino_stmt = NULL, *ext_stmt = NULL, *upd_stmt = NULL;
+	sqlite3_stmt *ino_stmt = NULL, *upd_stmt = NULL;
 	int64_t extents, p_dist, l_dist, last_poff, last_loff;
 	int64_t p_off, l_off, length;
-	int64_t ino;
-	int type;
+	int64_t last_ino, ino;
+	int etype, itype, has_ino;
 	int err, err2;
 
 	/* For each inode... */
-	err = sqlite3_prepare_v2(db, "SELECT ino, type FROM inode_t;",
+	err = sqlite3_prepare_v2(db, "SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off;",
 				 -1, &ino_stmt, NULL);
-	if (err)
-		goto out;
-
-	/* Select an extent... */
-	err = sqlite3_prepare_v2(db, "SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ? ORDER BY l_off;",
-				 -1, &ext_stmt, NULL);
 	if (err)
 		goto out;
 
@@ -578,70 +574,59 @@ void calc_inode_stats(struct filemapper_t *wf)
 		goto out;
 
 	/* For each inode... */
+	extents = p_dist = l_dist = 0;
+	last_poff = last_loff = 0;
+	last_ino = 0;
+	has_ino = 0;
 	err = sqlite3_step(ino_stmt);
 	while (err == SQLITE_ROW) {
 		ino = sqlite3_column_int64(ino_stmt, 0);
-		type = sqlite3_column_int(ino_stmt, 1);
+		itype = sqlite3_column_int(ino_stmt, 1);
+		etype = sqlite3_column_int(ino_stmt, 2);
+		p_off = sqlite3_column_int64(ino_stmt, 3);
+		l_off = sqlite3_column_int64(ino_stmt, 4);
+		length = sqlite3_column_int64(ino_stmt, 5);
+		dbg_printf("ino=%"PRId64" itype=%d etype=%d poff=%"PRId64" loff=%"PRId64" len=%"PRId64"\n",
+			   ino, itype, etype, p_off, l_off, length);
 
-		/* For each extent attached to that inode... */
-		err = sqlite3_reset(ext_stmt);
-		if (err)
-			goto out;
-		err = sqlite3_bind_int64(ext_stmt, 1, ino);
-		if (err)
-			goto out;
-		err = sqlite3_bind_int64(ext_stmt, 2,
-					 primary_extent_type_for_inode[type]);
-		if (err)
-			goto out;
+		if (etype != primary_extent_type_for_inode[itype])
+			goto next;
 
-		extents = p_dist = l_dist = 0;
-		last_poff = last_loff = 0;
-		err = sqlite3_step(ext_stmt);
-		while (err == SQLITE_ROW) {
-			p_off = sqlite3_column_int64(ext_stmt, 0);
-			l_off = sqlite3_column_int64(ext_stmt, 1);
-			length = sqlite3_column_int64(ext_stmt, 2);
-			if (extents) {
-				p_dist += abs(p_off - last_poff);
-				l_dist += l_off - last_loff;
+		if (!has_ino || ino != last_ino) {
+			if (has_ino) {
+				err = sqlite3_reset(upd_stmt);
+				if (err)
+					goto out;
+				err = sqlite3_bind_int64(upd_stmt, 1, extents);
+				if (err)
+					goto out;
+				err = sqlite3_bind_double(upd_stmt, 2, (double)p_dist / l_dist);
+				if (err)
+					goto out;
+				err = sqlite3_bind_int64(upd_stmt, 3, last_ino);
+				if (err)
+					goto out;
+				err = sqlite3_step(upd_stmt);
+				if (err && err != SQLITE_DONE)
+					goto out;
 			}
-			extents++;
-			p_dist += length;
-			l_dist += length;
-			last_poff = p_off + length - 1;
-			last_loff = l_off + length - 1;
-
-			err = sqlite3_step(ext_stmt);
+			extents = p_dist = l_dist = 0;
+			last_poff = last_loff = 0;
+			has_ino = 1;
+			last_ino = ino;
 		}
-		if (err && err != SQLITE_DONE)
-			goto out;
 
-		err = sqlite3_reset(upd_stmt);
-		if (err)
-			goto out;
 		if (extents) {
-			err = sqlite3_bind_int64(upd_stmt, 1, extents);
-			if (err)
-				goto out;
-			err = sqlite3_bind_double(upd_stmt, 2, (double)p_dist / l_dist);
-			if (err)
-				goto out;
-		} else {
-			err = sqlite3_bind_int64(upd_stmt, 1, 0);
-			if (err)
-				goto out;
-			err = sqlite3_bind_double(upd_stmt, 2, 0.0);
-			if (err)
-				goto out;
+			p_dist += abs(p_off - last_poff);
+			l_dist += l_off - last_loff;
 		}
-		err = sqlite3_bind_int64(upd_stmt, 3, ino);
-		if (err)
-			goto out;
-		err = sqlite3_step(upd_stmt);
-		if (err && err != SQLITE_DONE)
-			goto out;
+		extents++;
+		p_dist += length;
+		l_dist += length;
+		last_poff = p_off + length - 1;
+		last_loff = l_off + length - 1;
 
+next:
 		err = sqlite3_step(ino_stmt);
 	}
 	if (err && err != SQLITE_DONE)
@@ -649,9 +634,6 @@ void calc_inode_stats(struct filemapper_t *wf)
 	err = 0;
 out:
 	err2 = sqlite3_finalize(upd_stmt);
-	if (err2 && !err)
-		err = err2;
-	err2 = sqlite3_finalize(ext_stmt);
 	if (err2 && !err)
 		err = err2;
 	err2 = sqlite3_finalize(ino_stmt);
