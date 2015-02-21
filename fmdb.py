@@ -428,6 +428,7 @@ class fmdb(object):
 			os.sep)
 		print_sql(qstr, qarg)
 		self.conn.execute(qstr, qarg)
+		self.query_summary()
 
 	def finalize_fs_stats(self):
 		'''Finish updating a database.'''
