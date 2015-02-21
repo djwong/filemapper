@@ -18,9 +18,13 @@ def print_times(label, times):
 	l = ['%0.2fs' % (times[i] - times[i - 1]).total_seconds() for i in range(1, len(times))]
 	print('%s: %.02fs (%s)' % (label, (times[-1] - times[0]).total_seconds(), ', '.join(l)))
 
-def print_sql(qstr, qarg):
+def print_sql(qstr, qarg = None):
 	'''Print some debug stuff.'''
-	return #print(qstr, qarg)
+	return
+	if qarg is None:
+		print(qstr)
+	else:
+		print(qstr, qarg)
 
 # SQL generator modes
 FMDB_EXTENT_SQL	= 1
@@ -392,11 +396,13 @@ class fmdb(object):
 
 	def start_update(self):
 		'''Start an update process.'''
+		print_sql('BEGIN TRANSACTION')
 		self.conn.execute('BEGIN TRANSACTION;')
 		pass
 
 	def finish_update(self):
 		'''End the update process.'''
+		print_sql('END TRANSACTION')
 		self.conn.execute('END TRANSACTION;')
 		pass
 
@@ -410,16 +416,18 @@ class fmdb(object):
 		'''Store filesystem stats in the database.'''
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
-		self.conn.execute('INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);', \
-				(self.fspath, statfs.f_bsize, \
-				 statfs.f_frsize, \
-				 statfs.f_blocks * statfs.f_bsize, \
-				 statfs.f_bfree * statfs.f_bsize, \
-				 statfs.f_bavail * statfs.f_bsize, \
-				 statfs.f_files, statfs.f_ffree, \
-				 statfs.f_favail, statfs.f_namemax, \
-				 str(datetime.datetime.today()), \
-				 os.sep))
+		qstr = 'INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)'
+		qarg = (self.fspath, statfs.f_bsize, \
+			statfs.f_frsize, \
+			statfs.f_blocks * statfs.f_bsize, \
+			statfs.f_bfree * statfs.f_bsize, \
+			statfs.f_bavail * statfs.f_bsize, \
+			statfs.f_files, statfs.f_ffree, \
+			statfs.f_favail, statfs.f_namemax, \
+			str(datetime.datetime.today()), \
+			os.sep)
+		print_sql(qstr, qarg)
+		self.conn.execute(qstr, qarg)
 
 	def finalize_fs_stats(self):
 		'''Finish updating a database.'''
@@ -439,8 +447,10 @@ class fmdb(object):
 
 	def insert_dir(self, root, dentries):
 		'''Insert a directory record into the database.'''
-		self.conn.executemany('INSERT INTO dir_t VALUES(?, ?, ?);', \
-				[(root.st_ino, name, stat.st_ino) for name, stat in dentries])
+		qstr = 'INSERT INTO dir_t VALUES(?, ?, ?)'
+		qarg = [(root.st_ino, name, stat.st_ino) for name, stat in dentries]
+		print_sql(qstr, qarg)
+		self.conn.executemany(qstr, qarg)
 
 	def insert_inode(self, xstat, path):
 		'''Insert an inode record into the database.'''
@@ -450,11 +460,15 @@ class fmdb(object):
 			xtype = INO_TYPE_DIR
 		else:
 			xtype = INO_TYPE_FILE
-		self.conn.execute('INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL, ?, ?, ?, ?, ?);', \
-				(xstat.st_ino, xtype, xstat.st_atime, None, \
-				 xstat.st_ctime, xstat.st_mtime, xstat.st_size))
-		self.conn.execute('INSERT INTO path_t VALUES(?, ?);', \
-				(path, xstat.st_ino))
+		qstr = 'INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL, ?, ?, ?, ?, ?)'
+		qarg = (xstat.st_ino, xtype, xstat.st_atime, None, \
+			xstat.st_ctime, xstat.st_mtime, xstat.st_size)
+		print_sql(qstr, qarg)
+		self.conn.execute(qstr, qarg)
+		qstr = 'INSERT INTO path_t VALUES(?, ?)'
+		qarg = (path, xstat.st_ino)
+		print_sql(qstr, qarg)
+		self.conn.execute(qstr, qarg)
 
 	def insert_extent(self, stat, extent, is_xattr):
 		'''Insert an extent record into the database.'''
@@ -462,10 +476,12 @@ class fmdb(object):
 		if extent.flags & (fiemap.FIEMAP_EXTENT_UNKNOWN | \
 				   fiemap.FIEMAP_EXTENT_DELALLOC):
 			return
-		self.conn.execute('INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?);', \
-			    (stat.st_ino, extent.physical, extent.logical, \
-			     extent.flags, extent.length, \
-			     code, extent.physical + extent.length - 1))
+		qstr = 'INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?)'
+		qarg = (stat.st_ino, extent.physical, extent.logical, \
+			extent.flags, extent.length, \
+			code, extent.physical + extent.length - 1)
+		print_sql(qstr, qarg)
+		self.conn.execute(qstr, qarg)
 
 	## Overview control
 
@@ -542,6 +558,7 @@ class fmdb(object):
 				 overview[i].mappings, overview[i].metadata, \
 				 overview[i].xattrs, overview[i].symlinks) \
 				 for i in range(0, length)]
+			print_sql(qstr, [])
 			cur.executemany(qstr, qarg)
 			self.finish_update()
 
@@ -814,7 +831,7 @@ class fmdb(object):
 
 	def query_inums_inodes(self, ranges, **kwargs):
 		'''Query inodes having ranges of inode numbers.'''
-		qstr, qarg = self.__query_extent_range_sql(ranges, FMDB_INODE_SQL, 'ino')
+		qstr, qarg = self.__query_inode_range_sql(ranges, FMDB_INODE_SQL, 'ino')
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
@@ -1123,50 +1140,51 @@ class fmdb(object):
 		for x in self.query_inodes_stats(qstr, qarg, **kwargs):
 			yield x
 
-	## Calculate optional inode fields
+	## More in-depth inode analysis
 
-	def count_inode_extents(self, ino, type):
-		'''Count the number of extents of a given type and attached to an inode.'''
-		cur = self.conn.cursor()
-		qstr = 'SELECT COUNT(extent_t.p_off) FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ?'
-		qarg = [ino, primary_extent_type_for_inode[type]]
-		cur.execute(qstr, qarg)
-		r = cur.fetchall()
-		if r is not None and len(r) == 1 and len(r[0]) == 1:
-			return r[0][0]
-		return None
-
-	def analyze_inode_extents(self, ino, type, ignore_sparse = False):
-		'''Calculate the average distance and extent count for a given inode.'''
+	def calc_inode_stats(self):
+		'''Analyze the extent/inode relations.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
-		def get_extents():
-			qstr = 'SELECT p_off, l_off, length FROM extent_t WHERE extent_t.ino = ? AND extent_t.type = ? ORDER BY l_off'
-			qarg = [ino, primary_extent_type_for_inode[type]]
-			print_sql(qstr, qarg)
-			cur.execute(qstr, qarg)
-			while True:
-				rows = cur.fetchmany()
-				if len(rows) == 0:
-					return
-				for row in rows:
-					yield row
 
+		t0 = datetime.datetime.now()
+		qstr = 'SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off'
+		print_sql(qstr)
+		cur.execute(qstr)
+		upd = []
+		t1 = datetime.datetime.now()
+		last_ino = None
 		extents = p_dist = l_dist = 0
 		last_poff = last_loff = None
-		for (p_off, l_off, length) in get_extents():
+		for ino, itype, etype, p_off, l_off, length in cur.fetchall():
+			if etype != primary_extent_type_for_inode[itype]:
+				continue
+			if ino != last_ino:
+				if last_ino is not None:
+					travel_score = float(p_dist) / l_dist if l_dist != 0 else 0
+					upd.append((extents, travel_score, last_ino))
+				extents = p_dist = l_dist = 0
+				last_poff = last_loff = None
+				last_ino = ino
 			if last_poff is not None:
 				p_dist += abs(p_off - last_poff)
-				if not ignore_sparse:
-					l_dist += l_off - last_loff
+				l_dist += l_off - last_loff
 			extents += 1
 			p_dist += length
 			l_dist += length
 			last_poff = p_off + length - 1
 			last_loff = l_off + length - 1
-		if extents == 0:
-			return (0, 0.0)
-		return (extents, float(p_dist) / l_dist)
+		t2 = datetime.datetime.now()
+		if len(upd) > 0:
+			print_sql('BEGIN TRANSACTION')
+			cur.execute('BEGIN TRANSACTION')
+			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
+			print_sql(qstr, upd)
+			cur.executemany(qstr, upd)
+			print_sql('END TRANSACTION')
+			cur.execute('END TRANSACTION')
+		t3 = datetime.datetime.now()
+		print_times('calc_inode_stats', [t0, t1, t2, t3])
 
 	def clear_calculated_values(self):
 		'''Remove all calculated values from the database.'''
@@ -1175,14 +1193,17 @@ class fmdb(object):
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 		qstr = 'UPDATE inode_t SET nr_extents = NULL, travel_score = NULL'
+		print_sql('BEGIN TRANSACTION')
 		cur.execute('BEGIN TRANSACTION')
+		print_sql(qstr)
 		cur.execute(qstr)
+		print_sql('END TRANSACTION')
 		cur.execute('END TRANSACTION')
 
 	## Return inodes or extents, given some query parameters.
 	## (These are internal functions)
 
-	def query_inodes_stats(self, ino_sql, ino_sql_args, count_extents = False, analyze_extents = False):
+	def query_inodes_stats(self, ino_sql, ino_sql_args):
 		'''Retrieve the inode statistic data, given a query to select inodes.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
@@ -1206,27 +1227,14 @@ class fmdb(object):
 			rows = cur.fetchmany()
 			if len(rows) == 0:
 				break
-			for (p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size) in rows:
-				nr_extents0 = nr_extents
-				travel_score0 = travel_score
-				if (travel_score is None or nr_extents is None) and analyze_extents:
-					nr_extents, travel_score = self.analyze_inode_extents(ino, type)
-				if nr_extents is None and count_extents:
-					nr_extents = self.count_inode_extents(ino, type)
-				if self.writable and \
-				   ((nr_extents0 is None and nr_extents != nr_extents0) or \
-				    (travel_score0 is None and travel_score != travel_score0)):
-					upd.append((nr_extents, travel_score, ino))
-				yield inode_stats(self.fs, p, ino, type, nr_extents, travel_score, atime, crtime, ctime, mtime, size)
+			for (p, ino, itype, nr_extents, travel_score, atime, \
+			     crtime, ctime, mtime, size) in rows:
+				yield inode_stats(self.fs, p, ino, itype, \
+						  nr_extents, travel_score, \
+						  atime, crtime, ctime, mtime, \
+						  size)
 		t2 = datetime.datetime.now()
-
-		if len(upd) > 0:
-			cur.execute('BEGIN TRANSACTION')
-			qstr = 'UPDATE inode_t SET nr_extents = ?, travel_score = ? WHERE ino = ?'
-			cur.executemany(qstr, upd)
-			cur.execute('END TRANSACTION')
-		t3 = datetime.datetime.now()
-		print_times('query_inode_stat', [t0, t1, t2, t3])
+		print_times('query_inode_stat', [t0, t1, t2])
 
 	def query_extents(self, ext_sql, ext_sql_args):
 		'''Retrieve extent data given some criteria.'''

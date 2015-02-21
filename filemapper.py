@@ -33,6 +33,7 @@ if __name__ == "__main__":
 		fmdb.analyze(True)
 		fmdb.cache_overview(2048)
 		fmdb.cache_overview(65536)
+		fmdb.calc_inode_stats()
 		if args.q:
 			sys.exit(0)
 	else:

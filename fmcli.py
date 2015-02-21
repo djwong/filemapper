@@ -121,7 +121,7 @@ def parse_ranges(args, fn):
 			pos = arg.index('-', start)
 			ranges.append((fn(arg[:pos]), fn(arg[pos+1:])))
 		else:
-			ranges.append(fn(self.fs, arg))
+			ranges.append(fn(arg))
 	return ranges
 
 def split_unescape(s, delim, str_delim, escape='\\', unescape=True):
@@ -183,6 +183,7 @@ class fmcli(code.InteractiveConsole):
 		self.commands = {
 			('cache', 'a'): self.do_cache_overview,
 			('clear_calculated', 'cc'): self.do_clear_calculated,
+			('calc_inode_stats', 'cs'): self.do_calc_inode_stats,
 			('help', 'h', '?'): self.do_help,
 			('ls', ): self.do_ls,
 			('machine', 'm'): self.do_machine,
@@ -426,6 +427,12 @@ class fmcli(code.InteractiveConsole):
 			description = 'Erase all calculated values.')
 		args = parser.parse_args(argv[1:])
 		self.fmdb.clear_calculated_values()
+
+	def do_calc_inode_stats(self, argv):
+		parser = argparse.ArgumentParser(prog = argv[0],
+			description = 'Calculate inode statistics.')
+		args = parser.parse_args(argv[1:])
+		self.fmdb.calc_inode_stats()
 
 	## Overview management
 
