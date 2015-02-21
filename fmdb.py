@@ -454,8 +454,8 @@ class fmdb(object):
 
 	def insert_inode(self, xstat, path):
 		'''Insert an inode record into the database.'''
-		if path == '/':
-			raise ValueError("'/' is an invalid path.  Check code.")
+		if path == '/' or path == self.fs.pathsep:
+			raise ValueError("'%s' is an invalid path.  Check code." % path)
 		if stat.S_ISDIR(xstat.st_mode):
 			xtype = INO_TYPE_DIR
 		else:
@@ -751,7 +751,7 @@ class fmdb(object):
 		glob_str = None
 		glob_arg = []
 		cond = ''
-		if '*' not in paths and '/*' not in paths:
+		if '*' not in paths and '%s*' % self.fs.pathsep not in paths:
 			glob_str = ''
 			for p in paths:
 				if p == self.fs.pathsep:
@@ -932,7 +932,7 @@ class fmdb(object):
 		qarg = []
 		cond = ' AND ('
 		close_paren = False
-		if '*' not in paths and '/*' not in paths:
+		if '*' not in paths and '%s*' % self.fs.pathsep not in paths:
 			close_paren = True
 			for p in paths:
 				if p == self.fs.pathsep:
@@ -1293,12 +1293,18 @@ class fiemap_db(fmdb):
 		'''Regenerate the database.'''
 		if not force and not self.is_stale():
 			return
+		t0 = datetime.datetime.now()
 		self.clear_database()
+		t1 = datetime.datetime.now()
 		self.start_update()
 		self.collect_fs_stats()
+		t2 = datetime.datetime.now()
 		fiemap.walk_fs(self.fspath,
 			self.insert_dir,
 			self.insert_inode,
 			self.insert_extent)
+		t3 = datetime.datetime.now()
 		self.finish_update()
 		self.finalize_fs_stats()
+		t4 = datetime.datetime.now()
+		print_times('fiemap_analyze', [t0, t1, t2, t3, t4])

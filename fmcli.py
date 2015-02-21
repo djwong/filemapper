@@ -418,7 +418,7 @@ class fmcli(code.InteractiveConsole):
 		parser.add_argument('dirnames', nargs = '+', \
 			help = 'Directory names to look up.')
 		args = parser.parse_args(argv[1:])
-		x = [x if x[-1] != '/' else x[:-1] for x in args.dirnames]
+		x = [x if x[-1] != self.fs.pathsep else x[:-1] for x in args.dirnames]
 		for de in self.fmdb.query_ls(x):
 			self.print_dentry(de)
 

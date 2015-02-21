@@ -225,6 +225,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 	def __init__(self, fs, data, units, rows_to_show=500, parent=None, *args):
 		super(InodeTableModel, self).__init__(parent, *args)
 		self.__data = data
+		self.fs = fs
 		self.headers = ['Inode Number', 'Extents', \
 				'Travel Score', 'Type', 'Size', 'Last Access', \
 				'Creation', 'Last Metadata Change', 'Last Data Change', \
@@ -239,7 +240,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 			lambda x: fmcli.posix_timestamp_str(x.crtime, True),
 			lambda x: fmcli.posix_timestamp_str(x.ctime, True),
 			lambda x: fmcli.posix_timestamp_str(x.mtime, True),
-			lambda x: x.path,
+			lambda x: self.fs.pathsep if x.path == '' else x.path,
 		]
 		self.sort_keys = [
 			lambda x: x.ino,
@@ -1245,7 +1246,7 @@ class fmgui(QtGui.QMainWindow):
 		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
 		for m in self.fs_tree.selectedIndexes():
 			node = m.internalPointer()
-			p = node.path if node.path != '' else '/'
+			p = node.path if node.path != '' else self.fs.pathsep
 			if node.hasChildren() and not is_meta:
 				extent_paths.add(p)
 				if ' ' in p:

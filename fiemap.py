@@ -242,6 +242,8 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	flags = FIEMAP_FLAG_SYNC
 	for root, dirs, files in os.walk(path.encode('utf-8', 'surrogateescape')):
 		rstat = os.lstat(root)
+		if rstat.st_dev != dev:
+			continue
 		if root.decode('utf-8', 'replace') == os.sep:
 			plen = 1
 		else:
