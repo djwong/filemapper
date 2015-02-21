@@ -226,7 +226,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		super(InodeTableModel, self).__init__(parent, *args)
 		self.__data = data
 		self.fs = fs
-		self.headers = ['Inode Number', 'Extents', \
+		self.headers = ['Inode', 'Extents', \
 				'Travel Score', 'Type', 'Size', 'Last Access', \
 				'Creation', 'Last Metadata Change', 'Last Data Change', \
 				'Paths']
