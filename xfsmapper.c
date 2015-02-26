@@ -3,7 +3,7 @@
  * Copyright 2015 Darrick J. Wong.
  * Licensed under the GPLv2.
  */
-
+#undef DEBUG
 #include <xfs/libxfs.h>
 #include <signal.h>
 #include <libgen.h>
@@ -88,19 +88,24 @@ static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, walk_fn fn,
 	uint8_t			filetype;
 
 	hdr = bp->b_addr;
-	if (be32_to_cpu(hdr->magic) != XFS_DIR2_BLOCK_MAGIC &&
-	    be32_to_cpu(hdr->magic) != XFS_DIR2_DATA_MAGIC) {
-		return 0;
-	}
-
 	ptr = start = (char *)xfs_dir3_data_unused_p(hdr);
-	if (be32_to_cpu(hdr->magic) == XFS_DIR2_BLOCK_MAGIC) {
+	switch (hdr->magic) {
+	case cpu_to_be32(XFS_DIR2_BLOCK_MAGIC):
+	case cpu_to_be32(XFS_DIR3_BLOCK_MAGIC):
 		btp = xfs_dir2_block_tail_p(ip->i_mount, hdr);
 		endptr = (char *)xfs_dir2_block_leaf_p(btp);
 		if (endptr <= ptr || endptr > (char *)btp)
 			endptr = (char *)hdr + ip->i_mount->m_dirblksize;
-	} else
+		break;
+	case cpu_to_be32(XFS_DIR3_DATA_MAGIC):
+	case cpu_to_be32(XFS_DIR2_DATA_MAGIC):
 		endptr = (char *)hdr + ip->i_mount->m_dirblksize;
+		break;
+	default:
+		printf("Bad directory magic %x\n", be32_to_cpu(hdr->magic));
+		return EFSCORRUPTED;
+	}
+
 	while (ptr < endptr) {
 		dup = (xfs_dir2_data_unused_t *)ptr;
 		if (be16_to_cpu(dup->freetag) == XFS_DIR2_DATA_FREE_TAG) {
@@ -137,6 +142,8 @@ int iterate_directory(xfs_inode_t *ip, walk_fn fn, void *priv_data)
 	int		i;
 	xfs_fsblock_t	poff;
 	int		dblen;
+	xfs_bmbt_rec_host_t	*ep;
+	xfs_filblks_t	blen;
 
 	ASSERT(XFS_IFORK_FORMAT(ip, XFS_DATA_FORK) == XFS_DINODE_FMT_BTREE ||
 	       XFS_IFORK_FORMAT(ip, XFS_DATA_FORK) == XFS_DINODE_FMT_EXTENTS ||
@@ -150,18 +157,19 @@ int iterate_directory(xfs_inode_t *ip, walk_fn fn, void *priv_data)
 		return error;
 	nextents = ifp->if_bytes / (uint)sizeof(xfs_bmbt_rec_t);
 	for (idx = 0; idx < nextents; idx++) {
-		xfs_bmbt_rec_host_t *ep = xfs_iext_get_ext(ifp, idx);
-		xfs_filblks_t blen = xfs_bmbt_get_blockcount(ep);
-
+		ep = xfs_iext_get_ext(ifp, idx);
+		blen = xfs_bmbt_get_blockcount(ep);
 		off = xfs_bmbt_get_startoff(ep);
 		poff = xfs_bmbt_get_startblock(ep);
 		dblen = 1 << ip->i_mount->m_sb.sb_dirblklog;
+		dbg_printf("EXT: poff=%ld loff=%ld len=%ld dblen=%d\n", poff, off, blen, dblen);
+
 		for (i = 0; i < blen; i += dblen, off += dblen, poff += dblen) {
 			xfs_buf_t	*bp;
 
 			/* directory entries are never higher than 32GB */
-			if (XFS_FSB_TO_BB(ip->i_mount, off) >= (1ULL << (35 - BBSHIFT)))
-				break;
+			if (off >= ip->i_mount->m_dirleafblk)
+				return 0;
 
 			bp = libxfs_readbuf(ip->i_mount->m_ddev_targp,
 					XFS_FSB_TO_DADDR(ip->i_mount, poff),
