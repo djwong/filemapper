@@ -292,9 +292,10 @@ class fmcli(code.InteractiveConsole):
 	def print_inode_stats(self, inode):
 		'''Pretty-print inode statistics.'''
 		p = inode.path if inode.path != '' else self.fs.pathsep
+		ts = 'None' if inode.travel_score is None else '%.02f' % inode.travel_score
 		if self.machine:
-			print("'%s',%d,%s,%0.2f,%s,%s,%s,%s,%s,%s" % \
-				(p, inode.ino, inode.nr_extents, inode.travel_score, \
+			print("'%s',%d,%s,%s,%s,%s,%s,%s,%s,%s" % \
+				(p, inode.ino, inode.nr_extents, ts, \
 				 fmdb.inode_typestr(inode), \
 				 posix_timestamp_str(inode.atime), \
 				 posix_timestamp_str(inode.crtime), \
@@ -302,8 +303,8 @@ class fmcli(code.InteractiveConsole):
 				 posix_timestamp_str(inode.mtime), \
 				 inode.size))
 			return
-		print("'%s', %d, %s, %0.2f, %s, '%s', '%s', '%s', '%s', %s" % \
-			(p, inode.ino, inode.nr_extents, inode.travel_score, \
+		print("'%s', %d, %s, %s, %s, '%s', '%s', '%s', '%s', %s" % \
+			(p, inode.ino, inode.nr_extents, ts, \
 			 fmdb.inode_typestr(inode), \
 			 posix_timestamp_str(inode.atime, True), \
 			 posix_timestamp_str(inode.crtime, True), \
@@ -576,7 +577,7 @@ class fmcli(code.InteractiveConsole):
 			help = 'Paths to look up.')
 		parser.add_argument('-q', action = 'store_true', help = 'Quiet mode.  Calculate and cache the results, but do not print them.')
 		args = parser.parse_args(argv[1:])
-		i = self.fmdb.query_paths_inodes(args.paths, analyze_extents = True)
+		i = self.fmdb.query_paths_inodes(args.paths)
 		if args.q:
 			list(i)
 			return
