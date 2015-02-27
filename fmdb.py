@@ -1275,7 +1275,10 @@ class fmdb(object):
 		qstr = 'SELECT AVG(travel_score) FROM inode_t WHERE type < %d' % INO_TYPE_METADATA
 		print_sql(qstr)
 		cur.execute(qstr)
-		return float(cur.fetchall()[0][0])
+		ret = cur.fetchall()[0][0]
+		if ret is None:
+			return 0.0
+		return float(ret)
 
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
