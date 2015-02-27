@@ -38,7 +38,7 @@ def format_size(units, num):
 	if num is None:
 		return None
 	if units.factor is not None:
-		if units.factor == 1:
+		if units.factor == 1 and type(num) == int:
 			return "{:,}{}{}".format(int(num), \
 				' ' if len(units.label) > 0 else '', units.label[:-1] if num == 1 else units.label)
 		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
@@ -53,7 +53,7 @@ def format_number(units, num):
 	if num is None:
 		return None
 	if units.factor is not None:
-		if units.factor == 1:
+		if units.factor == 1 and type(num) == int:
 			return "{:,}{}{}".format(int(num), \
 				' ' if len(units.label) > 0 else '', units.label)
 		return "{:,.1f} {}".format(float(num) / units.factor, units.label)
