@@ -64,6 +64,19 @@ typedef int (*dentry_walk_fn)(xfs_ino_t dir, const char *dname,
 typedef int (*extent_walk_fn)(xfs_inode_t *ip, struct xfs_extent_t *extent,
 			      void *priv_data);
 
+#ifdef STRICT_PUTBUF
+void xfsmapper_putbuf(xfs_buf_t *bp)
+{
+	free(bp->b_addr);
+	bp->b_addr = NULL;
+	free(bp->b_map);
+	bp->b_map = NULL;
+	libxfs_putbuf(bp);
+}
+#else
+# define xfsmapper_putbuf	libxfs_putbuf
+#endif
+
 /* Walk a directory */
 
 static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
@@ -237,13 +250,16 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 					0, &xfsmapper_dir3_data_buf_ops);
 			if (!bp)
 				return ENOMEM;
-if (bp->b_error) printf("URK %d off=%ld mdlb=%u\n", bp->b_error, off, ip->i_mount->m_dirleafblk);
-			if (bp->b_error)
-				return bp->b_error;
+			error = bp->b_error;
+			if (error) {
+				xfsmapper_putbuf(bp);
+				return error;
+			}
 
-			libxfs_putbuf(bp);
-			if (iterate_dirblock(ip, bp, fn, priv_data))
-				return -1;
+			error = iterate_dirblock(ip, bp, fn, priv_data);
+			xfsmapper_putbuf(bp);
+			if (error)
+				return error;
 		}
 	}
 
@@ -338,7 +354,7 @@ int walk_bmap_btree_leaves(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 			else if (!XFS_FSB_SANITY_CHECK(mp, bno))
 				goto err;
 			if (bp)
-				libxfs_trans_brelse(NULL, bp);
+				xfsmapper_putbuf(bp);
 			error = xfs_btree_read_bufl(mp, NULL, bno, 0, &bp,
 					XFS_BMAP_BTREE_REF, &xfs_bmbt_buf_ops);
 			if (error)
@@ -357,7 +373,7 @@ int walk_bmap_btree_leaves(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 		if (level == 0)
 			break;
 		if (bp)
-			libxfs_trans_brelse(NULL, bp);
+			xfsmapper_putbuf(bp);
 		error = xfs_btree_read_bufl(mp, NULL, next_level_bno, 0, &bp,
 				XFS_BMAP_BTREE_REF, &xfs_bmbt_buf_ops);
 		if (error)
@@ -373,9 +389,11 @@ int walk_bmap_btree_leaves(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 		if (!XFS_FSB_SANITY_CHECK(mp, next_level_bno))
 			goto err;
 	} while (1);
+	if (bp)
+		xfsmapper_putbuf(bp);
 	return 0;
 err:
-	libxfs_trans_brelse(NULL, bp);
+	xfsmapper_putbuf(bp);
 	return EFSCORRUPTED;
 }
 
@@ -694,6 +712,7 @@ main(
 	err = 0;
 	memset(&x, 0, sizeof(x));
 	x.isreadonly = (LIBXFS_ISREADONLY | LIBXFS_ISINACTIVE);
+	x.isdirect = 0;
 	progname = basename(argv[0]);
 	while ((c = getopt(argc, argv, "fl:")) != EOF) {
 		switch (c) {
@@ -744,7 +763,7 @@ main(
 
 	/* copy SB from buffer to in-core, converting architecture as we go */
 	libxfs_sb_from_disk(&xmount.m_sb, XFS_BUF_TO_SBP(bp));
-	libxfs_putbuf(bp);
+	xfsmapper_putbuf(bp);
 	libxfs_purgebuf(bp);
 
 	sbp = &xmount.m_sb;
@@ -876,6 +895,7 @@ out:
 		libxfs_device_close(x.logdev);
 	if (x.rtdev)
 		libxfs_device_close(x.rtdev);
+	libxfs_destroy();
 
 	return err;
 }
