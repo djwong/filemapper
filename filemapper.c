@@ -4,6 +4,7 @@
  * Licensed under the GPLv2+.
  */
 #undef DEBUG
+#undef PROGRESS_REPORT
 #include <inttypes.h>
 #include "filemapper.h"
 
@@ -149,8 +150,16 @@ void insert_inode(struct filemapper_t *wf, int64_t ino, int type,
 	sqlite3_stmt *stmt = NULL;
 	int err, err2, col = 1;
 
+#ifdef PROGRESS_REPORT
+	{static int i = 0;
+	 if (!(i++ % 23))
+		printf("%s: ino=%"PRId64" type=%d path=%s                   \r",
+		       __func__, ino, type, path);
+	}
+#else
 	dbg_printf("%s: ino=%"PRId64" type=%d path=%s\n", __func__, ino,
 		   type, path);
+#endif
 
 	/* Update the inode table */
 	err = sqlite3_prepare_v2(wf->db, ino_sql, -1, &stmt, NULL);
