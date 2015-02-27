@@ -9,12 +9,25 @@
 #include <libgen.h>
 #include "filemapper.h"
 
+struct xfs_extent_t
+{
+	unsigned long long p_off;
+	unsigned long long l_off;
+	unsigned long long len;
+	xfs_exntst_t	state;
+	int		unaligned:1;
+	int		inlinedata:1;
+};
+
 struct xfsmap_t {
 	struct filemapper_t base;
 
-	xfs_mount_t *fs;
-	int err;
-	uint8_t *ino_bmap;
+	xfs_mount_t	*fs;
+	int		err;
+	uint8_t		*ino_bmap;
+
+	struct xfs_extent_t	last_ext;
+	int		itype;
 };
 #define wf_db		base.db
 #define wf_db_err	base.db_err
@@ -34,10 +47,23 @@ static int type_codes[] = {
 	[XFS_DIR3_XT_METADATA]	= INO_TYPE_METADATA,
 };
 
-typedef int (*walk_fn)(xfs_ino_t dir, const char *dname, size_t dname_len,
-		       xfs_ino_t ino, int file_type, void *priv_data);
+static int extent_codes[] = {
+	[XFS_DIR3_FT_REG_FILE]	= EXT_TYPE_FILE,
+	[XFS_DIR3_FT_DIR]	= EXT_TYPE_DIR,
+	[XFS_DIR3_FT_SYMLINK]	= EXT_TYPE_SYMLINK,
+	[XFS_DIR3_XT_METADATA]	= EXT_TYPE_METADATA,
+	[XFS_DIR3_XT_EXTENT]	= EXT_TYPE_EXTENT,
+	[XFS_DIR3_XT_XATTR]	= EXT_TYPE_XATTR,
+};
 
-static int iterate_inline_dir(xfs_inode_t *ip, walk_fn fn, void *priv_data)
+/* Walk a directory */
+
+typedef int (*dentry_walk_fn)(xfs_ino_t dir, const char *dname,
+			      size_t dname_len, xfs_ino_t ino, int file_type,
+			      void *priv_data);
+
+static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
+			      void *priv_data)
 {
 	xfs_dir2_sf_entry_t	*sfep;		/* shortform directory entry */
 	xfs_dir2_sf_hdr_t	*sfp;		/* shortform structure */
@@ -74,7 +100,7 @@ static int iterate_inline_dir(xfs_inode_t *ip, walk_fn fn, void *priv_data)
 	return 0;
 }
 
-static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, walk_fn fn,
+static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, dentry_walk_fn fn,
 			    void *priv_data)
 {
 	char			namebuf[XFS_NAME_LEN + 1];
@@ -132,7 +158,7 @@ static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, walk_fn fn,
 	return 0;
 }
 
-int iterate_directory(xfs_inode_t *ip, walk_fn fn, void *priv_data)
+int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 {
 	int		error;			/* error return value */
 	int		idx;			/* extent record index */
@@ -188,6 +214,165 @@ int iterate_directory(xfs_inode_t *ip, walk_fn fn, void *priv_data)
 	return 0;
 }
 
+/* Walk fork extents */
+
+typedef int (*extent_walk_fn)(xfs_inode_t *ip, struct xfs_extent_t *extent, void *priv_data);
+
+static void insert_xfs_extent(struct xfsmap_t *wf, xfs_inode_t *ip, struct xfs_extent_t *xext)
+{
+	int flags;
+
+	flags = 0;
+	if (xext->inlinedata)
+		flags |= EXTENT_DATA_INLINE;
+	if (xext->unaligned)
+		flags |= EXTENT_NOT_ALIGNED;
+	if (xext->state == XFS_EXT_UNWRITTEN)
+		flags |= EXTENT_UNWRITTEN;
+	insert_extent(&wf->base, ip->i_ino, xext->p_off, xext->l_off,
+		      xext->len, flags, extent_codes[wf->itype]);
+}
+
+static int walk_extent_helper(xfs_inode_t *ip, struct xfs_extent_t *extent, void *priv_data)
+{
+	struct xfsmap_t	*wf = priv_data;
+	struct xfs_extent_t *last = &wf->last_ext;
+
+	if (last->len) {
+		if (last->p_off + last->len == extent->p_off &&
+		    last->l_off + last->len == extent->l_off &&
+		    last->state == extent->state &&
+		    last->len + extent->len <= MAX_EXTENT_LENGTH) {
+			last->len += extent->len;
+			dbg_printf("R: ino=%d len=%u\n", ip->i_ino,
+				   last->len);
+			return 0;
+		}
+
+		/* Insert the extent */
+		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ip->i_ino,
+			   last->p_off, last->l_off,
+			   last->len);
+		insert_xfs_extent(wf, ip, last);
+		if (wf->wf_db_err)
+			return -1;
+	}
+
+	/* Start recording extents */
+	*last = *extent;
+	return 0;
+}
+
+static unsigned long long inode_poff(xfs_inode_t *ip)
+{
+	return XFS_FSB_TO_B(ip->i_mount, XFS_DADDR_TO_FSB(ip->i_mount, ip->i_imap.im_blkno)) + ip->i_imap.im_boffset;
+}
+
+int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *priv_data)
+{
+	int			idx;		/* extent record index */
+	xfs_ifork_t		*ifp;		/* inode fork pointer */
+	xfs_extnum_t		nextents;	/* number of extent entries */
+	xfs_bmbt_rec_host_t	*ep;
+	xfs_bmbt_irec_t		ext;
+	struct xfs_extent_t	xext;
+
+	switch (fork) {
+	case XFS_DATA_FORK:
+		break;
+	case XFS_ATTR_FORK:
+		if (ip->i_d.di_forkoff == 0)
+			return 0;
+		break;
+	default:
+		printf("Unknown fork %d\n", fork);
+		return -1;
+	}
+
+	memset(&xext, 0, sizeof(xext));
+	ifp = XFS_IFORK_PTR(ip, XFS_DATA_FORK);
+	switch (XFS_IFORK_FORMAT(ip, fork)) {
+	case XFS_DINODE_FMT_LOCAL:
+		xext.p_off = inode_poff(ip) +
+			     xfs_dinode_size(ip->i_d.di_version) +
+			     (fork == XFS_ATTR_FORK ? ip->i_d.di_forkoff << 3 : 0);
+		if (fork == XFS_DATA_FORK) {
+			xext.len = ip->i_d.di_size;
+			xext.inlinedata = 1;
+		} else
+			xext.len = ip->i_mount->m_sb.sb_inodesize - ip->i_d.di_forkoff;
+		xext.state = XFS_EXT_NORM;
+		xext.unaligned = 1;
+		if (fn(ip, &xext, priv_data))
+			return -1;
+		break;
+	case XFS_DINODE_FMT_BTREE:
+		printf("ERR: ino=%ld mapping not implemented\n", ip->i_ino);
+		break;
+	case XFS_DINODE_FMT_EXTENTS:
+		nextents = ifp->if_bytes / (uint)sizeof(xfs_bmbt_rec_t);
+		for (idx = 0; idx < nextents; idx++) {
+			ep = xfs_iext_get_ext(ifp, idx);
+
+			xfs_bmbt_get_all(ep, &ext);
+			xext.p_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startblock);
+			xext.l_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startoff);
+			xext.len = XFS_FSB_TO_B(ip->i_mount, ext.br_blockcount);
+			if (fn(ip, &xext, priv_data))
+				return -1;
+		}
+		break;
+	default:
+		printf("Unknown fork format %d\n", XFS_IFORK_FORMAT(ip, fork));
+		return -1;
+	}
+
+	return 0;
+}
+
+#define WALK_FORK(wf, inode, type, fork) \
+	do { \
+		int err; \
+		struct xfs_extent_t *last = &(wf)->last_ext; \
+\
+		last->len = 0; \
+		if ((fork) == XFS_ATTR_FORK) \
+			(wf)->itype = XFS_DIR3_XT_XATTR; \
+		else \
+			(wf)->itype = (type); \
+		err = iterate_fork_mappings((inode), (fork), walk_extent_helper, (wf)); \
+		if (!(wf)->err) \
+			(wf)->err = err; \
+		if ((wf)->err || (wf)->wf_db_err) \
+			return; \
+\
+		if (last->len == 0) \
+			break; \
+		/* Insert the extent */ \
+		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", (inode)->i_ino, \
+			   last->p_off, last->l_off, \
+			   last->len); \
+		insert_xfs_extent((wf), (inode), last); \
+		if (wf->wf_db_err) \
+			return; \
+	} while (0);
+
+static void walk_file_mappings(struct xfsmap_t *wf, xfs_inode_t *ip, int type)
+{
+	unsigned long long ioff;
+
+	ioff = inode_poff(ip);
+	insert_extent(&wf->base, ip->i_ino, ioff, 0,
+		      ip->i_mount->m_sb.sb_inodesize, 0, EXT_TYPE_METADATA);
+	if (wf->wf_db_err)
+		return;
+
+	/* Walk the inode forks */
+	WALK_FORK(wf, ip, type, XFS_DATA_FORK);
+	WALK_FORK(wf, ip, type, XFS_ATTR_FORK);
+}
+#undef WALK_FORK
+
 /* Handle a directory entry */
 static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			  xfs_ino_t ino, int file_type, void *priv_data)
@@ -201,6 +386,7 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 	time_t atime, crtime, ctime, mtime;
 	time_t *pcrtime = NULL;
 	ssize_t size;
+	int err = 0;
 
 	if (!strcmp(dname, ".") || !strcmp(dname, ".."))
 		return 0;
@@ -224,8 +410,7 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			type = file_type;
 			break;
 		default:
-			IRELE(inode);
-			return 0;
+			goto out;
 		}
 	} else {
 		if (S_ISREG(inode->i_d.di_mode))
@@ -234,10 +419,8 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			type = XFS_DIR3_FT_DIR;
 		else if (S_ISLNK(inode->i_d.di_mode))
 			type = XFS_DIR3_FT_SYMLINK;
-		else {
-			IRELE(inode);
-			return 0;
-		}
+		else
+			goto out;
 	}
 
 	atime = inode->i_d.di_atime.t_sec;
@@ -255,26 +438,18 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 		path[0] = 0;
 	insert_inode(&wf->base, ino, type_codes[type], path, &atime,
 		     pcrtime, &ctime, &mtime, &size);
-	if (wf->wf_db_err) {
-		IRELE(inode);
-		return -1;
-	}
+	if (wf->wf_db_err)
+		goto out;
 	if (dir)
 		insert_dentry(&wf->base, dir, name, ino);
-	if (wf->wf_db_err) {
-		IRELE(inode);
-		return -1;
-	}
+	if (wf->wf_db_err)
+		goto out;
 
-#if 0
-	walk_file_mappings(wf, dirent->inode, type);
+	walk_file_mappings(wf, inode, type);
 	if (wf->err || wf->wf_db_err)
-		return DIRENT_ABORT;
-#endif
+		goto out;
 
 	if (type == XFS_DIR3_FT_DIR) {
-		int err;
-
 		old_dirpath = wf->wf_dirpath;
 		wf->wf_dirpath = path;
 		err = iterate_directory(inode, walk_fs_helper, wf);
@@ -282,11 +457,12 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			wf->err = err;
 		wf->wf_dirpath = old_dirpath;
 	}
-	IRELE(inode);
 	if (wf->err || wf->wf_db_err)
-		return -1;
+		goto out;
 
-	return 0;
+out:
+	IRELE(inode);
+	return (wf->err || wf->wf_db_err) ? -1 : 0;
 }
 
 /* Walk the whole FS, looking for inodes to analyze. */
@@ -490,6 +666,7 @@ main(
 	CHECK_ERROR("while caching CLI overview");
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
+#endif
 	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
 	if (errm) {
 		fprintf(stderr, "%s %s", errm, "while starting transaction");
@@ -500,7 +677,6 @@ main(
 		fprintf(stderr, "%s %s", sqlite3_errstr(wf.wf_db_err), "while ending transaction");
 		goto out;
 	}
-#endif
 out:
 	if (wf.ino_bmap)
 		free(wf.ino_bmap);
