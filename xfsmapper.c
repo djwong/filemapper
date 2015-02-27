@@ -17,6 +17,7 @@ struct xfs_extent_t
 	xfs_exntst_t	state;
 	int		unaligned:1;
 	int		inlinedata:1;
+	int		extentmap:1;
 };
 
 struct xfsmap_t {
@@ -56,11 +57,14 @@ static int extent_codes[] = {
 	[XFS_DIR3_XT_XATTR]	= EXT_TYPE_XATTR,
 };
 
-/* Walk a directory */
-
 typedef int (*dentry_walk_fn)(xfs_ino_t dir, const char *dname,
 			      size_t dname_len, xfs_ino_t ino, int file_type,
 			      void *priv_data);
+
+typedef int (*extent_walk_fn)(xfs_inode_t *ip, struct xfs_extent_t *extent,
+			      void *priv_data);
+
+/* Walk a directory */
 
 static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
 			      void *priv_data)
@@ -77,7 +81,7 @@ static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
 	 * Give up if the directory is way too short.
 	 */
 	if (ip->i_d.di_size < offsetof(xfs_dir2_sf_hdr_t, parent))
-		return -EIO;
+		return EFSCORRUPTED;
 
 	ASSERT(ip->i_df.if_bytes == ip->i_d.di_size);
 	ASSERT(ip->i_df.if_u1.if_data != NULL);
@@ -92,9 +96,8 @@ static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
 		namebuf[sfep->namelen] = 0;
 		ino = xfs_dir3_sfe_get_ino(ip->i_mount, sfp, sfep);
 		filetype = xfs_dir3_sfe_get_ftype(ip->i_mount, sfp, sfep);
-		if (fn(ip->i_ino, namebuf, sfep->namelen, ino, filetype,
-		       priv_data))
-			return -1;
+		if (fn(ip->i_ino, namebuf, sfep->namelen, ino, filetype, priv_data))
+			break;
 		sfep = xfs_dir3_sf_nextentry(ip->i_mount, sfp, sfep);
 	}
 	return 0;
@@ -145,18 +148,50 @@ static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, dentry_walk_fn fn,
 		ino = be64_to_cpu(dep->inumber);
 		filetype = xfs_dir3_dirent_get_ftype(ip->i_mount, dep);
 		dbg_printf("fn dino=%ld name='%s' (%d), ino=%ld ft=%d ptr=%ld entsz=%d\n",
-				ip->i_ino, namebuf, dep->namelen, ino, filetype,
-				ptr - (char *)hdr,
-				xfs_dir3_data_entsize(ip->i_mount, dep->namelen));
-		if (fn(ip->i_ino, namebuf, dep->namelen, ino, filetype, priv_data)) {
-			libxfs_putbuf(bp);
-			return -1;
-		}
+			   ip->i_ino, namebuf, dep->namelen, ino, filetype,
+			   ptr - (char *)hdr,
+			   xfs_dir3_data_entsize(ip->i_mount, dep->namelen));
+		if (fn(ip->i_ino, namebuf, dep->namelen, ino, filetype,
+		       priv_data))
+			break;
 		ptr += xfs_dir3_data_entsize(ip->i_mount, dep->namelen);
 	}
 
 	return 0;
 }
+
+void xfs_verifier_error(struct xfs_buf *bp);
+
+static void xfsmapper_dir3_data_read_verify(
+	struct xfs_buf		*bp)
+{
+	struct xfs_dir2_data_hdr *hdr = bp->b_addr;
+
+	switch (hdr->magic) {
+	case cpu_to_be32(XFS_DIR2_BLOCK_MAGIC):
+	case cpu_to_be32(XFS_DIR3_BLOCK_MAGIC):
+		xfs_dir3_block_buf_ops.verify_read(bp);
+		return;
+	case cpu_to_be32(XFS_DIR2_DATA_MAGIC):
+	case cpu_to_be32(XFS_DIR3_DATA_MAGIC):
+		xfs_dir3_data_buf_ops.verify_read(bp);
+		return;
+	default:
+		xfs_buf_ioerror(bp, EFSCORRUPTED);
+		xfs_verifier_error(bp);
+		break;
+	}
+}
+
+static void fail_write_verify(struct xfs_buf	*bp)
+{
+	ASSERT(0);
+}
+
+const struct xfs_buf_ops xfsmapper_dir3_data_buf_ops = {
+	.verify_read = xfsmapper_dir3_data_read_verify,
+	.verify_write = fail_write_verify,
+};
 
 int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 {
@@ -170,6 +205,7 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 	int		dblen;
 	xfs_bmbt_rec_host_t	*ep;
 	xfs_filblks_t	blen;
+	xfs_buf_t	*bp;
 
 	ASSERT(XFS_IFORK_FORMAT(ip, XFS_DATA_FORK) == XFS_DINODE_FMT_BTREE ||
 	       XFS_IFORK_FORMAT(ip, XFS_DATA_FORK) == XFS_DINODE_FMT_EXTENTS ||
@@ -191,8 +227,6 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 		dbg_printf("EXT: poff=%ld loff=%ld len=%ld dblen=%d\n", poff, off, blen, dblen);
 
 		for (i = 0; i < blen; i += dblen, off += dblen, poff += dblen) {
-			xfs_buf_t	*bp;
-
 			/* directory entries are never higher than 32GB */
 			if (off >= ip->i_mount->m_dirleafblk)
 				return 0;
@@ -200,28 +234,157 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 			bp = libxfs_readbuf(ip->i_mount->m_ddev_targp,
 					XFS_FSB_TO_DADDR(ip->i_mount, poff),
 					XFS_FSB_TO_BB(ip->i_mount, dblen),
-					0, &xfs_dir3_data_buf_ops);
+					0, &xfsmapper_dir3_data_buf_ops);
 			if (!bp)
-				return -1;
+				return ENOMEM;
+if (bp->b_error) printf("URK %d off=%ld mdlb=%u\n", bp->b_error, off, ip->i_mount->m_dirleafblk);
 			if (bp->b_error)
 				return bp->b_error;
 
-			if (iterate_dirblock(ip, bp, fn, priv_data)) {
-				libxfs_putbuf(bp);
-				return -1;
-			}
 			libxfs_putbuf(bp);
+			if (iterate_dirblock(ip, bp, fn, priv_data))
+				return -1;
 		}
 	}
+
 	return 0;
+}
+
+/* Walk a btree */
+
+/*
+ * Walk the nodes of an extent btree
+ */
+#define XFS_BMAP_BROOT_KEY_ADDR(mp, bb, i) \
+	XFS_BMBT_KEY_ADDR(mp, bb, i)
+
+static int
+xfs_bmap_sanity_check(
+	struct xfs_mount	*mp,
+	struct xfs_buf		*bp,
+	int			level)
+{
+	struct xfs_btree_block  *block = XFS_BUF_TO_BLOCK(bp);
+
+	if (block->bb_magic != cpu_to_be32(XFS_BMAP_CRC_MAGIC) &&
+	    block->bb_magic != cpu_to_be32(XFS_BMAP_MAGIC))
+		return 0;
+
+	if (be16_to_cpu(block->bb_level) != level ||
+	    be16_to_cpu(block->bb_numrecs) == 0 ||
+	    be16_to_cpu(block->bb_numrecs) > mp->m_bmap_dmxr[level != 0])
+		return 0;
+
+	return 1;
+}
+
+int walk_bmap_btree_leaves(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
+			   void *priv_data)
+{
+	struct xfs_btree_block	*block;	/* current btree block */
+	xfs_fsblock_t		bno;	/* block # of "block" */
+	xfs_fsblock_t		next_level_bno;	/* block # of next level in tree */
+	xfs_fileoff_t		kno;	/* file offset of this btree node */
+	xfs_buf_t		*bp;	/* buffer for "block" */
+	int			error;	/* error return value */
+	xfs_extnum_t		j;	/* index into the extents list */
+	xfs_ifork_t		*ifp;	/* fork structure */
+	int			level;	/* btree level, for checking */
+	xfs_mount_t		*mp;	/* file system mount structure */
+	__be64			*pp;	/* pointer to block address */
+	xfs_bmbt_key_t		*kp;	/* pointer to offset address */
+	int			num_recs;
+	struct xfs_extent_t	xext;
+	/* REFERENCED */
+
+	memset(&xext, 0, sizeof(xext));
+	bno = NULLFSBLOCK;
+	mp = ip->i_mount;
+	ifp = XFS_IFORK_PTR(ip, whichfork);
+	block = ifp->if_broot;
+	/*
+	 * Root level must use BMAP_BROOT_PTR_ADDR macro to get ptr out.
+	 */
+	level = be16_to_cpu(block->bb_level);
+	kp = XFS_BMAP_BROOT_KEY_ADDR(mp, block, 1);
+	pp = XFS_BMAP_BROOT_PTR_ADDR(mp, block, 1, ifp->if_broot_bytes);
+	next_level_bno = be64_to_cpu(*pp);
+	if (!XFS_FSB_SANITY_CHECK(mp, next_level_bno))
+		return EFSCORRUPTED;
+	bp = NULL;
+	do {
+		/* process all the blocks in this level */
+		do {
+			/* process all the key/ptrs in this block */
+			num_recs = xfs_btree_get_numrecs(block);
+			for (j = 0; j < num_recs; j++, pp++, kp++) {
+				kno = be64_to_cpu(kp->br_startoff);
+				bno = be64_to_cpu(*pp);
+				if (!XFS_FSB_SANITY_CHECK(mp, bno))
+					goto err;
+				xext.p_off = XFS_FSB_TO_B(ip->i_mount, bno);
+				xext.l_off = XFS_FSB_TO_B(ip->i_mount, kno);
+				xext.len = 0;
+				xext.state = XFS_EXT_NORM;
+				xext.extentmap = 1;
+				if (fn(ip, &xext, priv_data))
+					goto err;
+			}
+
+			/* now go to the right sibling */
+			bno = be64_to_cpu(block->bb_u.l.bb_rightsib);
+			if (bno == NULLFSBLOCK)
+				break;
+			else if (!XFS_FSB_SANITY_CHECK(mp, bno))
+				goto err;
+			if (bp)
+				libxfs_trans_brelse(NULL, bp);
+			error = xfs_btree_read_bufl(mp, NULL, bno, 0, &bp,
+					XFS_BMAP_BTREE_REF, &xfs_bmbt_buf_ops);
+			if (error)
+				return error;
+			if (bp->b_error)
+				goto err;
+			block = XFS_BUF_TO_BLOCK(bp);
+			if (!xfs_bmap_sanity_check(mp, bp, level))
+				goto err;
+			kp = XFS_BMBT_KEY_ADDR(mp, block, 1);
+			pp = XFS_BMBT_PTR_ADDR(mp, block, 1, mp->m_bmap_dmxr[1]);
+		} while (1);
+
+		/* now go down the tree */
+		level--;
+		if (level == 0)
+			break;
+		if (bp)
+			libxfs_trans_brelse(NULL, bp);
+		error = xfs_btree_read_bufl(mp, NULL, next_level_bno, 0, &bp,
+				XFS_BMAP_BTREE_REF, &xfs_bmbt_buf_ops);
+		if (error)
+			return error;
+		if (bp->b_error)
+			goto err;
+		block = XFS_BUF_TO_BLOCK(bp);
+		if (!xfs_bmap_sanity_check(mp, bp, level))
+			goto err;
+		kp = XFS_BMBT_KEY_ADDR(mp, block, 1);
+		pp = XFS_BMBT_PTR_ADDR(mp, block, 1, mp->m_bmap_dmxr[1]);
+		next_level_bno = be64_to_cpu(*pp);
+		if (!XFS_FSB_SANITY_CHECK(mp, next_level_bno))
+			goto err;
+	} while (1);
+	return 0;
+err:
+	libxfs_trans_brelse(NULL, bp);
+	return EFSCORRUPTED;
 }
 
 /* Walk fork extents */
 
-typedef int (*extent_walk_fn)(xfs_inode_t *ip, struct xfs_extent_t *extent, void *priv_data);
-
-static void insert_xfs_extent(struct xfsmap_t *wf, xfs_inode_t *ip, struct xfs_extent_t *xext)
+static void insert_xfs_extent(xfs_inode_t *ip, struct xfs_extent_t *xext,
+			      struct xfsmap_t *wf)
 {
+	int type;
 	int flags;
 
 	flags = 0;
@@ -229,13 +392,17 @@ static void insert_xfs_extent(struct xfsmap_t *wf, xfs_inode_t *ip, struct xfs_e
 		flags |= EXTENT_DATA_INLINE;
 	if (xext->unaligned)
 		flags |= EXTENT_NOT_ALIGNED;
+	type = extent_codes[wf->itype];
+	if (xext->extentmap)
+		type = EXT_TYPE_EXTENT;
 	if (xext->state == XFS_EXT_UNWRITTEN)
 		flags |= EXTENT_UNWRITTEN;
 	insert_extent(&wf->base, ip->i_ino, xext->p_off, xext->l_off,
-		      xext->len, flags, extent_codes[wf->itype]);
+		      xext->len, flags, type);
 }
 
-static int walk_extent_helper(xfs_inode_t *ip, struct xfs_extent_t *extent, void *priv_data)
+static int walk_extent_helper(xfs_inode_t *ip, struct xfs_extent_t *extent,
+			      void *priv_data)
 {
 	struct xfsmap_t	*wf = priv_data;
 	struct xfs_extent_t *last = &wf->last_ext;
@@ -246,16 +413,15 @@ static int walk_extent_helper(xfs_inode_t *ip, struct xfs_extent_t *extent, void
 		    last->state == extent->state &&
 		    last->len + extent->len <= MAX_EXTENT_LENGTH) {
 			last->len += extent->len;
-			dbg_printf("R: ino=%d len=%u\n", ip->i_ino,
+			dbg_printf("R: ino=%ld len=%llu\n", ip->i_ino,
 				   last->len);
 			return 0;
 		}
 
 		/* Insert the extent */
-		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", ip->i_ino,
-			   last->p_off, last->l_off,
-			   last->len);
-		insert_xfs_extent(wf, ip, last);
+		dbg_printf("R: ino=%ld pblk=%llu lblk=%llu len=%llu\n",
+			   ip->i_ino, last->p_off, last->l_off, last->len);
+		insert_xfs_extent(ip, last, wf);
 		if (wf->wf_db_err)
 			return -1;
 	}
@@ -267,10 +433,13 @@ static int walk_extent_helper(xfs_inode_t *ip, struct xfs_extent_t *extent, void
 
 static unsigned long long inode_poff(xfs_inode_t *ip)
 {
-	return XFS_FSB_TO_B(ip->i_mount, XFS_DADDR_TO_FSB(ip->i_mount, ip->i_imap.im_blkno)) + ip->i_imap.im_boffset;
+	return XFS_FSB_TO_B(ip->i_mount,
+			XFS_DADDR_TO_FSB(ip->i_mount, ip->i_imap.im_blkno)) +
+			ip->i_imap.im_boffset;
 }
 
-int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *priv_data)
+int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn,
+			  void *priv_data)
 {
 	int			idx;		/* extent record index */
 	xfs_ifork_t		*ifp;		/* inode fork pointer */
@@ -278,6 +447,7 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *pr
 	xfs_bmbt_rec_host_t	*ep;
 	xfs_bmbt_irec_t		ext;
 	struct xfs_extent_t	xext;
+	int			err;
 
 	switch (fork) {
 	case XFS_DATA_FORK:
@@ -288,7 +458,7 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *pr
 		break;
 	default:
 		printf("Unknown fork %d\n", fork);
-		return -1;
+		return EFSCORRUPTED;
 	}
 
 	memset(&xext, 0, sizeof(xext));
@@ -305,12 +475,20 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *pr
 			xext.len = ip->i_mount->m_sb.sb_inodesize - ip->i_d.di_forkoff;
 		xext.state = XFS_EXT_NORM;
 		xext.unaligned = 1;
-		if (fn(ip, &xext, priv_data))
-			return -1;
+		fn(ip, &xext, priv_data);
 		break;
 	case XFS_DINODE_FMT_BTREE:
-		printf("ERR: ino=%ld mapping not implemented\n", ip->i_ino);
-		break;
+		if (!(ifp->if_flags & XFS_IFEXTENTS)) {
+			err = xfs_iread_extents(NULL, ip, fork);
+			if (err)
+				return err;
+		}
+		/* read leaves... */
+		err = walk_bmap_btree_leaves(ip, fork,
+				(extent_walk_fn)insert_xfs_extent, priv_data);
+		if (err)
+			return err;
+		/* drop through */
 	case XFS_DINODE_FMT_EXTENTS:
 		nextents = ifp->if_bytes / (uint)sizeof(xfs_bmbt_rec_t);
 		for (idx = 0; idx < nextents; idx++) {
@@ -321,12 +499,12 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *pr
 			xext.l_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startoff);
 			xext.len = XFS_FSB_TO_B(ip->i_mount, ext.br_blockcount);
 			if (fn(ip, &xext, priv_data))
-				return -1;
+				break;
 		}
 		break;
 	default:
 		printf("Unknown fork format %d\n", XFS_IFORK_FORMAT(ip, fork));
-		return -1;
+		return EFSCORRUPTED;
 	}
 
 	return 0;
@@ -351,10 +529,10 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn, void *pr
 		if (last->len == 0) \
 			break; \
 		/* Insert the extent */ \
-		dbg_printf("R: ino=%d pblk=%llu lblk=%llu len=%u\n", (inode)->i_ino, \
-			   last->p_off, last->l_off, \
+		dbg_printf("R: ino=%ld pblk=%llu lblk=%llu len=%llu\n", \
+			   (inode)->i_ino, last->p_off, last->l_off, \
 			   last->len); \
-		insert_xfs_extent((wf), (inode), last); \
+		insert_xfs_extent((inode), last, (wf)); \
 		if (wf->wf_db_err) \
 			return; \
 	} while (0);
