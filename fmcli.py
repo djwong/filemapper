@@ -374,6 +374,7 @@ class fmcli(code.InteractiveConsole):
 		inodes = res.inodes if res.inodes != 0 else 1
 		extents = res.extents if res.extents != 0 else 1
 		print("Fragmentation:\t\t%.1f%%" % ((100.0 * extents / inodes) - 100))
+		print("Avg. Travel Score:\t%.02f bytes" % self.fmdb.query_avg_travel_score())
 
 	def do_set_units(self, argv):
 		avail_units = [

@@ -1267,6 +1267,16 @@ class fmdb(object):
 		t2 = datetime.datetime.now()
 		print_times('query_extents', [t0, t1, t2])
 
+	def query_avg_travel_score(self):
+		'''Query the average travel score for all files and directories.'''
+		cur = self.conn.cursor()
+		cur.arraysize = self.result_batch_size
+
+		qstr = 'SELECT AVG(travel_score) FROM inode_t WHERE type < %d' % INO_TYPE_METADATA
+		print_sql(qstr)
+		cur.execute(qstr)
+		return float(cur.fetchall()[0][0])
+
 class fiemap_db(fmdb):
 	'''FileMapper database based on FIEMAP.'''
 	def __init__(self, fspath, dbpath, dbwrite):

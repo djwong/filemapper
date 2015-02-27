@@ -1081,7 +1081,7 @@ class fmgui(QtGui.QMainWindow):
 			ti = 1
 		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
 		extents = self.fs.extents if self.fs.extents != 0 else 1
-		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes used; %s extents; %s FS blocks; %s per cell; %.1f%% fragmentation" % \
+		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes; %s extents; %s blocks; %s/cell; %.1f%% frag; %.1f travel" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
 			 100 * (1.0 - (float(fb) / tb)), \
@@ -1091,7 +1091,8 @@ class fmgui(QtGui.QMainWindow):
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.block_size), \
 			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
-			 100.0 * extents / inodes - 100)
+			 100.0 * extents / inodes - 100, \
+			 self.fmdb.query_avg_travel_score())
 		self.status_label.setText(s)
 
 	## Load and save UI state
