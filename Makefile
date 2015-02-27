@@ -17,26 +17,26 @@ all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsma
 	gzip -9 < $< > $@
 
 xfsmapper: filemapper.o xfsmapper.o $(XFSPROGS)/libxfs/.libs/libxfs.a
-	$(CC) -o $@ $^ -lsqlite3 -lpthread -luuid
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lpthread -luuid
 
 xfsmapper.c: filemapper.h
 
 xfsmapper.o: xfsmapper.c $(XFSPROGS)/include/xfs/libxfs.h
-	$(CC) -o $@ -c $< -I$(XFSPROGS)/include/
+	$(CC) $(CFLAGS) -o $@ -c $< -I$(XFSPROGS)/include/
 
 e2mapper: filemapper.o e2mapper.o
-	$(CC) -o $@ $^ -lsqlite3 -lcom_err -lext2fs
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs
 
 filemapper.c: filemapper.h
 e2mapper.c: filemapper.h
 
 ntfsmapper: filemapper.o ntfsmapper.o
-	$(CC) -o $@ $^ -lsqlite3 -lntfs-3g
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g
 
 ntfsmapper.c: filemapper.h
 
 fatmapper: filemapper.o fatmapper.o dosfs.o
-	$(CC) -o $@ $^ -lsqlite3
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3
 
 fatmapper.c: dosfs.h filemapper.h
 
