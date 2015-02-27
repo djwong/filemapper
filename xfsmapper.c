@@ -200,9 +200,11 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 			bp = libxfs_readbuf(ip->i_mount->m_ddev_targp,
 					XFS_FSB_TO_DADDR(ip->i_mount, poff),
 					XFS_FSB_TO_BB(ip->i_mount, dblen),
-					0, NULL);
+					0, &xfs_dir3_data_buf_ops);
 			if (!bp)
 				return -1;
+			if (bp->b_error)
+				return bp->b_error;
 
 			if (iterate_dirblock(ip, bp, fn, priv_data)) {
 				libxfs_putbuf(bp);
