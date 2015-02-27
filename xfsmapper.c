@@ -559,6 +559,13 @@ static void walk_file_mappings(struct xfsmap_t *wf, xfs_inode_t *ip, int type)
 {
 	unsigned long long ioff;
 
+// XXX
+#if 0
+	if (test_bit(wf->ino_bmap, ip->i_ino))
+		return;
+	set_bit(wf->ino_bmap, ip->i_ino, 1);
+#endif
+
 	ioff = inode_poff(ip);
 	insert_extent(&wf->base, ip->i_ino, ioff, 0,
 		      ip->i_mount->m_sb.sb_inodesize, 0, EXT_TYPE_METADATA);

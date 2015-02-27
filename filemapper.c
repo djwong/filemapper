@@ -650,3 +650,17 @@ out:
 		err = err2;
 	wf->db_err = err;
 }
+
+/* Simple bitmap functions */
+int test_bit(const uint8_t *bmap, const uint64_t bit)
+{
+	return (bmap[bit >> 3] >> (bit & 7)) & 1;
+}
+
+void set_bit(uint8_t *bmap, const uint64_t bit, const int new_value)
+{
+	if (new_value)
+		bmap[bit >> 3] |= (1 << (bit & 7));
+	else
+		bmap[bit >> 3] &= ~(1 << (bit & 7));
+}
