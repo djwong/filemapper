@@ -193,8 +193,10 @@ fail:
 #define STR_FL_FILE		"freelist"
 #define INO_JOURNAL_FILE	(-8)
 #define STR_JOURNAL_FILE	"journal"
+#define INO_ITABLE_FILE		(-9)
+#define STR_ITABLE_FILE		"inodes"
 /* This must come last */
-#define INO_GROUPS_DIR		(-9)
+#define INO_GROUPS_DIR		(-10)
 #define STR_GROUPS_DIR		"groups"
 
 
@@ -552,11 +554,13 @@ static int insert_meta_extent(int64_t ino, struct xfs_extent_t *xext,
 	struct xfsmap_t *wf = priv_data;
 	xfs_fsblock_t fsbno;
 	xfs_agblock_t agbno;
+	xfs_extlen_t blen;
 
 	fsbno = XFS_B_TO_FSB(wf->fs, xext->p_off);
 	agbno = XFS_FSB_TO_AGBNO(wf->fs, fsbno);
-	big_bmap_set(wf->bbmap, wf->agno, agbno, 1, 1);
-	return insert_xfs_extent(ino, xext, wf);
+	blen = XFS_B_TO_FSB(wf->fs, xext->len);
+	big_bmap_set(wf->bbmap, wf->agno, agbno, blen, 1);
+	return 0;
 }
 
 static int walk_extent_helper(int64_t ino, struct xfs_extent_t *extent,
@@ -722,15 +726,16 @@ static void walk_file_mappings(struct xfsmap_t *wf, xfs_inode_t *ip, int type)
 static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			  xfs_ino_t ino, int file_type, void *priv_data)
 {
-	char path[PATH_MAX + 1];
-	char name[XFS_NAME_LEN + 1];
-	const char *old_dirpath;
-	int type, sz;
-	struct xfsmap_t *wf = priv_data;
-	xfs_inode_t *inode = NULL;
-	time_t atime, crtime, ctime, mtime;
-	time_t *pcrtime = NULL;
-	ssize_t size;
+	char		path[PATH_MAX + 1];
+	char		name[XFS_NAME_LEN + 1];
+	const char	*old_dirpath;
+	int		type, sz;
+	struct xfsmap_t	*wf = priv_data;
+	xfs_inode_t	*inode = NULL;
+	time_t		atime, crtime, ctime, mtime;
+	time_t		*pcrtime = NULL;
+	ssize_t		size;
+	int		err;
 
 	if (!strcmp(dname, ".") || !strcmp(dname, ".."))
 		return 0;
@@ -794,7 +799,6 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 		goto out;
 
 #if 0
-	// XXX speed things up for metadata debugging
 	if (type == XFS_DIR3_FT_DIR) {
 		old_dirpath = wf->wf_dirpath;
 		wf->wf_dirpath = path;
@@ -1059,7 +1063,8 @@ static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t rootbno,
 			       int refval, const struct xfs_buf_ops *ops,
-			       extent_walk_fn fn, void *priv_data)
+			       extent_walk_fn fn, void *priv_data,
+			       xfs_agblock_t *left_node_agbno)
 {
 	struct xfs_btree_block	*block;	/* current btree block */
 	xfs_agblock_t		bno;	/* block # of "block" */
@@ -1075,12 +1080,16 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	struct xfs_extent_t	xext;
 	/* REFERENCED */
 
+	if (left_node_agbno)
+		*left_node_agbno = NULLAGBLOCK;
 	memset(&xext, 0, sizeof(xext));
 	bp = NULL;
 	bno = rootbno;
 
 	/* Read the tree root */
 	fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
+	if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
+		return EFSCORRUPTED;
 	error = xfs_btree_read_bufl(fs, NULL, fsbno, 0, &bp, refval, ops);
 	if (error)
 		return error;
@@ -1098,6 +1107,8 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	if (fn(ino, &xext, priv_data))
 		goto err;
 	if (level == 0) {
+		if (left_node_agbno)
+			*left_node_agbno = bno;
 		xfsmapper_putbuf(bp);
 		return 0;
 	}
@@ -1149,8 +1160,11 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 
 		/* now go down the tree */
 		level--;
-		if (level == 0)
+		if (level == 0) {
+			if (left_node_agbno)
+				*left_node_agbno = next_level_bno;
 			break;
+		}
 		if (bp)
 			xfsmapper_putbuf(bp);
 		error = xfs_btree_read_bufl(fs, NULL, next_level_fsbno, 0, &bp,
@@ -1182,15 +1196,80 @@ static int walk_ag_allocbt_nodes(xfs_mount_t *fs, int64_t ino,
 				 extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_ALLOC_BTREE_REF,
-				   &xfs_allocbt_buf_ops, fn, priv_data);
+				   &xfs_allocbt_buf_ops, fn, priv_data, NULL);
 }
 
 static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t rootbno,
-			       extent_walk_fn fn, void *priv_data)
+			       extent_walk_fn fn, void *priv_data,
+			       xfs_agblock_t *left_node_agbno)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_INO_BTREE_REF,
-				   &xfs_inobt_buf_ops, fn, priv_data);
+				   &xfs_inobt_buf_ops, fn, priv_data,
+				   left_node_agbno);
+}
+
+/* Walk the inodes of a AG */
+static int walk_ag_inode_blocks(xfs_mount_t *fs, int64_t ino,
+			       xfs_agnumber_t agno, xfs_agblock_t left_node_bno,
+			       extent_walk_fn fn, void *priv_data)
+{
+	struct xfs_btree_block	*block;	/* current btree block */
+	xfs_agblock_t		bno;	/* block # of "block" */
+	xfs_fsblock_t		fsbno;
+	xfs_buf_t		*bp;	/* buffer for "block" */
+	int			error;	/* error return value */
+	xfs_extnum_t		j;	/* index into the extents list */
+	xfs_inobt_rec_t		*pp;	/* pointer to inode records */
+	int			num_recs;
+	struct xfs_extent_t	xext;
+	/* REFERENCED */
+	xfs_agino_t agino;
+
+	memset(&xext, 0, sizeof(xext));
+	bp = NULL;
+	bno = left_node_bno;
+
+	while (bno != NULLAGBLOCK) {
+		/* Read the leaf */
+		fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
+		if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
+			return EFSCORRUPTED;
+		error = xfs_btree_read_bufl(fs, NULL, fsbno, 0, &bp,
+				XFS_INO_BTREE_REF, &xfs_inobt_buf_ops);
+		if (error)
+			return error;
+		if (bp->b_error)
+			goto err;
+		block = XFS_BUF_TO_BLOCK(bp);
+		num_recs = xfs_btree_get_numrecs(block);
+		ASSERT(xfs_btree_get_level(block) == 0);
+		pp = XFS_INOBT_REC_ADDR(fs, block, 1);
+
+		/* For each record in this leaf... */
+		for (j = 0; j < num_recs; j++, pp++) {
+			agino = be32_to_cpu(pp->ir_startino);
+			bno = XFS_AGINO_TO_AGBNO(fs, agino);
+			fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
+			if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
+				goto err;
+			xext.p_off = XFS_FSB_TO_B(fs, fsbno);
+			xext.l_off = 0;
+			xext.len = 64 * fs->m_sb.sb_inodesize;
+			xext.state = XFS_EXT_NORM;
+			if (fn(ino, &xext, priv_data))
+				goto err;
+		}
+
+		/* Go to the right sibling */
+		bno = be32_to_cpu(block->bb_u.s.bb_rightsib);
+		if (bp)
+			xfsmapper_putbuf(bp);
+	}
+	return 0;
+err:
+	xfsmapper_putbuf(bp);
+	return EFSCORRUPTED;
 }
 
 /* Analyze metadata */
@@ -1217,16 +1296,17 @@ static void walk_metadata(struct xfsmap_t *wf)
 	xfs_fsblock_t		s;
 	char			path[PATH_MAX + 1];
 	struct big_bmap		*bmap_ag, *bmap_agfl, *bmap_bnobt, *bmap_cntbt,
-				*bmap_inobt, *bmap_finobt;
+				*bmap_inobt, *bmap_finobt, *bmap_itable;
 	struct xfs_ag		*ags = NULL;
 	xfs_agf_t		*agf;
 	xfs_agi_t		*agi;
 	int			w;
 	__be32			*freelist;
 	unsigned long		i, len;
+	xfs_agblock_t		left_inobt_leaf_agbno = 0;
 
 	bmap_ag = bmap_agfl = bmap_bnobt = bmap_cntbt = bmap_inobt =
-			bmap_finobt = NULL;
+			bmap_finobt = bmap_itable = NULL;
 
 	wf->err = read_ags(fs, &ags);
 	if (wf->err)
@@ -1241,6 +1321,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 	INJECT_ROOT_METADATA(CNTBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(INOBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(FINOBT_FILE, XFS_DIR3_XT_METADATA);
+	INJECT_ROOT_METADATA(ITABLE_FILE, XFS_DIR3_XT_METADATA);
 
 	/* Handle the log */
 	if (fs->m_sb.sb_logstart) {
@@ -1270,6 +1351,9 @@ static void walk_metadata(struct xfsmap_t *wf)
 	if (wf->err)
 		goto out;
 	wf->err = big_bmap_init(fs, &bmap_finobt);
+	if (wf->err)
+		goto out;
+	wf->err = big_bmap_init(fs, &bmap_itable);
 	if (wf->err)
 		goto out;
 
@@ -1326,6 +1410,9 @@ static void walk_metadata(struct xfsmap_t *wf)
 		wf->err = walk_ag_allocbt_nodes(fs, ino, agno,
 				be32_to_cpu(agf->agf_roots[XFS_BTNUM_BNO]),
 				insert_meta_extent, wf);
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1337,6 +1424,9 @@ static void walk_metadata(struct xfsmap_t *wf)
 		wf->err = walk_ag_allocbt_nodes(fs, ino, agno,
 				be32_to_cpu(agf->agf_roots[XFS_BTNUM_CNT]),
 				insert_meta_extent, wf);
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1347,37 +1437,40 @@ static void walk_metadata(struct xfsmap_t *wf)
 				XFS_DIR3_XT_METADATA);
 		wf->err = walk_ag_inobt_nodes(fs, ino, agno,
 				be32_to_cpu(agi->agi_root),
-				insert_meta_extent, wf);
+				insert_meta_extent, wf, &left_inobt_leaf_agbno);
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
-#if 1
+
 		/* finobt */
 		wf->bbmap = bmap_finobt;
 		INJECT_METADATA(group_ino, path, ino, "finobt",
 				XFS_DIR3_XT_METADATA);
 		wf->err = walk_ag_inobt_nodes(fs, ino, agno,
 				be32_to_cpu(agi->agi_free_root),
-				insert_meta_extent, wf);
+				insert_meta_extent, wf, NULL);
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
-#endif
 
-#if 0
-		/* Record inode table */
-		s = ext2fs_inode_table_loc(fs, agno);
-		ext2fs_fast_mark_block_bitmap_range2(sb_itable, s,
-				fs->inode_blocks_per_group);
+		/* inode blocks */
+		wf->bbmap = bmap_itable;
 		INJECT_METADATA(group_ino, path, ino, "inodes",
-				EXT2_XT_METADATA);
-		insert_extent(&wf->base, ino, s * fs->blocksize, 0,
-			      fs->inode_blocks_per_group * fs->blocksize,
-			      EXTENT_SHARED, extent_codes[EXT2_XT_METADATA]);
-		if (wf->wf_db_err)
+				XFS_DIR3_XT_METADATA);
+		wf->err = walk_ag_inode_blocks(fs, ino, agno,
+				left_inobt_leaf_agbno, insert_meta_extent, wf);
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
-#endif
 	}
 
 	/* Emit extents for the overall files */
@@ -1399,20 +1492,10 @@ static void walk_metadata(struct xfsmap_t *wf)
 	walk_bitmap(wf, INO_FINOBT_FILE, bmap_finobt);
 	if (wf->err || wf->wf_db_err)
 		goto out;
+	walk_bitmap(wf, INO_ITABLE_FILE, bmap_itable);
+	if (wf->err || wf->wf_db_err)
+		goto out;
 #if 0
-	walk_bitmap(wf, INO_GDT_FILE, sb_gdt);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-	walk_bitmap(wf, INO_BBITMAP_FILE, sb_bbitmap);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-	walk_bitmap(wf, INO_IBITMAP_FILE, sb_ibitmap);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-	walk_bitmap(wf, INO_ITABLE_FILE, sb_itable);
-	if (wf->err || wf->wf_db_err)
-		goto out;
-
 	/* Now go for the hidden files */
 	memset(zero_buf, 0, sizeof(zero_buf));
 	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);
@@ -1443,10 +1526,12 @@ static void walk_metadata(struct xfsmap_t *wf)
 	}
 #endif
 out:
-	if (bmap_inobt)
-		big_bmap_destroy(bmap_inobt);
+	if (bmap_itable)
+		big_bmap_destroy(bmap_itable);
 	if (bmap_finobt)
 		big_bmap_destroy(bmap_finobt);
+	if (bmap_inobt)
+		big_bmap_destroy(bmap_inobt);
 	if (bmap_cntbt)
 		big_bmap_destroy(bmap_cntbt);
 	if (bmap_bnobt)
