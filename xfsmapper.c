@@ -1663,7 +1663,8 @@ main(
 	int		db_err, err, err2;
 	sqlite3		*db = NULL;
 	char		*errm;
-	unsigned long long	total_bytes;
+	unsigned long long	total_bytes, free_bytes, total_inodes,
+				free_inodes, fakeinos;
 	xfs_mount_t	*fs;
 
 	err = 0;
@@ -1784,13 +1785,21 @@ main(
 		fprintf(stderr, "%s %s", sqlite3_errstr(wf.wf_db_err), "while starting transaction");
 		goto out;
 	}
-
+	/*
+	 * Use (almost) the same measurements as xfs_super.c.  We count the
+	 * log towards total bytes, unlike XFS.
+	 */
 	total_bytes = fs->m_sb.sb_dblocks * fs->m_sb.sb_blocksize;
+	free_bytes = (fs->m_sb.sb_fdblocks - XFS_ALLOC_SET_ASIDE(fs)) * fs->m_sb.sb_blocksize;
+	fakeinos = (fs->m_sb.sb_fdblocks - XFS_ALLOC_SET_ASIDE(fs)) << fs->m_sb.sb_inopblog;
+	total_inodes = MIN(fs->m_sb.sb_icount + fakeinos, (uint64_t)XFS_MAXINUMBER);
+	if (fs->m_maxicount)
+		total_inodes = MIN(total_inodes, fs->m_maxicount);
+	total_inodes = MAX(total_inodes, fs->m_sb.sb_icount);
+	free_inodes = total_inodes - (fs->m_sb.sb_icount - fs->m_sb.sb_ifree);
 	collect_fs_stats(&wf.base, fsdev, fs->m_sb.sb_blocksize,
-			 fs->m_sb.sb_sectsize, total_bytes,
-			 fs->m_sb.sb_fdblocks * fs->m_sb.sb_blocksize,
-			 fs->m_sb.sb_icount,
-			 fs->m_sb.sb_ifree,
+			 fs->m_sb.sb_sectsize, total_bytes, free_bytes,
+			 total_inodes, free_inodes,
 			 XFS_NAME_LEN);
 	CHECK_ERROR("while storing fs stats");
 
