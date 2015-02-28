@@ -595,8 +595,9 @@ void calc_inode_stats(struct filemapper_t *wf)
 		p_off = sqlite3_column_int64(ino_stmt, 3);
 		l_off = sqlite3_column_int64(ino_stmt, 4);
 		length = sqlite3_column_int64(ino_stmt, 5);
-		dbg_printf("ino=%"PRId64" itype=%d etype=%d poff=%"PRId64" loff=%"PRId64" len=%"PRId64"\n",
-			   ino, itype, etype, p_off, l_off, length);
+		dbg_printf("%s: ino=%"PRId64" itype=%d etype=%d poff=%"PRId64
+			   " loff=%"PRId64" len=%"PRId64"\n",
+			   __func__, ino, itype, etype, p_off, l_off, length);
 
 		if (etype != primary_extent_type_for_inode[itype])
 			goto next;

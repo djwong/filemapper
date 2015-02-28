@@ -91,8 +91,86 @@ struct big_bmap {
 
 static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap);
 static void big_bmap_destroy(struct big_bmap *bbmap);
-static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t group,
+static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset, xfs_extlen_t blen, int state);
+
+/* AG data */
+
+struct xfs_ag {
+	xfs_buf_t *agf;
+	xfs_buf_t *agi;
+	xfs_buf_t *agfl;
+};
+
+/*
+ * Read in the allocation group free block array.
+ */
+static int				/* error */
+xfs_alloc_read_agfl(
+	xfs_mount_t	*mp,		/* mount point structure */
+	xfs_trans_t	*tp,		/* transaction pointer */
+	xfs_agnumber_t	agno,		/* allocation group number */
+	xfs_buf_t	**bpp)		/* buffer for the ag free block array */
+{
+	xfs_buf_t	*bp;		/* return value */
+	int		error;
+
+	ASSERT(agno != NULLAGNUMBER);
+	error = libxfs_trans_read_buf(
+			mp, tp, mp->m_ddev_targp,
+			XFS_AG_DADDR(mp, agno, XFS_AGFL_DADDR(mp)),
+			XFS_FSS_TO_BB(mp, 1), 0, &bp, &xfs_agfl_buf_ops);
+	if (error)
+		return error;
+	ASSERT(!bp->b_error);
+	xfs_buf_set_ref(bp, XFS_AGFL_REF);
+	*bpp = bp;
+	return 0;
+}
+
+static void free_ags(xfs_mount_t *fs, struct xfs_ag *ags)
+{
+	xfs_agnumber_t agno;
+
+	for (agno = 0; agno < fs->m_sb.sb_agcount; agno++) {
+		if (ags[agno].agf)
+			xfsmapper_putbuf(ags[agno].agf);
+		if (ags[agno].agi)
+			xfsmapper_putbuf(ags[agno].agi);
+		if (ags[agno].agfl)
+			xfsmapper_putbuf(ags[agno].agfl);
+	}
+	free(ags);
+}
+
+static int read_ags(xfs_mount_t *fs, struct xfs_ag **pags)
+{
+	struct xfs_ag *ags;
+	xfs_agnumber_t agno;
+	int err;
+
+	ags = calloc(fs->m_sb.sb_agcount, sizeof(struct xfs_ag));
+	if (!ags)
+		return ENOMEM;
+
+	for (agno = 0; agno < fs->m_sb.sb_agcount; agno++) {
+		err = xfs_read_agi(fs, NULL, agno, &ags[agno].agi);
+		if (err)
+			goto fail;
+		err = xfs_read_agf(fs, NULL, agno, 0, &ags[agno].agf);
+		if (err)
+			goto fail;
+		err = xfs_alloc_read_agfl(fs, NULL, agno, &ags[agno].agfl);
+		if (err)
+			goto fail;
+	}
+
+	*pags = ags;
+	return 0;
+fail:
+	free_ags(fs, ags);
+	return err;
+}
 
 /* Fake inodes for metadata */
 
@@ -851,7 +929,7 @@ get_bmap_ext(
 
 static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
 {
-	xfs_agnumber_t group;
+	xfs_agnumber_t agno;
 	xfs_agblock_t ag_size;
 	struct big_bmap *u;
 
@@ -867,15 +945,15 @@ static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
 	}
 
 	ag_size = fs->m_sb.sb_agblocks;
-	for (group = 0; group < u->sz; group++) {
-		if (group == u->sz - 1)
+	for (agno = 0; agno < u->sz; agno++) {
+		if (agno == u->sz - 1)
 			ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
-				   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * group);
-		btree_init(&u->bmap[group]);
-		btree_clear(u->bmap[group]);
-		btree_insert(u->bmap[group], 0,
+				   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * agno);
+		btree_init(&u->bmap[agno]);
+		btree_clear(u->bmap[agno]);
+		btree_insert(u->bmap[agno], 0,
 				&big_bmap_states[BBMAP_UNUSED]);
-		btree_insert(u->bmap[group], ag_size,
+		btree_insert(u->bmap[agno], ag_size,
 				&big_bmap_states[BBMAP_BAD]);
 	}
 
@@ -885,61 +963,75 @@ static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
 
 static void big_bmap_destroy(struct big_bmap *bbmap)
 {
-	xfs_agnumber_t group;
+	xfs_agnumber_t agno;
 
-	for (group = 0; group < bbmap->sz; group++)
-		btree_destroy(bbmap->bmap[group]);
+	for (agno = 0; agno < bbmap->sz; agno++)
+		btree_destroy(bbmap->bmap[agno]);
 	free(bbmap->bmap);
 	free(bbmap);
 }
 
-static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t group,
+static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset, xfs_extlen_t blen, int state)
 {
-	dbg_printf("%s: group=%d offset=%d blen=%d state=%d\n", __func__,
-		   group, offset, blen, state);
-	update_bmap(bbmap->bmap[group], offset, blen, &big_bmap_states[state]);
+	ASSERT(blen);
+	dbg_printf("%s: agno=%d offset=%d blen=%d state=%d\n", __func__,
+		   agno, offset, blen, state);
+	update_bmap(bbmap->bmap[agno], offset, blen, &big_bmap_states[state]);
+}
+
+static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
+			   struct big_bmap *bbmap, xfs_agnumber_t agno,
+			   int64_t *ploff)
+{
+	xfs_mount_t *fs = wf->fs;
+	unsigned long key = 0;
+	xfs_agblock_t ag_size;
+	xfs_fsblock_t s;
+	xfs_extlen_t len;
+	int *val;
+	struct btree_root *bmap;
+	int64_t loff;
+
+	loff = (ploff ? *ploff : 0);
+
+	ag_size = fs->m_sb.sb_agblocks;
+	if (agno == bbmap->sz - 1)
+		ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
+			   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * agno);
+	key = 0;
+	bmap = bbmap->bmap[agno];
+	val = btree_find(bmap, key, &key);
+	while (val != NULL && key != ag_size) {
+		get_bmap_ext(bmap, key, ag_size, &len);
+		if (val != &big_bmap_states[BBMAP_INUSE]) {
+			val = btree_lookup_next(bmap, &key);
+			continue;
+		}
+
+		dbg_printf("%s: ino=%d agno=%d key=%lu len=%lu val=%x\n",
+			   __func__, ino, agno, key, (unsigned long)len, *val);
+		s = XFS_AGB_TO_FSB(fs, agno, key);
+		loff += XFS_FSB_TO_B(fs, len);
+		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s), loff,
+			      XFS_FSB_TO_B(fs, len), EXTENT_SHARED,
+			      extent_codes[XFS_DIR3_XT_METADATA]);
+		val = btree_lookup_next(bmap, &key);
+	}
+
+	if (ploff)
+		*ploff = loff;
 }
 
 static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 			struct big_bmap *bbmap)
 {
-	xfs_mount_t *fs = wf->fs;
-	xfs_agnumber_t group;
-	unsigned long key = 0;
-	xfs_extlen_t len;
-	int *val;
-	struct btree_root *bmap;
-	xfs_agblock_t ag_size;
-	xfs_fsblock_t s;
+	xfs_agnumber_t agno;
 	int64_t loff;
 
-	ag_size = fs->m_sb.sb_agblocks;
 	loff = 0;
-	for (group = 0; group < bbmap->sz; group++) {
-		if (group == bbmap->sz - 1)
-			ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
-				   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * group);
-		key = 0;
-		bmap = bbmap->bmap[group];
-		val = btree_find(bmap, key, &key);
-		while (val != NULL && key != ag_size) {
-			get_bmap_ext(bmap, key, ag_size, &len);
-			if (val != &big_bmap_states[BBMAP_INUSE]) {
-				val = btree_lookup_next(bmap, &key);
-				continue;
-			}
-
-			dbg_printf("group=%d key=%lu len=%lu val=%x\n", group,
-				   key, (unsigned long)len, *val);
-			s = XFS_AGB_TO_FSB(fs, group, 0);
-			loff += (3 * fs->m_sb.sb_sectsize);
-			insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s), loff,
-				      3 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
-				      extent_codes[XFS_DIR3_XT_METADATA]);
-			val = btree_lookup_next(bmap, &key);
-		}
-	}
+	for (agno = 0; agno < bbmap->sz; agno++)
+		walk_ag_bitmap(wf, ino, bbmap, agno, &loff);
 }
 
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
@@ -958,22 +1050,32 @@ static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 /* Invent a FS tree for metadata. */
 static void walk_metadata(struct xfsmap_t *wf)
 {
-	xfs_mount_t *fs = wf->fs;
-	xfs_agnumber_t group;
-	int64_t ino, group_ino;
-	xfs_fsblock_t s;
-	char path[PATH_MAX + 1];
-	struct big_bmap *bmap_agi;
-	int w;
+	xfs_mount_t		*fs = wf->fs;
+	xfs_agnumber_t		agno;
+	int64_t			ino, group_ino;
+	xfs_fsblock_t		s;
+	char			path[PATH_MAX + 1];
+	struct big_bmap		*bmap_ag, *bmap_agfl;
+	struct xfs_ag		*ags = NULL;
+	xfs_agf_t		*agf;
+	xfs_agi_t		*agi;
+	xfs_agfl_t		*agfl;
+	int			w;
+	__be32			*freelist;
+	unsigned long		i, len;
 
-	bmap_agi = NULL;
+	bmap_ag = bmap_agfl = NULL;
+
+	wf->err = read_ags(fs, &ags);
+	if (wf->err)
+		return;
 
 	INJECT_METADATA(fs->m_sb.sb_rootino, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, XFS_DIR3_FT_DIR);
 	INJECT_ROOT_METADATA(GROUPS_DIR, XFS_DIR3_FT_DIR);
 	INJECT_ROOT_METADATA(SB_FILE, XFS_DIR3_XT_METADATA);
+	INJECT_ROOT_METADATA(FL_FILE, XFS_DIR3_XT_METADATA);
 #if 0
-	INJECT_ROOT_METADATA(GDT_FILE, EXT2_XT_METADATA);
 	INJECT_ROOT_METADATA(BBITMAP_FILE, EXT2_XT_METADATA);
 	INJECT_ROOT_METADATA(IBITMAP_FILE, EXT2_XT_METADATA);
 	INJECT_ROOT_METADATA(ITABLE_FILE, EXT2_XT_METADATA);
@@ -991,7 +1093,10 @@ static void walk_metadata(struct xfsmap_t *wf)
 	}
 
 	/* Bitmaps for aggregate metafiles */
-	wf->err = big_bmap_init(fs, &bmap_agi);
+	wf->err = big_bmap_init(fs, &bmap_ag);
+	if (wf->err)
+		goto out;
+	wf->err = big_bmap_init(fs, &bmap_agfl);
 	if (wf->err)
 		goto out;
 #if 0
@@ -1026,31 +1131,50 @@ static void walk_metadata(struct xfsmap_t *wf)
 	ino = INO_GROUPS_DIR - 1;
 	snprintf(path, PATH_MAX, "%d", fs->m_sb.sb_agcount);
 	w = strlen(path);
-	for (group = 0; group < fs->m_sb.sb_agcount; group++) {
-		/* load superblock stuff */
-		snprintf(path, PATH_MAX, "%0*d", w, group);
+	for (agno = 0; agno < fs->m_sb.sb_agcount; agno++) {
+		agf = XFS_BUF_TO_AGF(ags[agno].agf);
+		agi = XFS_BUF_TO_AGI(ags[agno].agi);
+		agfl = XFS_BUF_TO_AGFL(ags[agno].agfl);
+
+		/* set up per-group virtual files */
+		snprintf(path, PATH_MAX, "%0*d", w, agno);
 		group_ino = ino;
 		ino--;
 		INJECT_GROUP(group_ino, path, XFS_DIR3_FT_DIR);
 
 		snprintf(path, PATH_MAX, "/%s/%s/%0*d", STR_METADATA_DIR,
-			 STR_GROUPS_DIR, w, group);
+			 STR_GROUPS_DIR, w, agno);
 
 		/* Record the superblock+agf+agi+agfl blocks */
-		s = XFS_AGB_TO_FSB(fs, group, 0);
-		big_bmap_set(bmap_agi, group, 0, 1, 1);
+		s = XFS_AGB_TO_FSB(fs, agno, 0);
+		len = 4 * fs->m_sb.sb_sectsize / fs->m_sb.sb_blocksize;
+		if (len < 1)
+			len = 1;
+		big_bmap_set(bmap_ag, agno, 0, len, 1);
 		INJECT_METADATA(group_ino, path, ino, "superblock",
 				XFS_DIR3_XT_METADATA);
 		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s),
-			      0, 3 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
+			      0, 4 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
 			      extent_codes[XFS_DIR3_XT_METADATA]);
 		if (wf->wf_db_err)
 			goto out;
 		ino--;
 
+		/* AG free list */
+		freelist = XFS_BUF_TO_AGFL_BNO(fs, ags[agno].agfl);
+		for (i = be32_to_cpu(agf->agf_flfirst);
+		     i <= be32_to_cpu(agf->agf_fllast); i++)
+			big_bmap_set(bmap_agfl, agno, be32_to_cpu(freelist[i]), 1, 1);
+
+		INJECT_METADATA(group_ino, path, ino, "freelist",
+				XFS_DIR3_XT_METADATA);
+		walk_ag_bitmap(wf, ino, bmap_agfl, agno, NULL);
+		if (wf->wf_db_err)
+			goto out;
+		ino--;
 #if 0
 		/* Record block bitmap */
-		s = ext2fs_block_bitmap_loc(fs, group);
+		s = ext2fs_block_bitmap_loc(fs, agno);
 		ext2fs_fast_mark_block_bitmap2(sb_bbitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "block_bitmap",
 				EXT2_XT_METADATA);
@@ -1062,7 +1186,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		ino--;
 
 		/* Record inode bitmap */
-		s = ext2fs_inode_bitmap_loc(fs, group);
+		s = ext2fs_inode_bitmap_loc(fs, agno);
 		ext2fs_fast_mark_block_bitmap2(sb_ibitmap, s);
 		INJECT_METADATA(group_ino, path, ino, "inode_bitmap",
 				EXT2_XT_METADATA);
@@ -1074,7 +1198,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		ino--;
 
 		/* Record inode table */
-		s = ext2fs_inode_table_loc(fs, group);
+		s = ext2fs_inode_table_loc(fs, agno);
 		ext2fs_fast_mark_block_bitmap_range2(sb_itable, s,
 				fs->inode_blocks_per_group);
 		INJECT_METADATA(group_ino, path, ino, "inodes",
@@ -1089,7 +1213,10 @@ static void walk_metadata(struct xfsmap_t *wf)
 	}
 
 	/* Emit extents for the overall files */
-	walk_bitmap(wf, INO_SB_FILE, bmap_agi);
+	walk_bitmap(wf, INO_SB_FILE, bmap_ag);
+	if (wf->err || wf->wf_db_err)
+		goto out;
+	walk_bitmap(wf, INO_FL_FILE, bmap_agfl);
 	if (wf->err || wf->wf_db_err)
 		goto out;
 #if 0
@@ -1143,7 +1270,12 @@ out:
 	ext2fs_free_block_bitmap(sb_gdt);
 	ext2fs_free_block_bitmap(sb_bmap);
 #endif
-	big_bmap_destroy(bmap_agi);
+	if (bmap_agfl)
+		big_bmap_destroy(bmap_agfl);
+	if (bmap_ag)
+		big_bmap_destroy(bmap_ag);
+	if (ags)
+		free_ags(fs, ags);
 	return;
 }
 
