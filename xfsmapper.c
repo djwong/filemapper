@@ -1144,6 +1144,10 @@ static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 		walk_ag_bitmap(wf, ino, bbmap, agno, &loff);
 }
 
+#define XFSMAPPER_INOBT_PTR_ADDR(fs, block, index) \
+	XFS_INOBT_PTR_ADDR((fs), (block), (index), xfs_inobt_maxrecs((fs), \
+			(fs)->m_sb.sb_blocksize, 0))
+
 /* Walk the internal nodes of a AG btree */
 static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t rootbno,
@@ -1199,7 +1203,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	}
 
 	/* Prepare to iterate */
-	pp = XFS_INOBT_PTR_ADDR(fs, block, 1, num_recs);
+	pp = XFSMAPPER_INOBT_PTR_ADDR(fs, block, 1);
 	next_level_bno = be32_to_cpu(*pp);
 	next_level_fsbno = XFS_AGB_TO_FSB(fs, agno, next_level_bno);
 	if (!XFS_FSB_SANITY_CHECK(fs, next_level_fsbno))
@@ -1240,7 +1244,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			num_recs = xfs_btree_get_numrecs(block);
 			if (!xfs_bmap_sanity_check(fs, bp, level))
 				goto err;
-			pp = XFS_INOBT_PTR_ADDR(fs, block, 1, num_recs);
+			pp = XFSMAPPER_INOBT_PTR_ADDR(fs, block, 1);
 		} while (1);
 
 		/* now go down the tree */
@@ -1262,7 +1266,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 		num_recs = xfs_btree_get_numrecs(block);
 		if (!xfs_bmap_sanity_check(fs, bp, level))
 			goto err;
-		pp = XFS_INOBT_PTR_ADDR(fs, block, 1, num_recs);
+		pp = XFSMAPPER_INOBT_PTR_ADDR(fs, block, 1);
 		next_level_bno = be32_to_cpu(*pp);
 		next_level_fsbno = XFS_AGB_TO_FSB(fs, agno, next_level_bno);
 		if (!XFS_FSB_SANITY_CHECK(fs, next_level_fsbno))
@@ -1598,7 +1602,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 	/* Now go for the hidden files */
 	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);
 	for (hf = hidden_inodes; hf->name != NULL; hf++) {
-		if (hf->ino == 0)
+		if (hf->ino == NULLFSINO || hf->ino == 0)
 			continue;
 		wf->err = walk_fs_helper(INO_HIDDEN_DIR, hf->name,
 					 strlen(hf->name), hf->ino,
@@ -1638,7 +1642,7 @@ usage(void)
 #define CHECK_ERROR(msg) \
 do { \
 	if (wf.err) { \
-		fprintf(stderr, "%s %s", strerror(errno), (msg)); \
+		fprintf(stderr, "%s %s", strerror(wf.err), (msg)); \
 		goto out; \
 	} \
 	if (wf.wf_db_err) { \
