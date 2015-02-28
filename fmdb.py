@@ -436,6 +436,19 @@ class fmdb(object):
 		self.conn.execute('UPDATE fs_t SET finished = 1 WHERE path = ?;', (self.fspath,))
 		self.conn.commit()
 
+		cur = self.conn.cursor()
+		cur.execute('SELECT MAX(p_end) FROM extent_t')
+		max_extent_byte = cur.fetchall()[0][0]
+
+		cur.execute('SELECT total_bytes FROM fs_t')
+		total_bytes = cur.fetchall()[0][0]
+
+		if total_bytes <= max_extent_byte:
+			cur.execute('UPDATE fs_t SET total_bytes = ? WHERE path = ?', (max_extent_byte + 1, self.fspath))
+			self.conn.commit()
+			self.fs = None
+			self.query_summary()
+
 	@abstractmethod
 	def analyze(self, force = False):
 		'''Analyze the filesystem.'''
@@ -518,6 +531,9 @@ class fmdb(object):
 			for (e_p_off, e_p_end, e_type) in rows:
 				start_cell = int(e_p_off / bytes_per_cell)
 				end_cell = int(e_p_end / bytes_per_cell)
+				if start_cell >= len(overview) or \
+				   end_cell >= len(overview):
+					raise ValueError('Extent goes past end of FS? p_off=%d p_end=%d' % (e_p_off, e_p_end))
 				if e_type == EXT_TYPE_FILE:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].files += 1
