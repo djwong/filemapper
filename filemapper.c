@@ -407,6 +407,7 @@ void finalize_fs_stats(struct filemapper_t *wf, char *fs_name)
 	const char *sql = "UPDATE fs_t SET finished = 1 WHERE path = ?;";
 	char p[PATH_MAX + 1];
 	sqlite3_stmt *stmt;
+	int64_t total_bytes, max_pend;
 	int err, err2, col = 1;
 
 	err = sqlite3_prepare_v2(wf->db, sql, -1, &stmt, NULL);
@@ -421,9 +422,65 @@ void finalize_fs_stats(struct filemapper_t *wf, char *fs_name)
 	err = sqlite3_step(stmt);
 	if (err && err != SQLITE_DONE)
 		goto out;
-	err = 0;
+	err = sqlite3_finalize(stmt);
+	stmt = NULL;
+	if (err)
+		goto out;
+
+	/* Make sure the extents don't "overflow" the end of the FS. */
+	sql = "SELECT MAX(p_end) FROM extent_t";
+	err = sqlite3_prepare_v2(wf->db, sql, -1, &stmt, NULL);
+	if (err)
+		goto out;
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_ROW)
+		goto out;
+	max_pend = sqlite3_column_int64(stmt, 0);
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_DONE)
+		goto out;
+	err = sqlite3_finalize(stmt);
+	stmt = NULL;
+	if (err)
+		goto out;
+
+	sql = "SELECT total_bytes FROM fs_t";
+	err = sqlite3_prepare_v2(wf->db, sql, -1, &stmt, NULL);
+	if (err)
+		goto out;
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_ROW)
+		goto out;
+	total_bytes = sqlite3_column_int64(stmt, 0);
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_DONE)
+		goto out;
+	err = sqlite3_finalize(stmt);
+	stmt = NULL;
+	if (err)
+		goto out;
+
+	if (total_bytes <= max_pend) {
+		sql = "UPDATE fs_t SET total_bytes = ? WHERE path = ?";
+		err = sqlite3_prepare_v2(wf->db, sql, -1, &stmt, NULL);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 1, max_pend + 1);
+		if (err)
+			goto out;
+		err = sqlite3_bind_text(stmt, col++, p, -1, SQLITE_STATIC);
+		if (err)
+			goto out;
+		err = sqlite3_step(stmt);
+		if (err && err != SQLITE_DONE)
+			goto out;
+		err = sqlite3_finalize(stmt);
+		stmt = NULL;
+		if (err)
+			goto out;
+	}
 out:
-	err2 = sqlite3_finalize(stmt);
+	err2 = (stmt ? sqlite3_finalize(stmt) : 0);
 	if (!err && err2)
 		err = err2;
 	wf->db_err = err;
