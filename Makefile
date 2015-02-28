@@ -41,7 +41,7 @@ fatmapper: filemapper.o fatmapper.o dosfs.o
 fatmapper.c: dosfs.h filemapper.h
 
 clean:;
-	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop *.o ntfsmapper fatmapper
+	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop *.o ntfsmapper fatmapper xfsmapper
 
 filemapper: filemapper.in
 	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
@@ -60,6 +60,8 @@ install: all
 	install -m 0644 e2mapper.1.gz filemapper.1.gz ntfsmapper.1.gz $(DESTDIR)$(man1dir)
 	install -d $(DESTDIR)$(appdir)
 	install -m 0644 filemapper.desktop $(DESTDIR)$(appdir)
+	test -e fatmapper && install -s fatmapper $(DESTDIR)$(bindir)
+	test -e xfsmapper && install -s xfsmapper $(DESTDIR)$(bindir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
