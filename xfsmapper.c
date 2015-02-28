@@ -1073,7 +1073,6 @@ static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
 	xfs_extlen_t len;
 	int *val;
 	struct btree_root *bmap;
-	int64_t loff;
 
 	ag_size = bbmap->fs->m_sb.sb_agblocks;
 	if (agno == bbmap->sz - 1)
