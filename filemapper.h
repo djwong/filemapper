@@ -122,7 +122,7 @@ void index_db(struct filemapper_t *wf);
 void calc_inode_stats(struct filemapper_t *wf);
 
 /* Simple bitmap functions */
-int test_bit(const uint8_t *bmap, const uint64_t bit);
-void set_bit(uint8_t *bmap, const uint64_t bit, const int new_value);
+int fm_test_bit(const uint8_t *bmap, const uint64_t bit);
+void fm_set_bit(uint8_t *bmap, const uint64_t bit, const int new_value);
 
 #endif /* ifdef FM_H_ */
