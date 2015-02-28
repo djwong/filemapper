@@ -8,3 +8,4 @@ debian/
 *.1.gz
 *.desktop
 *.o
+dosfs.[ch]
