@@ -195,10 +195,24 @@ fail:
 #define STR_JOURNAL_FILE	"journal"
 #define INO_ITABLE_FILE		(-9)
 #define STR_ITABLE_FILE		"inodes"
+#define INO_HIDDEN_DIR		(-10)
+#define STR_HIDDEN_DIR		"hidden_files"
 /* This must come last */
-#define INO_GROUPS_DIR		(-10)
+#define INO_GROUPS_DIR		(-11)
 #define STR_GROUPS_DIR		"groups"
 
+/* Hidden inode paths */
+#define STR_USR_QUOTA_FILE	"user_quota"
+#define STR_GRP_QUOTA_FILE	"group_quota"
+#define STR_PROJ_QUOTA_FILE	"project_quota"
+#define STR_RT_BMAP_FILE	"realtime_bitmap"
+#define STR_RT_SUMMARY_FILE	"realtime_summary"
+
+struct hidden_file {
+	xfs_ino_t ino;
+	const char *name;
+	int type;
+};
 
 /* Walk a directory */
 
@@ -798,7 +812,6 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 	if (wf->err || wf->wf_db_err)
 		goto out;
 
-#if 0
 	if (type == XFS_DIR3_FT_DIR) {
 		old_dirpath = wf->wf_dirpath;
 		wf->wf_dirpath = path;
@@ -807,7 +820,6 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			wf->err = err;
 		wf->wf_dirpath = old_dirpath;
 	}
-#endif
 	if (wf->err || wf->wf_db_err)
 		goto out;
 
@@ -1305,6 +1317,19 @@ static void walk_metadata(struct xfsmap_t *wf)
 	unsigned long		i, len;
 	xfs_agblock_t		left_inobt_leaf_agbno = 0;
 
+	/* Create hidden inodes */
+#define H(ino, name, type) {(ino), STR_##name, XFS_DIR3_##type}
+	struct hidden_file *hf;
+	struct hidden_file hidden_inodes[] = {
+		H(fs->m_sb.sb_uquotino, USR_QUOTA_FILE, XT_METADATA),
+		H(fs->m_sb.sb_gquotino, GRP_QUOTA_FILE, XT_METADATA),
+		H(fs->m_sb.sb_pquotino, PROJ_QUOTA_FILE, XT_METADATA),
+		H(fs->m_sb.sb_rbmino, RT_BMAP_FILE, XT_METADATA),
+		H(fs->m_sb.sb_rsumino, RT_SUMMARY_FILE, XT_METADATA),
+		{},
+	};
+#undef H
+
 	bmap_ag = bmap_agfl = bmap_bnobt = bmap_cntbt = bmap_inobt =
 			bmap_finobt = bmap_itable = NULL;
 
@@ -1315,6 +1340,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 	INJECT_METADATA(fs->m_sb.sb_rootino, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, XFS_DIR3_FT_DIR);
 	INJECT_ROOT_METADATA(GROUPS_DIR, XFS_DIR3_FT_DIR);
+	INJECT_ROOT_METADATA(HIDDEN_DIR, XFS_DIR3_FT_DIR);
 	INJECT_ROOT_METADATA(SB_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(FL_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(BNOBT_FILE, XFS_DIR3_XT_METADATA);
@@ -1495,36 +1521,18 @@ static void walk_metadata(struct xfsmap_t *wf)
 	walk_bitmap(wf, INO_ITABLE_FILE, bmap_itable);
 	if (wf->err || wf->wf_db_err)
 		goto out;
-#if 0
+
 	/* Now go for the hidden files */
-	memset(zero_buf, 0, sizeof(zero_buf));
 	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);
-	for (hf = hidden_inodes; hf->ino != 0; hf++) {
-		wf->err = ext2fs_read_inode(wf->fs, hf->ino, &inode);
+	for (hf = hidden_inodes; hf->name != NULL; hf++) {
+		if (hf->ino == 0)
+			continue;
+		wf->err = walk_fs_helper(INO_HIDDEN_DIR, hf->name,
+					 strlen(hf->name), hf->ino,
+					 XFS_DIR3_FT_UNKNOWN, wf);
 		if (wf->err)
 			goto out;
-		if (!memcmp(zero_buf, inode.i_block, sizeof(zero_buf)))
-			continue;
-
-		INJECT_METADATA(INO_HIDDEN_DIR, path, hf->ino, hf->name,
-				hf->type);
-
-		walk_file_mappings(wf, hf->ino, hf->type);
-		if (wf->err || wf->wf_db_err)
-			goto out;
-
-		if (hf->type == EXT2_FT_DIR) {
-			errcode_t err;
-
-			err = ext2fs_dir_iterate2(fs, hf->ino, 0, NULL,
-						  walk_fs_helper, wf);
-			if (!wf->err)
-				wf->err = err;
-			if (wf->err || wf->wf_db_err)
-				goto out;
-		}
 	}
-#endif
 out:
 	if (bmap_itable)
 		big_bmap_destroy(bmap_itable);
@@ -1732,13 +1740,12 @@ main(
 	calc_inode_stats(&wf.base);
 	CHECK_ERROR("while calculating inode statistics");
 
-#if 1
 	/* Cache overviews. */
 	cache_overview(&wf.base, total_bytes, 2048);
 	CHECK_ERROR("while caching CLI overview");
 	cache_overview(&wf.base, total_bytes, 65536);
 	CHECK_ERROR("while caching GUI overview");
-#endif
+
 	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
 	if (errm) {
 		fprintf(stderr, "%s %s", errm, "while starting transaction");
