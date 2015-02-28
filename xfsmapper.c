@@ -28,7 +28,7 @@ struct xfsmap_t {
 
 	xfs_mount_t	*fs;
 	int		err;
-	uint8_t		*ino_bmap;
+	struct big_bmap *ino_bmap;
 	struct big_bmap	*bbmap;
 	xfs_agnumber_t	agno;
 	struct xfs_extent_t	last_ext;
@@ -88,14 +88,20 @@ void xfsmapper_putbuf(xfs_buf_t *bp)
 #define BBMAP_BAD	2
 static int big_bmap_states[] = {0xDEAD, 0xBEEF, 0xBAAD};
 struct big_bmap {
+	xfs_mount_t *fs;
 	struct btree_root **bmap;
+	xfs_agblock_t *bmap_sizes;
 	xfs_agnumber_t sz;
 };
 
-static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap);
+static int big_block_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap);
+static int big_inode_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap);
 static void big_bmap_destroy(struct big_bmap *bbmap);
 static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset, xfs_extlen_t blen, int state);
+static int big_bmap_test(struct big_bmap *bbmap, xfs_agnumber_t agno,
+			 xfs_agblock_t offset);
+static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno);
 
 /* AG data */
 
@@ -715,14 +721,15 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn,
 
 static void walk_file_mappings(struct xfsmap_t *wf, xfs_inode_t *ip, int type)
 {
-	unsigned long long ioff;
+	unsigned long long	ioff;
+	xfs_agnumber_t		agno;
+	xfs_agino_t		agino;
 
-// XXX
-#if 0
-	if (test_bit(wf->ino_bmap, ip->i_ino))
+	agno = XFS_INO_TO_AGNO(ip->i_mount, ip->i_ino);
+	agino = XFS_INO_TO_AGINO(ip->i_mount, ip->i_ino);
+	if (big_bmap_test(wf->ino_bmap, agno, agino))
 		return;
-	set_bit(wf->ino_bmap, ip->i_ino, 1);
-#endif
+	big_bmap_set(wf->ino_bmap, agno, agino, 1, 1);
 
 	ioff = inode_poff(ip);
 	insert_extent(&wf->base, ip->i_ino, ioff, 0,
@@ -964,7 +971,8 @@ get_bmap_ext(
 	return *statep;
 }
 
-static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
+static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap,
+			 int multiplier)
 {
 	xfs_agnumber_t agno;
 	xfs_agblock_t ag_size;
@@ -974,9 +982,16 @@ static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
 	if (!u)
 		return ENOMEM;
 
+	u->fs = fs;
 	u->sz = fs->m_sb.sb_agcount;
-	u->bmap = calloc(fs->m_sb.sb_agcount, sizeof(struct btree_root *));
+	u->bmap = calloc(u->sz, sizeof(struct btree_root *));
 	if (!u->bmap) {
+		free(u);
+		return ENOMEM;
+	}
+	u->bmap_sizes = calloc(u->sz, sizeof(xfs_agblock_t));
+	if (!u->bmap_sizes) {
+		free(u->bmap);
 		free(u);
 		return ENOMEM;
 	}
@@ -986,16 +1001,30 @@ static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
 		if (agno == u->sz - 1)
 			ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
 				   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * agno);
+		u->bmap_sizes[agno] = ag_size * multiplier;
 		btree_init(&u->bmap[agno]);
 		btree_clear(u->bmap[agno]);
 		btree_insert(u->bmap[agno], 0,
 				&big_bmap_states[BBMAP_UNUSED]);
-		btree_insert(u->bmap[agno], ag_size,
+		btree_insert(u->bmap[agno], ag_size * multiplier,
 				&big_bmap_states[BBMAP_BAD]);
 	}
 
 	*bbmap = u;
 	return 0;
+}
+
+static int big_block_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
+{
+	return big_bmap_init(fs, bbmap, 1);
+}
+
+static int big_inode_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap)
+{
+	int m;
+
+	m = fs->m_sb.sb_blocksize / fs->m_sb.sb_inodesize;
+	return big_bmap_init(fs, bbmap, m);
 }
 
 static void big_bmap_destroy(struct big_bmap *bbmap)
@@ -1011,18 +1040,63 @@ static void big_bmap_destroy(struct big_bmap *bbmap)
 static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset, xfs_extlen_t blen, int state)
 {
-	ASSERT(blen);
+	assert(blen);
 	dbg_printf("%s: agno=%d offset=%d blen=%d state=%d\n", __func__,
 		   agno, offset, blen, state);
 	update_bmap(bbmap->bmap[agno], offset, blen, &big_bmap_states[state]);
 }
+
+static int big_bmap_test(struct big_bmap *bbmap, xfs_agnumber_t agno,
+			 xfs_agblock_t offset)
+{
+	unsigned long key = offset;
+	struct btree_root *bmap;
+	int *val;
+
+	bmap = bbmap->bmap[agno];
+
+	/* btree_find retrieves either the the exact key or the next highest */
+	val = btree_find(bmap, offset, &key);
+	assert(val != NULL);
+	if (offset == key)
+		return val == &big_bmap_states[BBMAP_INUSE];
+	val = btree_peek_prev(bmap, NULL);
+	assert(val != NULL);
+	return val == &big_bmap_states[BBMAP_INUSE];
+}
+
+#if 1
+static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
+{
+	unsigned long key;
+	xfs_agblock_t ag_size;
+	xfs_extlen_t len;
+	int *val;
+	struct btree_root *bmap;
+	int64_t loff;
+
+	ag_size = bbmap->fs->m_sb.sb_agblocks;
+	if (agno == bbmap->sz - 1)
+		ag_size = (xfs_extlen_t)(bbmap->fs->m_sb.sb_dblocks -
+			   (xfs_drfsbno_t)bbmap->fs->m_sb.sb_agblocks * agno);
+	key = 0;
+	bmap = bbmap->bmap[agno];
+	val = btree_find(bmap, key, &key);
+	while (val != NULL && key != ag_size) {
+		get_bmap_ext(bmap, key, ag_size, &len);
+		printf("%s: agno=%d key=%lu len=%lu val=%x\n",
+			   __func__, agno, key, (unsigned long)len, *val);
+		val = btree_lookup_next(bmap, &key);
+	}
+}
+#endif
 
 static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 			   struct big_bmap *bbmap, xfs_agnumber_t agno,
 			   int64_t *ploff)
 {
 	xfs_mount_t *fs = wf->fs;
-	unsigned long key = 0;
+	unsigned long key;
 	xfs_agblock_t ag_size;
 	xfs_fsblock_t s;
 	xfs_extlen_t len;
@@ -1361,25 +1435,25 @@ static void walk_metadata(struct xfsmap_t *wf)
 	}
 
 	/* Bitmaps for aggregate metafiles */
-	wf->err = big_bmap_init(fs, &bmap_ag);
+	wf->err = big_block_bmap_init(fs, &bmap_ag);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_agfl);
+	wf->err = big_block_bmap_init(fs, &bmap_agfl);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_bnobt);
+	wf->err = big_block_bmap_init(fs, &bmap_bnobt);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_cntbt);
+	wf->err = big_block_bmap_init(fs, &bmap_cntbt);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_inobt);
+	wf->err = big_block_bmap_init(fs, &bmap_inobt);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_finobt);
+	wf->err = big_block_bmap_init(fs, &bmap_finobt);
 	if (wf->err)
 		goto out;
-	wf->err = big_bmap_init(fs, &bmap_itable);
+	wf->err = big_block_bmap_init(fs, &bmap_itable);
 	if (wf->err)
 		goto out;
 
@@ -1721,9 +1795,7 @@ main(
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */
-	wf.ino_bmap = calloc(1, fs->m_sb.sb_icount / 8);
-	if (!wf.ino_bmap)
-		wf.err = ENOMEM;
+	wf.err = big_inode_bmap_init(fs, &wf.ino_bmap);
 	CHECK_ERROR("while allocating scanned inode bitmap");
 	walk_fs(&wf);
 	CHECK_ERROR("while analyzing filesystem");
@@ -1758,7 +1830,7 @@ main(
 	}
 out:
 	if (wf.ino_bmap)
-		free(wf.ino_bmap);
+		big_bmap_destroy(wf.ino_bmap);
 	if (wf.wf_iconv)
 		iconv_close(wf.wf_iconv);
 
