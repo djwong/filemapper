@@ -961,8 +961,8 @@ class fmgui(QtGui.QMainWindow):
 			uic.loadUi('%s/filemapper.ui' % os.environ['FM_LIB_DIR'], self)
 		except:
 			uic.loadUi('filemapper.ui', self)
-		self.setWindowTitle('%s - FileMapper' % self.fmdb.fspath)
 		self.fs = self.fmdb.query_summary()
+		self.setWindowTitle('%s (%s) - FileMapper' % (self.fs.path, self.fs.fstype))
 		self.histfile = histfile
 		self.mp = MessagePump(self.mp_start, self.mp_stop)
 
@@ -1630,7 +1630,7 @@ class fmgui(QtGui.QMainWindow):
 		self.mp.start()
 		try:
 			with open(fn, 'w') as fd:
-				fd.write('# %s on %s\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
+				fd.write('# %s(%s) on %s\n' % (self.fs.path, self.fs.fstype, fmcli.posix_timestamp_str(self.fs.date, True)))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
 				fd.write('# Path, Physical Offset, Logical Offset, Length, Flags, Type\n')
@@ -1659,7 +1659,7 @@ class fmgui(QtGui.QMainWindow):
 		self.mp.start()
 		try:
 			with open(fn, 'w') as fd:
-				fd.write('# %s on %s\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
+				fd.write('# %s(%s) on %s\n' % (self.fs.path, self.fs.fstype, fmcli.posix_timestamp_str(self.fs.date, True)))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
 				fd.write('# Inode, Number of Extents, Travel Score, Type, Size, Last Access, Creation, Last Metadata Change, Last Data Change, Paths\n')
@@ -1696,7 +1696,7 @@ class fmgui(QtGui.QMainWindow):
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
 <head>
-<title>%s on %s</title>
+<title>%s(%s) on %s</title>
 <style type="text/css">
 #overview {
 	font-family: monospace;
@@ -1714,8 +1714,8 @@ p {
 </style>
 </head>
 <body>
-''' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
-			fd.write('<h1>%s</h1>\n<p>Recorded on %s.</p>\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
+''' % (self.fs.path, self.fs.fstype, fmcli.posix_timestamp_str(self.fs.date, True)))
+			fd.write('<h1>%s</h1>\n<p>%s recorded on %s.</p>\n' % (self.fs.path, self.fs.fstype, fmcli.posix_timestamp_str(self.fs.date, True)))
 			fd.write('<p>Stats: %s</p>\n' % self.summary_text(int(olen)))
 			fd.write('<p>Query: %s</p>\n' % qt.summarize())
 			fd.write('''

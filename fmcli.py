@@ -354,6 +354,7 @@ class fmcli(code.InteractiveConsole):
 			fi = 1
 			ti = 1
 		print("Summary of '%s':" % res.path)
+		print("Type:\t\t\t%s" % res.fstype)
 		print("Block size:\t\t%s" % format_size(units_auto, res.block_size))
 		print("Fragment size:\t\t%s" % format_size(units_auto, res.frag_size))
 		print("Total space:\t\t%s" % format_size(self.units, res.total_bytes))
@@ -361,14 +362,14 @@ class fmcli(code.InteractiveConsole):
 			(format_size(self.units, res.total_bytes - res.free_bytes), \
 			 100 * (1.0 - (float(fb) / tb))))
 		print("Free space:\t\t%s" % format_size(self.units, res.free_bytes))
-		print("Total inodes:\t\t%s" % format_number(units_auto, res.total_inodes))
+		print("Total inodes:\t\t%s" % format_number(units_none, res.total_inodes))
 		print("Used inodes:\t\t%s (%.0f%%)" % \
-			(format_number(units_auto, res.total_inodes - res.free_inodes), \
+			(format_number(units_none, res.total_inodes - res.free_inodes), \
 			100 * (1.0 - (float(fi) / ti))))
-		print("Free inodes:\t\t%s" % format_number(units_auto, res.free_inodes))
+		print("Free inodes:\t\t%s" % format_number(units_none, res.free_inodes))
 		print("Overview cells:\t\t%s each" % format_size(units_auto, float(res.total_bytes) / self.fmdb.overview_len))
-		print("Extents:\t\t%s" % format_number(units_auto, res.extents))
-		print("Inodes w/ extents:\t%s" % format_number(units_auto, res.inodes))
+		print("Extents:\t\t%s" % format_number(units_none, res.extents))
+		print("Inodes w/ extents:\t%s" % format_number(units_none, res.inodes))
 		inodes = res.inodes if res.inodes != 0 else 1
 		extents = res.extents if res.extents != 0 else 1
 		print("Fragmentation:\t\t%.1f%%" % ((100.0 * extents / inodes) - 100))
