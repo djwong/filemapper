@@ -1690,7 +1690,10 @@ class fmgui(QtGui.QMainWindow):
 			return
 		idx = self.querytype_combo.currentIndex()
 		qt = self.query_types[idx]
-		olen = 2048 * self.overview.zoom
+		if self.overview.auto_size:
+			olen = 8192 * self.overview.zoom
+		else:
+			olen = self.overview.total_length()
 		with open(fn, 'w') as fd:
 			fd.write('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
