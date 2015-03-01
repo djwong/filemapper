@@ -558,8 +558,8 @@ class OverviewModel(QtCore.QObject):
 		'''The total length of the overview.'''
 		return self.length * self.zoom
 
-	def render(self):
-		'''Render the overview into the text view.'''
+	def render_html(self, length, need_br = False):
+		'''Render the overview for a given length.'''
 		def is_highlighted(cell):
 			if range_highlight is None:
 				return False
@@ -570,8 +570,8 @@ class OverviewModel(QtCore.QObject):
 
 		t0 = datetime.datetime.today()
 		if self.overview_big is None:
-			return
-		olen = int(self.length * self.zoom)
+			return None
+		olen = int(length)
 		#print(self.length, self.zoom)
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
@@ -595,16 +595,23 @@ class OverviewModel(QtCore.QObject):
 				h = False
 			ov_str.append(ovs.to_letter())
 		if h:
-			ov_str.append('</b>')
+			ov_str.append('</span>')
 		t2 = datetime.datetime.today()
 		fmdb.print_times('render', [t0, t1, t2])
+		return ''.join(ov_str)
+
+	def render(self):
+		'''Render the overview into the text view.'''
+		html = self.render_html(int(self.length * self.zoom))
+		if html is None:
+			return
 		cursor = self.ctl.textCursor()
 		start = cursor.selectionStart()
 		end = cursor.selectionEnd()
 		vs = self.ctl.verticalScrollBar()
 		old_v = vs.value()
 		old_max = vs.maximum()
-		self.ctl.setText(''.join(ov_str))
+		self.ctl.setText(html)
 		if old_max > 0:
 			if vs.maximum() == old_max:
 				vs.setValue(old_v)
@@ -907,10 +914,12 @@ class fmgui(QtGui.QMainWindow):
 		for u in self.unit_actions:
 			u.setActionGroup(ag)
 		ag.triggered.connect(self.change_units)
-		self.actionExportExtents.triggered.connect(self.export_extents_csv)
+		self.actionExportExtents.triggered.connect(self.export_extents)
 		self.actionExportExtents.setIcon(QtGui.QIcon.fromTheme('document-save'))
-		self.actionExportInodes.triggered.connect(self.export_inodes_csv)
+		self.actionExportInodes.triggered.connect(self.export_inodes)
 		self.actionExportInodes.setIcon(QtGui.QIcon.fromTheme('document-save'))
+		self.actionExportOverview.triggered.connect(self.export_overview)
+		self.actionExportOverview.setIcon(QtGui.QIcon.fromTheme('document-save'))
 		self.actionChangeFont.triggered.connect(self.change_font)
 		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
@@ -1069,6 +1078,11 @@ class fmgui(QtGui.QMainWindow):
 
 	def do_summary(self):
 		'''Load the FS summary into the status line.'''
+		s = self.summary_text()
+		self.status_label.setText(s)
+
+	def summary_text(self, overview_len = None):
+		'''Summarize the filesystem contents.'''
 		tb = self.fs.total_bytes
 		fb = self.fs.free_bytes
 		if tb == 0:
@@ -1079,6 +1093,8 @@ class fmgui(QtGui.QMainWindow):
 		if ti == 0:
 			fi = 1
 			ti = 1
+		if overview_len is None:
+			overview_len = self.overview.total_length()
 		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
 		extents = self.fs.extents if self.fs.extents != 0 else 1
 		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes; %s extents; %s/cell; %.1f%% frag; %s avg. travel" % \
@@ -1089,10 +1105,10 @@ class fmgui(QtGui.QMainWindow):
 			 fmcli.format_number(fmcli.units_auto, self.fs.total_inodes), \
 			 100 * (1.0 - (float(fi) / ti)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
-			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / self.overview.total_length()), \
+			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / overview_len), \
 			 100.0 * extents / inodes - 100, \
 			 fmcli.format_size(fmcli.units_auto, self.fmdb.query_avg_travel_score()))
-		self.status_label.setText(s)
+		return s
 
 	## Load and save UI state
 
@@ -1542,7 +1558,7 @@ class fmgui(QtGui.QMainWindow):
 
 	## Export query results
 
-	def export_extents_csv(self):
+	def export_extents(self):
 		'''Export extents to a CSV file.'''
 		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
 				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
@@ -1571,7 +1587,7 @@ class fmgui(QtGui.QMainWindow):
 		finally:
 			self.mp.stop()
 
-	def export_inodes_csv(self):
+	def export_inodes(self):
 		'''Export inodes to a CSV file.'''
 		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
 				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
@@ -1604,3 +1620,48 @@ class fmgui(QtGui.QMainWindow):
 					n += 1
 		finally:
 			self.mp.stop()
+
+	def export_overview(self):
+		'''Export overview to a HTML file.'''
+		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
+				filter = 'Hypertext Markup Language (*.html);;All files (*)')
+		if fn == '':
+			return
+		idx = self.querytype_combo.currentIndex()
+		qt = self.query_types[idx]
+		olen = 2048 * self.overview.zoom
+		with open(fn, 'w') as fd:
+			fd.write('''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<title>%s on %s</title>
+<style type="text/css">
+#overview {
+	font-family: monospace;
+	border: 1px solid gray;
+	word-wrap: break-word;
+	padding: 0.4em;
+}
+h1 {
+	margin: 0px;
+}
+p {
+	margin-top: 0px;
+	margin-bottom: 0.4em;
+}
+</style>
+</head>
+<body>
+''' % (self.fs.path, self.fs.date))
+			fd.write('<h1>%s</h1>\n<p>Recorded on %s.</p>\n' % (self.fs.path, self.fs.date))
+			fd.write('<p>Stats: %s</p>\n' % self.summary_text(int(olen)))
+			fd.write('<p>Query: %s</p>\n' % qt.summarize())
+			fd.write('''
+<div id="overview">
+''')
+			fd.write(self.overview.render_html(olen, True))
+			fd.write('''
+</div>
+</body>
+</html>''')

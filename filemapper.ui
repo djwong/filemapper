@@ -618,6 +618,7 @@ S = symbolic links</string>
     </property>
     <addaction name="actionExportExtents"/>
     <addaction name="actionExportInodes"/>
+    <addaction name="actionExportOverview"/>
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
@@ -938,6 +939,17 @@ S = symbolic links</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+I</string>
+   </property>
+  </action>
+  <action name="actionExportOverview">
+   <property name="text">
+    <string>Export &amp;Overview...</string>
+   </property>
+   <property name="statusTip">
+    <string>Export the overview to a file on disk.</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
    </property>
   </action>
  </widget>
