@@ -903,7 +903,7 @@ int main(int argc, char *argv[])
 			 ext2fs_free_blocks_count(fs->super) * fs->blocksize,
 			 fs->super->s_inodes_count,
 			 fs->super->s_free_inodes_count,
-			 EXT2_NAME_LEN);
+			 EXT2_NAME_LEN, "ext4");
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */

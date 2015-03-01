@@ -340,7 +340,6 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 	char p[PATH_MAX + 1];
 	sqlite3_stmt *stmt;
 	time_t t;
-	struct tm *tmp;
 	int err, err2, col = 1;
 
 	err = sqlite3_prepare_v2(wf->db, sql, -1, &stmt, NULL);

@@ -1867,7 +1867,7 @@ main(
 	collect_fs_stats(&wf.base, fsdev, fs->m_sb.sb_blocksize,
 			 fs->m_sb.sb_sectsize, total_bytes, free_bytes,
 			 total_inodes, free_inodes,
-			 XFS_NAME_LEN);
+			 XFS_NAME_LEN, "XFS");
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */

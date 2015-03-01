@@ -429,7 +429,7 @@ int main(int argc, char *argv[])
 	collect_fs_stats(&wf.base, (char *)fsdev, fs->cluster_size,
 			fs->cluster_size, total_bytes,
 			(uint64_t)fs->free_clusters * fs->cluster_size,
-			0, 0, FAT_MAX_NAME_LEN);
+			0, 0, FAT_MAX_NAME_LEN, "FAT");
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */

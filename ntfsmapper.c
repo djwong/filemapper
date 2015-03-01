@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
 	collect_fs_stats(&wf.base, fs->dev->d_name, fs->cluster_size,
 			fs->cluster_size, total_bytes,
 			fs->free_clusters * fs->cluster_size,
-			wf.total_inodes, size, NTFS_MAX_NAME_LEN);
+			wf.total_inodes, size, NTFS_MAX_NAME_LEN, "NTFS");
 	CHECK_ERROR("while storing fs stats");
 
 	/* Walk the filesystem */
