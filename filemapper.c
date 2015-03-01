@@ -18,7 +18,7 @@ PRAGMA case_sensitive_like = ON;\
 ";
 
 static char *dbschema = "PRAGMA page_size = 65536;\
-PRAGMA application_id = 61270;\
+PRAGMA application_id = 61271;\
 PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
@@ -336,7 +336,7 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 		      uint64_t total_inodes, uint64_t free_inodes,
 		      unsigned int max_name_len, const char *fstype)
 {
-	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);";
+	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?);";
 	char p[PATH_MAX + 1];
 	sqlite3_stmt *stmt;
 	time_t t;
