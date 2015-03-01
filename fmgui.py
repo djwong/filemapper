@@ -541,24 +541,47 @@ class OverviewModel(QtCore.QObject):
 		self.rst.timeout.connect(self.delayed_resize)
 		self.range_highlight = None
 		self.yield_fn = yield_fn
-		self.__do_resize()
+		self.auto_size = True
+		self.has_rendered = False
+
+		self.resize_viewport()
 
 	def load(self):
 		'''Query the DB for the high-res overview data.'''
 		olen = min(self.precision, self.fs.total_bytes // self.fs.block_size)
 		self.fmdb.set_overview_length(olen)
 		self.overview_big = [ov for ov in self.fmdb.query_overview()]
+		self.has_rendered = False
 
 	def set_zoom(self, zoom):
 		'''Set the zoom factor for the overview.'''
-		self.zoom = zoom
+		new_as = True
+		if type(zoom) == int or type(zoom) == float:
+			new_as = False
+			new_zoom = 1.0
+			new_length = int(float(self.fs.total_bytes) / zoom)
+		elif type(zoom) == str:
+			if zoom[-1] == '%':
+				new_zoom = float(zoom[:-1]) / 100.0
+				new_length = 0
+			else:
+				new_as = False
+				new_zoom = 1.0
+				cell_length = fmcli.s2p(self.fs, zoom)
+				new_length = int(float(self.fs.total_bytes) / cell_length)
+		else:
+			raise ValueError("Unknown zoom factor '%s'" % zoom)
+		self.auto_size = new_as
+		self.zoom = new_zoom
+		self.length = new_length
+		self.resize_viewport()
 		self.render()
 
 	def total_length(self):
 		'''The total length of the overview.'''
 		return self.length * self.zoom
 
-	def render_html(self, length, need_br = False):
+	def render_html(self, length):
 		'''Render the overview for a given length.'''
 		def is_highlighted(cell):
 			if range_highlight is None:
@@ -618,19 +641,20 @@ class OverviewModel(QtCore.QObject):
 			else:
 				vs.setValue(int(vs.maximum() * float(old_v) / old_max))
 		self.rendered.emit()
+		self.has_rendered = True
 
 	def resize_ctl(self, event):
 		'''Handle the resizing of the text view control.'''
 		QtGui.QTextEdit.resizeEvent(self.ctl, event)
-		self.__do_resize()
-		self.rst.start(40)
+		if self.resize_viewport():
+			self.rst.start(40)
 
 	def font_changed(self):
 		'''Call this if the font changes.'''
-		self.__do_resize()
-		self.render()
+		if self.resize_viewport():
+			self.render()
 
-	def __do_resize(self):
+	def resize_viewport(self):
 		'''Recalculate the overview size.'''
 		sz = self.ctl.viewport().size()
 		qfm = QtGui.QFontMetrics(self.ctl.document().defaultFont())
@@ -643,7 +667,9 @@ class OverviewModel(QtCore.QObject):
 		h = (sz.height() // overview_font_height) - 1
 		self.ctl.setLineWrapColumnOrWidth(w)
 		#print("overview; %f x %f = %f" % (w, h, w * h))
-		self.length = w * h
+		if self.auto_size:
+			self.length = w * h
+		return self.auto_size or not self.has_rendered
 
 	def delayed_resize(self):
 		self.rst.stop()
@@ -889,6 +915,37 @@ class XLineEdit(QtGui.QLineEdit):
 		else:
 			self.image.hide()
 
+### Validator for the zoom combobox
+
+class ZoomValidator(QtGui.QValidator):
+	'''Validate a zoom size.'''
+	def __init__(self, fs, parent = None):
+		super(ZoomValidator, self).__init__(parent)
+		self.fs = fs
+
+	def validate(self, string, pos = None):
+		if string == '':
+			return (QtGui.QValidator.Intermediate, string, pos)
+		try:
+			self.try_validate(string)
+			return (QtGui.QValidator.Acceptable, string, pos)
+		except:
+			return (QtGui.QValidator.Invalid, string, pos)
+
+	def try_validate(self, zoom):
+		'''Try to validate the string.'''
+		if type(zoom) == int or type(zoom) == float:
+			pass
+		elif type(zoom) == str:
+			if zoom[-1] == '%':
+				zoom = float(zoom[:-1]) / 100.0
+			else:
+				cell_length = fmcli.s2p(self.fs, zoom)
+				zoom = int(self.fs.total_bytes / cell_length)
+		else:
+			raise ValueError("Unknown zoom factor '%s'" % zoom)
+		return zoom
+
 ## GUI
 
 class fmgui(QtGui.QMainWindow):
@@ -1034,14 +1091,10 @@ class fmgui(QtGui.QMainWindow):
 		self.toolBar.addWidget(self.query_frame)
 
 		# Set up the zoom control
-		self.zoom_levels = [
-			['100%', 1.0],
-			['200%', 2.0],
-			['400%', 4.0],
-			['800%', 8.0],
-		]
-		self.zoom_combo.insertItems(0, [x[0] for x in self.zoom_levels])
+		self.zoom_levels = ['100%', '200%', '400%', '800%']
+		self.zoom_combo.insertItems(0, self.zoom_levels)
 		self.zoom_combo.currentIndexChanged.connect(self.change_zoom)
+		self.zoom_combo.setValidator(ZoomValidator(self.fs))
 
 		# Set up the status bar
 		self.status_label = QtGui.QLabel()
@@ -1118,9 +1171,15 @@ class fmgui(QtGui.QMainWindow):
 			actions = self.extent_type_actions.actions()
 			return [fmdb.extent_types_long[x] for x in range(0, len(actions)) if actions[x].isChecked()]
 		of = self.overview_text.document().defaultFont()
+		zs = list()
+		for x in range(0, self.zoom_combo.count()):
+			s = self.zoom_combo.itemText(x)
+			if s not in self.zoom_levels:
+				zs.append(s)
 		data = {
 			'version': self.json_version,
-			'zoom': self.zoom_levels[self.zoom_combo.currentIndex()][1],
+			'zoom': self.zoom_combo.currentText(),
+			'zoom_levels': zs,
 			'query_type': self.query_types[self.querytype_combo.currentIndex()].label,
 			'units': self.etm.units.label,
 			'window_state': base64.b64encode(self.saveState()).decode('utf-8'),
@@ -1148,12 +1207,6 @@ class fmgui(QtGui.QMainWindow):
 			if data['version'] != self.json_version:
 				raise Exception('Invalid version.')
 			x = 0
-			for zl in self.zoom_levels:
-				if zl[1] == data['zoom']:
-					self.zoom_combo.setCurrentIndex(x)
-					break
-				x += 1
-			x = 0
 			for qt in self.query_types:
 				try:
 					qt.import_state(data['query_data'][qt.label])
@@ -1177,6 +1230,11 @@ class fmgui(QtGui.QMainWindow):
 			self.results_tab.setCurrentIndex(data['results_tab'])
 			self.extent_table.header().restoreState(base64.b64decode(data['extent_headers'].encode('utf-8')))
 			self.inode_table.header().restoreState(base64.b64decode(data['inode_headers'].encode('utf-8')))
+			self.zoom_combo.insertItems(0, data['zoom_levels'])
+			for x in range(0, self.zoom_combo.count()):
+				if self.zoom_combo.itemText(x) == data['zoom']:
+					self.zoom_combo.setCurrentIndex(x)
+					break
 		except Exception as e:
 			failed = True
 		if failed:
@@ -1394,7 +1452,8 @@ class fmgui(QtGui.QMainWindow):
 
 	def change_zoom(self, idx):
 		'''Handle a change in the zoom selector.'''
-		self.overview.set_zoom(self.zoom_levels[idx][1])
+		s = self.zoom_combo.currentText()
+		self.overview.set_zoom(s)
 
 	## Queries
 
