@@ -1181,7 +1181,7 @@ class fmgui(QtGui.QMainWindow):
 		data = {
 			'version': self.json_version,
 			'zoom': self.zoom_combo.currentText(),
-			'zoom_levels': zs,
+			'zoom_levels': zs[:28],
 			'query_type': self.query_types[self.querytype_combo.currentIndex()].label,
 			'units': self.etm.units.label,
 			'window_state': base64.b64encode(self.saveState()).decode('utf-8'),
