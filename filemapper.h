@@ -103,7 +103,7 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 		     uint32_t blocksize, uint32_t fragsize,
 		     uint64_t total_bytes, uint64_t free_bytes,
 		     uint64_t total_inodes, uint64_t free_inodes,
-		     unsigned int max_name_len);
+		     unsigned int max_name_len, const char *fstype);
 
 /* Mark the database as complete. */
 void finalize_fs_stats(struct filemapper_t *wf, char *fs_name);

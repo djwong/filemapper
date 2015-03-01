@@ -30,7 +30,7 @@ DROP TABLE IF EXISTS inode_t;\
 DROP TABLE IF EXISTS path_t;\
 DROP TABLE IF EXISTS dir_t;\
 DROP TABLE IF EXISTS fs_t;\
-CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);\
+CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp INTEGER NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL, fstype TEXT);\
 CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);\
 INSERT INTO inode_type_t VALUES (0, 'f');\
 INSERT INTO inode_type_t VALUES (1, 'd');\
@@ -334,11 +334,10 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 		      uint32_t blocksize, uint32_t fragsize,
 		      uint64_t total_bytes, uint64_t free_bytes,
 		      uint64_t total_inodes, uint64_t free_inodes,
-		      unsigned int max_name_len)
+		      unsigned int max_name_len, const char *fstype)
 {
 	const char *sql = "INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?);";
 	char p[PATH_MAX + 1];
-	char stime[256];
 	sqlite3_stmt *stmt;
 	time_t t;
 	struct tm *tmp;
@@ -381,13 +380,13 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 	if (err)
 		goto out;
 	t = time(NULL);
-	tmp = gmtime(&t);
-	/* 2015-01-23 01:14:00.792473 */
-	strftime(stime, 256, "%F %T", tmp);
-	err = sqlite3_bind_text(stmt, col++, stime, -1, SQLITE_STATIC);
+	err = sqlite3_bind_int64(stmt, col++, t);
 	if (err)
 		goto out;
 	err = sqlite3_bind_text(stmt, col++, "/", -1, SQLITE_STATIC);
+	if (err)
+		goto out;
+	err = sqlite3_bind_text(stmt, col++, fstype, -1, SQLITE_STATIC);
 	if (err)
 		goto out;
 	err = sqlite3_step(stmt);

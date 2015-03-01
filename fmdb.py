@@ -11,6 +11,7 @@ import array
 import fiemap
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
+from dateutil import tz
 
 # Debugging stuff
 def print_times(label, times):
@@ -36,7 +37,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'avail_bytes', 'total_inodes',
 				       'free_inodes', 'avail_inodes',
 				       'extents', 'pathsep', 'inodes',
-				       'date'])
+				       'date', 'fstype'])
 
 # Inode type codes
 INO_TYPE_FILE		= 0
@@ -219,7 +220,7 @@ DROP TABLE IF EXISTS inode_type_t;
 DROP TABLE IF EXISTS path_t;
 DROP TABLE IF EXISTS dir_t;
 DROP TABLE IF EXISTS fs_t;
-CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp TEXT NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL);
+CREATE TABLE fs_t(path TEXT PRIMARY KEY NOT NULL, block_size INTEGER NOT NULL, frag_size INTEGER NOT NULL, total_bytes INTEGER NOT NULL, free_bytes INTEGER NOT NULL, avail_bytes INTEGER NOT NULL, total_inodes INTEGER NOT NULL, free_inodes INTEGER NOT NULL, avail_inodes INTEGER NOT NULL, max_len INTEGER NOT NULL, timestamp INTEGER NOT NULL, finished INTEGER NOT NULL, path_separator TEXT NOT NULL, fstype TEXT);
 CREATE TABLE inode_type_t(id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, atime INTEGER, crtime INTEGER, ctime INTEGER, mtime INTEGER, size INTEGER, FOREIGN KEY(type) REFERENCES inode_type_t(id));
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));
@@ -249,6 +250,16 @@ CREATE INDEX inode_ino_i ON inode_t(ino);
 CREATE INDEX extent_type_i ON extent_t(type);
 PRAGMA foreign_key_check;
 '''
+
+### Date handling functions
+
+tz_gmt = tz.gettz('UTC')
+tz_local = tz.gettz()
+def utctimestamp_to_datetime(t):
+	'''Convert a UTC timestamp to a date object.'''
+	if t is None:
+		return None
+	return datetime.datetime.utcfromtimestamp(t).replace(tzinfo = tz_gmt)
 
 class overview_block(object):
 	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
@@ -416,7 +427,8 @@ class fmdb(object):
 		'''Store filesystem stats in the database.'''
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
-		qstr = 'INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)'
+		qstr = 'INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)'
+		nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmcli.tz_gmt)
 		qarg = (self.fspath, statfs.f_bsize, \
 			statfs.f_frsize, \
 			statfs.f_blocks * statfs.f_bsize, \
@@ -424,8 +436,8 @@ class fmdb(object):
 			statfs.f_bavail * statfs.f_bsize, \
 			statfs.f_files, statfs.f_ffree, \
 			statfs.f_favail, statfs.f_namemax, \
-			str(datetime.datetime.today()), \
-			os.sep)
+			int(nowgmt), \
+			os.sep, 'fiemap')
 		print_sql(qstr, qarg)
 		self.conn.execute(qstr, qarg)
 		self.query_summary()
@@ -681,15 +693,20 @@ class fmdb(object):
 		inodes = rows[0][0]
 		#print(extents, inodes)
 
-		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp FROM fs_t;')
+		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp, fstype FROM fs_t;')
 		rows = cur.fetchall()
 		assert len(rows) == 1
 		res = rows[0]
 
+		# In the old days, the date was a string instead of Epoch seconds
+		if type(res[10]) == str:
+			d = datetime.datetime.strptime(res[10], '%Y-%m-%d %H:%M:%S').replace(tzinfo = tz_gmt)
+		else:
+			d = utctimestamp_to_datetime(d)
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
 				 int(res[6]), int(res[7]), int(res[8]),
-				 int(extents), res[9], int(inodes), res[10])
+				 int(extents), res[9], int(inodes), d, res[11])
 		return self.fs
 
 	## Querying extents and inodes with extents that happen to overlap a range
@@ -1248,7 +1265,10 @@ class fmdb(object):
 			     crtime, ctime, mtime, size) in rows:
 				yield inode_stats(self.fs, p, ino, itype, \
 						  nr_extents, travel_score, \
-						  atime, crtime, ctime, mtime, \
+						  utctimestamp_to_datetime(atime), \
+						  utctimestamp_to_datetime(crtime), \
+						  utctimestamp_to_datetime(ctime), \
+						  utctimestamp_to_datetime(mtime), \
 						  size)
 		t2 = datetime.datetime.now()
 		print_times('query_inode_stat', [t0, t1, t2])

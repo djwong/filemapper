@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1499</width>
+    <width>1522</width>
     <height>656</height>
    </rect>
   </property>
@@ -286,7 +286,7 @@ S = symbolic links</string>
              <bool>true</bool>
             </property>
             <property name="displayFormat">
-             <string>d MMM yyyy hh:mm:ss</string>
+             <string>d-MMM-yyyy hh:mm:ss</string>
             </property>
             <property name="calendarPopup">
              <bool>true</bool>
@@ -331,7 +331,7 @@ S = symbolic links</string>
              </datetime>
             </property>
             <property name="displayFormat">
-             <string>d MMM yyyy hh:mm:ss</string>
+             <string>d-MMM-yyyy hh:mm:ss</string>
             </property>
             <property name="calendarPopup">
              <bool>true</bool>
@@ -617,7 +617,7 @@ S = symbolic links</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1499</width>
+     <width>1522</width>
      <height>23</height>
     </rect>
    </property>

@@ -63,16 +63,14 @@ def format_number(units, num):
 			return format_number(units_scale[i], num)
 	return format_number(units_scale[-1], num)
 
-tz_gmt = tz.gettz('UTC')
-tz_local = tz.gettz()
-def posix_timestamp_str(t, pretty = False):
-	'''Generate a string from a POSIX UTC timestamp.'''
-	if t is None:
+def posix_timestamp_str(dt, pretty = False):
+	'''Generate a string from a datetime object.'''
+	if dt is None:
 		return None
-	dt = datetime.datetime.utcfromtimestamp(t).replace(tzinfo = tz_gmt)
 	if pretty:
-		dt = dt.astimezone(tz_local)
-		return dt.strftime('%d %b %Y %H:%M:%S')
+		dt = dt.astimezone(fmdb.tz_local)
+		return dt.strftime('%d-%b-%Y %H:%M:%S')
+	dt = dt.astimezone(fmdb.tz_gmt)
 	return dt.isoformat()
 
 def n2p(maximum, num):

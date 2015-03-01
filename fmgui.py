@@ -833,7 +833,7 @@ class TimestampQuery(FmQuery):
 	'''Handle queries comprising a range of timestamps.'''
 	def __init__(self, label, ctl, query_fn, start_ctl, end_ctl, range_ctl, start = None, end = None, range_enabled = False, parent=None, *args):
 		super(TimestampQuery, self).__init__(label, ctl, query_fn)
-		self.nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmcli.tz_gmt)
+		self.nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmdb.tz_gmt)
 		self.start = self.nowgmt if start is None else start
 		self.end = self.nowgmt if end is None else end
 		self.range_enabled = range_enabled
@@ -842,8 +842,8 @@ class TimestampQuery(FmQuery):
 		self.range_ctl = range_ctl
 
 	def load_query(self):
-		self.start_ctl.setDateTime(self.start.astimezone(fmcli.tz_local))
-		self.end_ctl.setDateTime(self.end.astimezone(fmcli.tz_local))
+		self.start_ctl.setDateTime(self.start.astimezone(fmdb.tz_local))
+		self.end_ctl.setDateTime(self.end.astimezone(fmdb.tz_local))
 		self.range_ctl.setCheckState(QtCore.Qt.Checked if self.range_enabled else QtCore.Qt.Unchecked)
 		self.ctl.show()
 
@@ -853,7 +853,7 @@ class TimestampQuery(FmQuery):
 
 	def parse_query(self):
 		def x(d):
-			return d.dateTime().toPyDateTime().replace(microsecond = 0, tzinfo = fmcli.tz_local).astimezone(fmcli.tz_gmt)
+			return d.dateTime().toPyDateTime().replace(microsecond = 0, tzinfo = fmdb.tz_local).astimezone(fmdb.tz_gmt)
 		self.range_enabled = self.range_ctl.checkState() == QtCore.Qt.Checked
 		self.start = x(self.start_ctl)
 		self.end = x(self.end_ctl)
@@ -874,8 +874,10 @@ class TimestampQuery(FmQuery):
 		self.range_enabled = data[2] == True
 
 	def summarize(self):
-		x = super(StringQuery, self).summarize()
-		return x + ', '.join(self.export_state())
+		x = super(TimestampQuery, self).summarize()
+		if not self.range_enabled:
+			return x + fmcli.posix_timestamp_str(self.start, True)
+		return x + fmcli.posix_timestamp_str(self.start, True) + ' to ' + fmcli.posix_timestamp_str(self.end, True)
 
 ## Custom widgets
 
@@ -1628,7 +1630,7 @@ class fmgui(QtGui.QMainWindow):
 		self.mp.start()
 		try:
 			with open(fn, 'w') as fd:
-				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
+				fd.write('# %s on %s\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
 				fd.write('# Path, Physical Offset, Logical Offset, Length, Flags, Type\n')
@@ -1657,7 +1659,7 @@ class fmgui(QtGui.QMainWindow):
 		self.mp.start()
 		try:
 			with open(fn, 'w') as fd:
-				fd.write('# %s on %s\n' % (self.fs.path, self.fs.date))
+				fd.write('# %s on %s\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
 				fd.write('# %s\n' % self.status_label.text())
 				fd.write('# Query: %s\n' % qt.summarize())
 				fd.write('# Inode, Number of Extents, Travel Score, Type, Size, Last Access, Creation, Last Metadata Change, Last Data Change, Paths\n')
@@ -1712,14 +1714,14 @@ p {
 </style>
 </head>
 <body>
-''' % (self.fs.path, self.fs.date))
-			fd.write('<h1>%s</h1>\n<p>Recorded on %s.</p>\n' % (self.fs.path, self.fs.date))
+''' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
+			fd.write('<h1>%s</h1>\n<p>Recorded on %s.</p>\n' % (self.fs.path, fmcli.posix_timestamp_str(self.fs.date, True)))
 			fd.write('<p>Stats: %s</p>\n' % self.summary_text(int(olen)))
 			fd.write('<p>Query: %s</p>\n' % qt.summarize())
 			fd.write('''
 <div id="overview">
 ''')
-			fd.write(self.overview.render_html(olen, True))
+			fd.write(self.overview.render_html(olen))
 			fd.write('''
 </div>
 </body>
