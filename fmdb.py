@@ -702,7 +702,7 @@ class fmdb(object):
 		if type(res[10]) == str:
 			d = datetime.datetime.strptime(res[10], '%Y-%m-%d %H:%M:%S').replace(tzinfo = tz_gmt)
 		else:
-			d = utctimestamp_to_datetime(d)
+			d = utctimestamp_to_datetime(res[10])
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
 				 int(res[6]), int(res[7]), int(res[8]),
