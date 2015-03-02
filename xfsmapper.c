@@ -1220,6 +1220,10 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	bp = NULL;
 	bno = rootbno;
 
+	/* Look out for obviously incorrect tree roots */
+	if (rootbno == 0 || rootbno == NULLAGBLOCK)
+		return EFSCORRUPTED;
+
 	/* Read the tree root */
 	fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
 	if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
