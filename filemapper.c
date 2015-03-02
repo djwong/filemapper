@@ -89,7 +89,7 @@ int icvt(struct filemapper_t *wf, char *in, size_t inl, char *out, size_t outl)
 				out++;
 				*out = 0xBD;
 				out++;
-				outl += 3;
+				outl -= 3;
 				in++;
 				inl--;
 			} else {
@@ -98,7 +98,7 @@ int icvt(struct filemapper_t *wf, char *in, size_t inl, char *out, size_t outl)
 		}
 	}
 
-	if (outl < 1) {
+	if (*out && outl < 1) {
 		errno = EFBIG;
 		return -1;
 	}
