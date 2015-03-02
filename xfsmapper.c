@@ -1479,7 +1479,8 @@ static void walk_metadata(struct xfsmap_t *wf)
 	INJECT_ROOT_METADATA(BNOBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(CNTBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(INOBT_FILE, XFS_DIR3_XT_METADATA);
-	INJECT_ROOT_METADATA(FINOBT_FILE, XFS_DIR3_XT_METADATA);
+	if (xfs_sb_version_hasfinobt(&fs->m_sb))
+		INJECT_ROOT_METADATA(FINOBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(ITABLE_FILE, XFS_DIR3_XT_METADATA);
 
 	/* Handle the log */
@@ -1611,6 +1612,8 @@ static void walk_metadata(struct xfsmap_t *wf)
 		ino--;
 
 		/* finobt */
+		if (!xfs_sb_version_hasfinobt(&fs->m_sb))
+			goto no_finobt;
 		wf->bbmap = bmap_finobt;
 		INJECT_METADATA(group_ino, path, ino, STR_FINOBT_FILE,
 				XFS_DIR3_XT_METADATA);
@@ -1625,6 +1628,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
+no_finobt:
 
 		/* inode blocks */
 		wf->bbmap = bmap_itable;
@@ -1658,9 +1662,11 @@ static void walk_metadata(struct xfsmap_t *wf)
 	walk_bitmap(wf, INO_INOBT_FILE, bmap_inobt);
 	if (wf->err || wf->wf_db_err)
 		goto out;
-	walk_bitmap(wf, INO_FINOBT_FILE, bmap_finobt);
-	if (wf->err || wf->wf_db_err)
-		goto out;
+	if (xfs_sb_version_hasfinobt(&fs->m_sb)) {
+		walk_bitmap(wf, INO_FINOBT_FILE, bmap_finobt);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+	}
 	walk_bitmap(wf, INO_ITABLE_FILE, bmap_itable);
 	if (wf->err || wf->wf_db_err)
 		goto out;
