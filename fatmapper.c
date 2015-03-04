@@ -61,11 +61,12 @@ typedef int (*walk_file_fn)(DOS_FS *fs, DOS_FILE *file, FDSC **cp, void *private
 /* Walk a file's mappings for extents */
 static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 {
-	DOS_FS *fs = wf->fs;
-	uint32_t curr, lcurr;
-	uint64_t pclus, lclus, len;
+	DOS_FS		*fs = wf->fs;
+	uint32_t	curr, lcurr;
+	uint64_t	pclus, lclus, len;
 	unsigned long long max_extent = MAX_EXTENT_LENGTH / fs->cluster_size;
-	int type;
+	int		type;
+	uint64_t	loff;
 
 	if (file->dir_ent.attr & ATTR_DIR)
 		type = EXT_TYPE_DIR;
@@ -91,9 +92,10 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 				   wf->ino, cluster_start(fs, pclus),
 				   lclus * fs->cluster_size,
 				   len * fs->cluster_size);
+			loff = lclus * fs->cluster_size;
 			insert_extent(&wf->base, wf->ino,
 				      cluster_start(fs, pclus),
-				      lclus * fs->cluster_size,
+				      &loff,
 				      len * fs->cluster_size,
 				      0, type);
 			if (wf->wf_db_err)
@@ -111,9 +113,10 @@ static void walk_file_mappings(struct fatmap_t *wf, DOS_FILE *file)
 		dbg_printf("R: ino=%llu pblk=%llu lblk=%llu len=%u\n",
 			   wf->ino, cluster_start(fs, pclus),
 			   lclus * fs->cluster_size, len * fs->cluster_size);
+		loff = lclus * fs->cluster_size;
 		insert_extent(&wf->base, wf->ino,
 			      cluster_start(fs, pclus),
-			      lclus * fs->cluster_size,
+			      &loff,
 			      len * fs->cluster_size,
 			      0, type);
 		if (wf->wf_db_err)
@@ -337,13 +340,14 @@ static void walk_metadata(struct fatmap_t *wf)
 	INJECT_METADATA(ROOT_DIR_INO, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, INO_TYPE_DIR);
 	INJECT_ROOT_METADATA(SB_FILE, INO_TYPE_METADATA);
-	insert_extent(&wf->base, INO_SB_FILE, 0, 0,
+	insert_extent(&wf->base, INO_SB_FILE, 0, NULL,
 		      fs->cluster_size, 0, EXT_TYPE_METADATA);
 	INJECT_ROOT_METADATA(PRIMARY_FAT_FILE, INO_TYPE_METADATA);
-	insert_extent(&wf->base, INO_PRIMARY_FAT_FILE, fs->fat_start, 0,
+	insert_extent(&wf->base, INO_PRIMARY_FAT_FILE, fs->fat_start, NULL,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
 	INJECT_ROOT_METADATA(BACKUP_FAT_FILE, INO_TYPE_METADATA);
-	insert_extent(&wf->base, INO_BACKUP_FAT_FILE, fs->fat_start + fs->fat_size, 0,
+	insert_extent(&wf->base, INO_BACKUP_FAT_FILE,
+		      fs->fat_start + fs->fat_size, NULL,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
 out:
 	return;

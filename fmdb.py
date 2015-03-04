@@ -190,7 +190,7 @@ def dentry_typestr(self):
 	return inode_types_long[self.type]
 
 # Database strings
-APP_ID = 61271
+APP_ID = 61272
 PAGE_SIZE = 65536
 CACHE_SIZE = 256 * 1048576
 CACHE_PAGES = CACHE_SIZE / PAGE_SIZE
@@ -226,7 +226,7 @@ CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT N
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
-CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
+CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
 CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode_t.nr_extents, inode_t.travel_score, inode_t.atime, inode_t.crtime, inode_t.ctime, inode_t.mtime, inode_t.size FROM path_t, inode_t WHERE inode_t.ino = path_t.ino;
@@ -1182,7 +1182,7 @@ class fmdb(object):
 		cur.arraysize = self.result_batch_size
 
 		t0 = datetime.datetime.now()
-		qstr = 'SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off'
+		qstr = 'SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.l_off IS NOT NULL AND extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off'
 		print_sql(qstr)
 		cur.execute(qstr)
 		upd = []

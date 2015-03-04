@@ -95,7 +95,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		]
 		self.sort_keys = [
 			lambda x: x.p_off,
-			lambda x: x.l_off,
+			lambda x: -1 if x.l_off is None else x.l_off,
 			lambda x: x.length,
 			lambda x: fmdb.extent_flagstr(x),
 			lambda x: fmdb.extent_typestr(x),
@@ -1636,9 +1636,10 @@ class fmgui(QtGui.QMainWindow):
 				fd.write('# Path, Physical Offset, Logical Offset, Length, Flags, Type\n')
 				n = 0
 				for ext in self.etm.extents(None):
-					fd.write('"%s",%d,%d,%d,"%s","%s"\n' % \
+					fd.write('"%s",%d,%s,%d,"%s","%s"\n' % \
 						(ext.path if ext.path != '' else self.fs.pathsep, \
-						 ext.p_off, ext.l_off, ext.length, \
+						 ext.p_off, '' if ext.l_off is None else ext.l_off, \
+						 ext.length, \
 						 fmdb.extent_flagstr(ext), \
 						 fmdb.extent_typestr(ext)))
 					if n > 1000:
@@ -1665,11 +1666,13 @@ class fmgui(QtGui.QMainWindow):
 				fd.write('# Inode, Number of Extents, Travel Score, Type, Size, Last Access, Creation, Last Metadata Change, Last Data Change, Paths\n')
 				n = 0
 				for inode in self.itm.inodes(None):
-					fd.write('%d,%d,%.02f,"%s",%d,%s,%s,%s,%s,"%s"\n' % \
-						(inode.ino, inode.nr_extents, \
-						 inode.travel_score, \
+					ts = '' if inode.travel_score is None else '%.02f' % inode.travel_score
+					nr = '' if inode.nr_extents is None else '%d' % inode.nr_extents
+					iss = '' if inode.size is None else inode.size
+					fd.write('%d,%s,%s,"%s",%s,%s,%s,%s,%s,"%s"\n' % \
+						(inode.ino, nr, ts, \
 						 fmdb.inode_typestr(inode), \
-						 inode.size, \
+						 iss, \
 						 fmcli.posix_timestamp_str(inode.atime), \
 						 fmcli.posix_timestamp_str(inode.crtime), \
 						 fmcli.posix_timestamp_str(inode.ctime), \

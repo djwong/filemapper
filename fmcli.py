@@ -36,7 +36,7 @@ units_auto = units('a', 'auto', None)
 def format_size(units, num):
 	'''Pretty-format a number with base-2 suffixes.'''
 	if num is None:
-		return None
+		return ''
 	if units.factor is not None:
 		if units.factor == 1 and type(num) == int:
 			return "{:,}{}{}".format(int(num), \
@@ -51,7 +51,7 @@ def format_size(units, num):
 def format_number(units, num):
 	'''Pretty-format a number with base-10 suffixes.'''
 	if num is None:
-		return None
+		return ''
 	if units.factor is not None:
 		if units.factor == 1 and type(num) == int:
 			return "{:,}{}{}".format(int(num), \
@@ -66,7 +66,7 @@ def format_number(units, num):
 def posix_timestamp_str(dt, pretty = False):
 	'''Generate a string from a datetime object.'''
 	if dt is None:
-		return None
+		return ''
 	if pretty:
 		dt = dt.astimezone(fmdb.tz_local)
 		return dt.strftime('%d-%b-%Y %H:%M:%S')
@@ -263,9 +263,10 @@ class fmcli(code.InteractiveConsole):
 	def print_extent(self, ext):
 		'''Pretty-print an extent.'''
 		if self.machine:
-			print("'%s',%d,%d,%d,'%s','%s'" % \
+			print("'%s',%d,%s,%d,'%s','%s'" % \
 				(ext.path if ext.path != '' else self.fs.pathsep, \
-				 ext.p_off, ext.l_off, ext.length, \
+				 ext.p_off, '' if ext.l_off is None else ext.l_off, \
+				 ext.length, \
 				 fmdb.extent_flagstr(ext), \
 				 fmdb.extent_typestr(ext)))
 			return
@@ -290,19 +291,21 @@ class fmcli(code.InteractiveConsole):
 	def print_inode_stats(self, inode):
 		'''Pretty-print inode statistics.'''
 		p = inode.path if inode.path != '' else self.fs.pathsep
-		ts = 'None' if inode.travel_score is None else '%.02f' % inode.travel_score
+		ts = '' if inode.travel_score is None else '%.02f' % inode.travel_score
+		nr = '' if inode.nr_extents is None else '%d' % inode.nr_extents
 		if self.machine:
-			print("'%s',%d,%s,%s,%s,%s,%s,%s,%s,%s" % \
-				(p, inode.ino, inode.nr_extents, ts, \
+			iss = '' if inode.size is None else inode.size
+			print("'%s',%d,%s,%s,'%s',%s,%s,%s,%s,%s" % \
+				(p, inode.ino, nr, ts, \
 				 fmdb.inode_typestr(inode), \
 				 posix_timestamp_str(inode.atime), \
 				 posix_timestamp_str(inode.crtime), \
 				 posix_timestamp_str(inode.ctime), \
 				 posix_timestamp_str(inode.mtime), \
-				 inode.size))
+				 iss))
 			return
 		print("'%s', %d, %s, %s, %s, '%s', '%s', '%s', '%s', %s" % \
-			(p, inode.ino, inode.nr_extents, ts, \
+			(p, inode.ino, nr, ts, \
 			 fmdb.inode_typestr(inode), \
 			 posix_timestamp_str(inode.atime, True), \
 			 posix_timestamp_str(inode.crtime, True), \

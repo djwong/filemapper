@@ -92,7 +92,7 @@ void insert_dentry(struct filemapper_t *wf, int64_t dir_ino,
 
 /* Insert an extent into the database. */
 void insert_extent(struct filemapper_t *wf, int64_t ino, uint64_t physical,
-		   uint64_t logical, uint64_t length, int flags, int type);
+		   uint64_t *logical, uint64_t length, int flags, int type);
 
 void inject_metadata(struct filemapper_t *wf, int64_t parent_ino,
 		     const char *path, int64_t ino, const char *name,

@@ -107,6 +107,7 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 	runlist *runs = NULL, *r;
 	unsigned long long p_block, l_block, e_len;
 	unsigned long long max_extent = MAX_EXTENT_LENGTH / wf->fs->cluster_size;
+	uint64_t loff;
 
 	if (ntfs_bit_get(wf->ino_bmap, inode->mft_no))
 		return;
@@ -142,9 +143,10 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 				dbg_printf("R: ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
 					inode->mft_no, ctx->attr->type,
 					p_block, l_block, e_len);
+				loff = l_block * wf->fs->cluster_size;
 				insert_extent(&wf->base, inode->mft_no,
 					      p_block * wf->fs->cluster_size,
-					      l_block * wf->fs->cluster_size,
+					      &loff,
 					      e_len * wf->fs->cluster_size,
 					      0,
 					      extent_codes(inode, ctx->attr->type));
@@ -160,9 +162,10 @@ static void walk_file_mappings(struct ntfsmap_t *wf, ntfs_inode *inode)
 			dbg_printf("R: ino=%"PRIu64" type=0x%x vcn=%"PRIu64" lcn=%"PRIu64" len=%"PRIu64"\n",
 				inode->mft_no, ctx->attr->type,
 				p_block, l_block, e_len);
+			loff = l_block * wf->fs->cluster_size;
 			insert_extent(&wf->base, inode->mft_no,
 				      p_block * wf->fs->cluster_size,
-				      l_block * wf->fs->cluster_size,
+				      &loff,
 				      e_len * wf->fs->cluster_size,
 				      0,
 				      extent_codes(inode, ctx->attr->type));

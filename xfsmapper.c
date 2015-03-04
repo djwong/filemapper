@@ -571,6 +571,7 @@ int insert_xfs_extent(int64_t ino, struct xfs_extent_t *xext, void *priv_data)
 	struct xfsmap_t *wf = priv_data;
 	int type;
 	int flags;
+	uint64_t loff;
 
 	flags = 0;
 	if (xext->inlinedata)
@@ -582,7 +583,8 @@ int insert_xfs_extent(int64_t ino, struct xfs_extent_t *xext, void *priv_data)
 		type = EXT_TYPE_EXTENT;
 	if (xext->state == XFS_EXT_UNWRITTEN)
 		flags |= EXTENT_UNWRITTEN;
-	insert_extent(&wf->base, ino, xext->p_off, xext->l_off,
+	loff = xext->l_off;
+	insert_extent(&wf->base, ino, xext->p_off, &loff,
 		      xext->len, flags, type);
 	if (wf->wf_db_err)
 		return -1;
@@ -757,7 +759,7 @@ static void walk_file_mappings(struct xfsmap_t *wf, xfs_inode_t *ip, int type)
 	big_bmap_set(wf->ino_bmap, agno, agino, 1, 1);
 
 	ioff = inode_poff(ip);
-	insert_extent(&wf->base, ip->i_ino, ioff, 0,
+	insert_extent(&wf->base, ip->i_ino, ioff, NULL,
 		      ip->i_mount->m_sb.sb_inodesize, 0, EXT_TYPE_METADATA);
 	if (wf->wf_db_err)
 		return;
@@ -1122,8 +1124,7 @@ static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
 
 /* Walk an AG's bitmap, attaching extents for the in use blocks to the inode */
 static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
-			   struct big_bmap *bbmap, xfs_agnumber_t agno,
-			   int64_t *ploff)
+			   struct big_bmap *bbmap, xfs_agnumber_t agno)
 {
 	xfs_mount_t		*fs = wf->fs;
 	unsigned long		key;
@@ -1132,9 +1133,6 @@ static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 	xfs_extlen_t		len;
 	int			*val;
 	struct btree_root	*bmap;
-	int64_t			loff;
-
-	loff = (ploff ? *ploff : 0);
 
 	ag_size = fs->m_sb.sb_agblocks;
 	if (agno == bbmap->sz - 1)
@@ -1154,17 +1152,13 @@ static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 		dbg_printf("%s: ino=%ld agno=%d key=%lu len=%lu val=%x\n",
 			   __func__, ino, agno, key, (unsigned long)len, *val);
 		s = XFS_AGB_TO_FSB(fs, agno, key);
-		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s), loff,
+		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s), NULL,
 			      XFS_FSB_TO_B(fs, len), EXTENT_SHARED,
 			      extent_codes[XFS_DIR3_XT_METADATA]);
 		if (wf->err || wf->wf_db_err)
 			break;
-		loff += XFS_FSB_TO_B(fs, len);
 		val = btree_lookup_next(bmap, &key);
 	}
-
-	if (ploff)
-		*ploff = loff;
 }
 
 /* Walk a big bitmap, attaching in use block as extents of the inode */
@@ -1172,11 +1166,9 @@ static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 			struct big_bmap *bbmap)
 {
 	xfs_agnumber_t agno;
-	int64_t loff;
 
-	loff = 0;
 	for (agno = 0; agno < bbmap->sz; agno++) {
-		walk_ag_bitmap(wf, ino, bbmap, agno, &loff);
+		walk_ag_bitmap(wf, ino, bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			break;
 	}
@@ -1453,6 +1445,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 	unsigned long		i, len;
 	xfs_agblock_t		left_inobt_leaf_agbno = 0;
 	int			err;
+	uint64_t		loff;
 
 	/* Create hidden inodes */
 #define H(ino, name, type) {(ino), STR_##name, XFS_DIR3_##type}
@@ -1490,8 +1483,9 @@ static void walk_metadata(struct xfsmap_t *wf)
 	/* Handle the log */
 	if (fs->m_sb.sb_logstart) {
 		INJECT_ROOT_METADATA(JOURNAL_FILE, XFS_DIR3_FT_REG_FILE);
+		loff = 0;
 		insert_extent(&wf->base, INO_JOURNAL_FILE,
-			      XFS_FSB_TO_B(fs, fs->m_sb.sb_logstart), 0,
+			      XFS_FSB_TO_B(fs, fs->m_sb.sb_logstart), &loff,
 			      XFS_FSB_TO_B(fs, fs->m_sb.sb_logblocks), 0,
 			      extent_codes[XFS_DIR3_FT_REG_FILE]);
 		if (wf->wf_db_err)
@@ -1548,7 +1542,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		INJECT_METADATA(group_ino, path, ino, STR_SB_FILE,
 				XFS_DIR3_XT_METADATA);
 		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s),
-			      0, 4 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
+			      NULL, 4 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
 			      extent_codes[XFS_DIR3_XT_METADATA]);
 		if (wf->wf_db_err)
 			goto out;
@@ -1562,7 +1556,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 
 		INJECT_METADATA(group_ino, path, ino, STR_FL_FILE,
 				XFS_DIR3_XT_METADATA);
-		walk_ag_bitmap(wf, ino, bmap_agfl, agno, NULL);
+		walk_ag_bitmap(wf, ino, bmap_agfl, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1578,7 +1572,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 			wf->err = err;
 		if (wf->err)
 			goto out;
-		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1594,7 +1588,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 			wf->err = err;
 		if (wf->err)
 			goto out;
-		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1610,7 +1604,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 			wf->err = err;
 		if (wf->err)
 			goto out;
-		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1628,7 +1622,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 			wf->err = err;
 		if (wf->err)
 			goto out;
-		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
@@ -1644,7 +1638,7 @@ no_finobt:
 			wf->err = err;
 		if (wf->err)
 			goto out;
-		walk_ag_bitmap(wf, ino, wf->bbmap, agno, NULL);
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;

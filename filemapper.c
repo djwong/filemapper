@@ -18,7 +18,7 @@ PRAGMA case_sensitive_like = ON;\
 ";
 
 static char *dbschema = "PRAGMA page_size = 65536;\
-PRAGMA application_id = 61271;\
+PRAGMA application_id = 61272;\
 PRAGMA journal_mode = MEMORY;\
 DROP VIEW IF EXISTS dentry_t;\
 DROP VIEW IF EXISTS path_extent_v;\
@@ -46,7 +46,7 @@ INSERT INTO extent_type_t VALUES (2, 'e');\
 INSERT INTO extent_type_t VALUES (3, 'm');\
 INSERT INTO extent_type_t VALUES (4, 'x');\
 INSERT INTO extent_type_t VALUES (5, 's');\
-CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER NOT NULL, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));\
+CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));\
 CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));\
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;\
 CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode_t.nr_extents, inode_t.travel_score, inode_t.atime, inode_t.crtime, inode_t.ctime, inode_t.mtime, inode_t.size FROM path_t, inode_t WHERE inode_t.ino = path_t.ino;\
@@ -268,7 +268,7 @@ out:
 
 /* Insert an extent into the database. */
 void insert_extent(struct filemapper_t *wf, int64_t ino, uint64_t physical,
-		   uint64_t logical, uint64_t length, int flags, int type)
+		   uint64_t *logical, uint64_t length, int flags, int type)
 {
 	const char *extent_sql = "INSERT INTO extent_t VALUES(?, ?, ?, ?, ?, ?, ?);";
 	sqlite3_stmt *stmt = NULL;
@@ -287,9 +287,15 @@ void insert_extent(struct filemapper_t *wf, int64_t ino, uint64_t physical,
 	err = sqlite3_bind_int64(stmt, col++, physical);
 	if (err)
 		goto out;
-	err = sqlite3_bind_int64(stmt, col++, logical);
-	if (err)
-		goto out;
+	if (logical) {
+		err = sqlite3_bind_int64(stmt, col++, *logical);
+		if (err)
+			goto out;
+	} else {
+		err = sqlite3_bind_null(stmt, col++);
+		if (err)
+			goto out;
+	}
 	err = sqlite3_bind_int(stmt, col++, flags);
 	if (err)
 		goto out;
@@ -626,7 +632,7 @@ void calc_inode_stats(struct filemapper_t *wf)
 	int err, err2;
 
 	/* For each inode... */
-	err = sqlite3_prepare_v2(db, "SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off;",
+	err = sqlite3_prepare_v2(db, "SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.l_off IS NOT NULL AND extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off;",
 				 -1, &ino_stmt, NULL);
 	if (err)
 		goto out;
