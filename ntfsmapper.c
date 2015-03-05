@@ -440,9 +440,9 @@ int main(int argc, char *argv[])
 	CHECK_ERROR("while calculating inode statistics");
 
 	/* Cache overviews. */
-	cache_overview(&wf.base, total_bytes, 2048);
+	cache_overview(&wf.base, 2048);
 	CHECK_ERROR("while caching CLI overview");
-	cache_overview(&wf.base, total_bytes, 65536);
+	cache_overview(&wf.base, 65536);
 	CHECK_ERROR("while caching GUI overview");
 	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
 	if (errm) {

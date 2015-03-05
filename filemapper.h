@@ -109,8 +109,7 @@ void collect_fs_stats(struct filemapper_t *wf, char *fs_name,
 void finalize_fs_stats(struct filemapper_t *wf, char *fs_name);
 
 /* Generate an overview cache. */
-void cache_overview(struct filemapper_t *wf, uint64_t total_bytes,
-		    uint64_t length);
+void cache_overview(struct filemapper_t *wf, uint64_t length);
 
 /* Prepare database to receive new data. */
 void prepare_db(struct filemapper_t *wf);

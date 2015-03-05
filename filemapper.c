@@ -6,6 +6,7 @@
 #undef DEBUG
 #undef PROGRESS_REPORT
 #include <inttypes.h>
+#include <assert.h>
 #include "filemapper.h"
 
 static char *opschema = "\
@@ -491,16 +492,34 @@ out:
 }
 
 /* Generate an overview cache. */
-void cache_overview(struct filemapper_t *wf, uint64_t total_bytes,
-		    uint64_t length)
+void cache_overview(struct filemapper_t *wf, uint64_t length)
 {
 	sqlite3 *db = wf->db;
 	uint64_t start_cell, end_cell, i;
 	uint64_t bytes_per_cell, e_p_off, e_p_end;
 	int e_type;
 	sqlite3_stmt *stmt = NULL;
-	struct overview_t *overview;
+	struct overview_t *overview = NULL;
 	int err, err2;
+	uint64_t total_bytes;
+	char *sql;
+
+	/* How many bytes do we know about? */
+	sql = "SELECT total_bytes FROM fs_t";
+	err = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	if (err)
+		goto out;
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_ROW)
+		goto out;
+	total_bytes = sqlite3_column_int64(stmt, 0);
+	err = sqlite3_step(stmt);
+	if (err && err != SQLITE_DONE)
+		goto out;
+	err = sqlite3_finalize(stmt);
+	stmt = NULL;
+	if (err)
+		goto out;
 
 	/* Allocate memory */
 	overview = calloc(length, sizeof(*overview));
@@ -512,8 +531,8 @@ void cache_overview(struct filemapper_t *wf, uint64_t total_bytes,
 	bytes_per_cell = total_bytes / length;
 
 	/* Aggregate the extents */
-	err = sqlite3_prepare_v2(db, "SELECT p_off, p_end, type FROM extent_t;",
-				 -1, &stmt, NULL);
+	sql = "SELECT p_off, p_end, type FROM extent_t;";
+	err = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
 	if (err)
 		goto out;
 	err = sqlite3_step(stmt);
@@ -523,6 +542,8 @@ void cache_overview(struct filemapper_t *wf, uint64_t total_bytes,
 		e_type = sqlite3_column_int(stmt, 2);
 		start_cell = e_p_off / bytes_per_cell;
 		end_cell = e_p_end / bytes_per_cell;
+		assert(start_cell < length && end_cell < length);
+
 		switch (e_type) {
 		case EXT_TYPE_FILE:
 			for (i = start_cell; i <= end_cell; i++)
