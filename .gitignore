@@ -9,3 +9,7 @@ debian/
 *.desktop
 *.o
 dosfs.[ch]
+fatmapper
+xfsmapper
+fatcheck.c
+libfat.a
