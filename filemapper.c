@@ -144,7 +144,7 @@ void run_batch_query(struct filemapper_t *wf, const char *sql)
 /* Insert an inode record into the inode and path tables */
 void insert_inode(struct filemapper_t *wf, int64_t ino, int type,
 		  const char *path, time_t *atime, time_t *crtime,
-		  time_t *ctime, time_t *mtime, ssize_t *size)
+		  time_t *ctime, time_t *mtime, int64_t *size)
 {
 	const char *ino_sql = "INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL, ?, ?, ?, ?, ?);";
 	const char *path_sql = "INSERT INTO path_t VALUES(?, ?);";
