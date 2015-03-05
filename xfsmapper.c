@@ -1927,6 +1927,7 @@ main(
 		goto out;
 	}
 	CHECK_ERROR("while flushing overview cache database transaction");
+
 out:
 	if (wf.ino_bmap)
 		big_bmap_destroy(wf.ino_bmap);

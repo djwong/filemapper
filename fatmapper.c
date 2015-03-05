@@ -435,11 +435,8 @@ int main(int argc, char *argv[])
 		free(errm);
 		goto out;
 	}
-	if (wf.wf_db_err) {
-		die("%s while starting transaction",
-				sqlite3_errstr(wf.wf_db_err));
-		goto out;
-	}
+	CHECK_ERROR("while starting fs analysis database transaction");
+
 	total_bytes = (uint64_t)fs->clusters * fs->cluster_size;
 
 	collect_fs_stats(&wf.base, (char *)fsdev, fs->cluster_size,
@@ -463,6 +460,22 @@ int main(int argc, char *argv[])
 	calc_inode_stats(&wf.base);
 	CHECK_ERROR("while calculating inode statistics");
 
+	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
+	if (errm) {
+		fprintf(stderr, "%s %s", errm, "while ending transaction");
+		free(errm);
+		goto out;
+	}
+	CHECK_ERROR("while flushing fs analysis database transaction");
+
+	wf.wf_db_err = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errm);
+	if (errm) {
+		fprintf(stderr, "%s %s", errm, "while starting transaction");
+		free(errm);
+		goto out;
+	}
+	CHECK_ERROR("while starting overview cache database transaction");
+
 	/* Cache overviews. */
 	cache_overview(&wf.base, 2048);
 	CHECK_ERROR("while caching CLI overview");
@@ -474,11 +487,8 @@ int main(int argc, char *argv[])
 		free(errm);
 		goto out;
 	}
-	if (wf.wf_db_err) {
-		die("%s while ending transaction",
-				sqlite3_errstr(wf.wf_db_err));
-		goto out;
-	}
+	CHECK_ERROR("while flushing overview cache database transaction");
+
 out:
 	if (wf.wf_iconv)
 		iconv_close(wf.wf_iconv);
