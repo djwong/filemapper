@@ -18,9 +18,21 @@
 #include <unistd.h>
 #include <iconv.h>
 #include <sqlite3.h>
-#include "dosfs.h"
+
+#include <fsck.fat.h>
+#include <file.h>
+#include <fat.h>
+#include <lfn.h>
+#include <charconv.h>
+#include <boot.h>
+#include <common.h>
+#include <io.h>
 #undef DEBUG
 #include "filemapper.h"
+
+/* from check.h */
+void add_file(DOS_FS * fs, DOS_FILE *** chain, DOS_FILE * parent,
+	      loff_t offset, FDSC ** cp);
 
 struct fatmap_t {
 	struct filemapper_t base;

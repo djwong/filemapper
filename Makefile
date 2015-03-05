@@ -10,24 +10,25 @@ mandir = ${exec_prefix}/man
 man1dir = ${mandir}/man1
 appdir = ${exec_prefix}/share/applications
 XFSPROGS ?= Please_set_XFSPROGS_to_the_XFS_source_directory
+DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
+DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
 
 all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsmapper ntfsmapper.1.gz
 
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
+filemapper.c: filemapper.h
+
 xfsmapper: filemapper.o xfsmapper.o $(XFSPROGS)/libxfs/.libs/libxfs.a
 	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid
 
-xfsmapper.c: filemapper.h $(XFSPROGS)/repair/btree.h
-
-xfsmapper.o: xfsmapper.c $(XFSPROGS)/include/xfs/libxfs.h
+xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/xfs/libxfs.h $(XFSPROGS)/repair/btree.h
 	$(CC) $(CFLAGS) -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/
 
 e2mapper: filemapper.o e2mapper.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs
 
-filemapper.c: filemapper.h
 e2mapper.c: filemapper.h
 
 ntfsmapper: filemapper.o ntfsmapper.o
@@ -35,10 +36,20 @@ ntfsmapper: filemapper.o ntfsmapper.o
 
 ntfsmapper.c: filemapper.h
 
-fatmapper: filemapper.o fatmapper.o dosfs.o
+libfat.a: $(DOSFSTOOLS)/boot.o $(DOSFSTOOLS)/charconv.o $(DOSFSTOOLS)/common.o $(DOSFSTOOLS)/fat.o $(DOSFSTOOLS)/file.o $(DOSFSTOOLS)/io.o $(DOSFSTOOLS)/lfn.o
+	$(AR) cr libfat.a $^
+
+fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3
 
-fatmapper.c: dosfs.h filemapper.h
+fatcheck.c: $(DOSFSTOOLS)/src/check.c $(DOSFS_HEADERS)
+	sed -e 's/static void add_file/void add_file/g' < $< > $@
+
+fatcheck.o: fatcheck.c
+	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
+
+fatmapper.o: fatmapper.c filemapper.h $(DOSFS_HEADERS)
+	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
 
 clean:;
 	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop *.o ntfsmapper fatmapper xfsmapper
