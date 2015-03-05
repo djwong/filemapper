@@ -10,6 +10,9 @@
 #include <libgen.h>
 #include "filemapper.h"
 
+#define XFS_FSBLOCK_TO_BYTES(fs, fsblock) \
+		(XFS_FSB_TO_DADDR((fs), (fsblock)) << BBSHIFT)
+
 struct xfs_extent_t
 {
 	unsigned long long p_off;
@@ -500,7 +503,7 @@ int walk_bmap_btree_nodes(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 				bno = be64_to_cpu(*pp);
 				if (!XFS_FSB_SANITY_CHECK(fs, bno))
 					goto err;
-				xext.p_off = XFS_FSB_TO_B(fs, bno);
+				xext.p_off = XFS_FSBLOCK_TO_BYTES(fs, bno);
 				xext.l_off = XFS_FSB_TO_B(fs, kno);
 				xext.len = XFS_FSB_TO_B(fs, 1);
 				xext.state = XFS_EXT_NORM;
@@ -596,12 +599,11 @@ static int insert_meta_extent(int64_t ino, struct xfs_extent_t *xext,
 			      void *priv_data)
 {
 	struct xfsmap_t *wf = priv_data;
-	xfs_fsblock_t fsbno;
 	xfs_agblock_t agbno;
 	xfs_extlen_t blen;
+	xfs_daddr_t daddr = xext->p_off >> BBSHIFT;
 
-	fsbno = XFS_B_TO_FSB(wf->fs, xext->p_off);
-	agbno = XFS_FSB_TO_AGBNO(wf->fs, fsbno);
+	agbno = xfs_daddr_to_agbno(wf->fs, daddr);
 	blen = XFS_B_TO_FSB(wf->fs, xext->len);
 	big_bmap_set(wf->bbmap, wf->agno, agbno, blen, 1);
 	return 0;
@@ -641,7 +643,7 @@ static int walk_extent_helper(int64_t ino, struct xfs_extent_t *extent,
 /* Calculate an inode's byte position on disk. */
 static unsigned long long inode_poff(xfs_inode_t *ip)
 {
-	return XFS_FSB_TO_B(ip->i_mount,
+	return XFS_FSBLOCK_TO_BYTES(ip->i_mount,
 			XFS_DADDR_TO_FSB(ip->i_mount, ip->i_imap.im_blkno)) +
 			ip->i_imap.im_boffset;
 }
@@ -704,7 +706,7 @@ int iterate_fork_mappings(xfs_inode_t *ip, int fork, extent_walk_fn fn,
 			ep = xfs_iext_get_ext(ifp, idx);
 
 			xfs_bmbt_get_all(ep, &ext);
-			xext.p_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startblock);
+			xext.p_off = XFS_FSBLOCK_TO_BYTES(ip->i_mount, ext.br_startblock);
 			xext.l_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startoff);
 			xext.len = XFS_FSB_TO_B(ip->i_mount, ext.br_blockcount);
 			if (fn(ip->i_ino, &xext, priv_data))
@@ -1152,7 +1154,7 @@ static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 		dbg_printf("%s: ino=%ld agno=%d key=%lu len=%lu val=%x\n",
 			   __func__, ino, agno, key, (unsigned long)len, *val);
 		s = XFS_AGB_TO_FSB(fs, agno, key);
-		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s), NULL,
+		insert_extent(&wf->base, ino, XFS_FSBLOCK_TO_BYTES(fs, s), NULL,
 			      XFS_FSB_TO_B(fs, len), EXTENT_SHARED,
 			      extent_codes[XFS_DIR3_XT_METADATA]);
 		if (wf->err || wf->wf_db_err)
@@ -1231,7 +1233,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	level = xfs_btree_get_level(block);
 
 	/* Create an extent for the root */
-	xext.p_off = XFS_FSB_TO_B(fs, fsbno);
+	xext.p_off = XFS_FSBLOCK_TO_BYTES(fs, fsbno);
 	xext.l_off = 0;
 	xext.len = fs->m_sb.sb_blocksize;
 	xext.state = XFS_EXT_NORM;
@@ -1261,7 +1263,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 				fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
 				if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
 					goto err;
-				xext.p_off = XFS_FSB_TO_B(fs, fsbno);
+				xext.p_off = XFS_FSBLOCK_TO_BYTES(fs, fsbno);
 				xext.l_off = 0;
 				xext.len = XFS_FSB_TO_B(fs, 1);
 				xext.state = XFS_EXT_NORM;
@@ -1389,9 +1391,13 @@ static int walk_ag_inode_blocks(xfs_mount_t *fs, int64_t ino,
 			agino = be32_to_cpu(pp->ir_startino);
 			bno = XFS_AGINO_TO_AGBNO(fs, agino);
 			fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
+			dbg_printf("ag:%d agino:%u>%u bno:%lu fsbno:%lu poff:%llu\n",
+				   agno, agino,
+				   XFS_AGINO_TO_INO(fs, agno, agino), bno,
+				   fsbno, XFS_FSBLOCK_TO_BYTES(fs, fsbno));
 			if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
 				goto err;
-			xext.p_off = XFS_FSB_TO_B(fs, fsbno);
+			xext.p_off = XFS_FSBLOCK_TO_BYTES(fs, fsbno);
 			xext.l_off = 0;
 			xext.len = 64 * fs->m_sb.sb_inodesize;
 			xext.state = XFS_EXT_NORM;
@@ -1485,7 +1491,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		INJECT_ROOT_METADATA(JOURNAL_FILE, XFS_DIR3_FT_REG_FILE);
 		loff = 0;
 		insert_extent(&wf->base, INO_JOURNAL_FILE,
-			      XFS_FSB_TO_B(fs, fs->m_sb.sb_logstart), &loff,
+			      XFS_FSBLOCK_TO_BYTES(fs, fs->m_sb.sb_logstart), &loff,
 			      XFS_FSB_TO_B(fs, fs->m_sb.sb_logblocks), 0,
 			      extent_codes[XFS_DIR3_FT_REG_FILE]);
 		if (wf->wf_db_err)
@@ -1541,7 +1547,7 @@ static void walk_metadata(struct xfsmap_t *wf)
 		big_bmap_set(bmap_ag, agno, 0, len, 1);
 		INJECT_METADATA(group_ino, path, ino, STR_SB_FILE,
 				XFS_DIR3_XT_METADATA);
-		insert_extent(&wf->base, ino, XFS_FSB_TO_B(fs, s),
+		insert_extent(&wf->base, ino, XFS_FSBLOCK_TO_BYTES(fs, s),
 			      NULL, 4 * fs->m_sb.sb_sectsize, EXTENT_SHARED,
 			      extent_codes[XFS_DIR3_XT_METADATA]);
 		if (wf->wf_db_err)
@@ -1854,7 +1860,7 @@ main(
 		free(errm);
 		goto out;
 	}
-	CHECK_ERROR("while starting database transaction");
+	CHECK_ERROR("while starting fs analysis database transaction");
 
 	/*
 	 * Use (almost) the same measurements as xfs_super.c.  We count the
@@ -1892,6 +1898,22 @@ main(
 	calc_inode_stats(&wf.base);
 	CHECK_ERROR("while calculating inode statistics");
 
+	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
+	if (errm) {
+		fprintf(stderr, "%s %s", errm, "while ending transaction");
+		free(errm);
+		goto out;
+	}
+	CHECK_ERROR("while flushing fs analysis database transaction");
+
+	wf.wf_db_err = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errm);
+	if (errm) {
+		fprintf(stderr, "%s %s", errm, "while starting transaction");
+		free(errm);
+		goto out;
+	}
+	CHECK_ERROR("while starting overview cache database transaction");
+
 	/* Cache overviews. */
 	cache_overview(&wf.base, total_bytes, 2048);
 	CHECK_ERROR("while caching CLI overview");
@@ -1900,11 +1922,11 @@ main(
 
 	wf.wf_db_err = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errm);
 	if (errm) {
-		fprintf(stderr, "%s %s", errm, "while starting transaction");
+		fprintf(stderr, "%s %s", errm, "while ending transaction");
 		free(errm);
 		goto out;
 	}
-	CHECK_ERROR("while flushing database transaction");
+	CHECK_ERROR("while flushing overview cache database transaction");
 out:
 	if (wf.ino_bmap)
 		big_bmap_destroy(wf.ino_bmap);
