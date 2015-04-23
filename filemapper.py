@@ -18,10 +18,25 @@ if __name__ == "__main__":
 	parser.add_argument('-q', action = 'store_true', help = 'If -r is specified, exit after analyzing.')
 	parser.add_argument('-g', action = 'store_true', help = 'Start the GUI.')
 	parser.add_argument('-s', action = 'store_true', help = 'Generate SQL schemas and index definitions.')
-	parser.add_argument('database', help = 'Database file to store snapshots.')
+	parser.add_argument('database', nargs = '?', default = None, help = 'Database file to store snapshots.')
 	parser.add_argument('commands', nargs = '*', \
 		help = 'Commands to run (CLI).  -g cannot be specified.')
 	args = parser.parse_args(sys.argv[1:])
+
+	if args.g:
+		import fmgui
+		app = fmgui.start_qt()
+	if args.database == None and args.g:
+		args.database = fmgui.get_db_fname()
+	if args.database == '' or args.database == None:
+		parser.print_help()
+		print('%s: error: no database file specified.' % sys.argv[0])
+		sys.exit(1)
+
+	if args.g and len(args.commands) > 0:
+		parser.print_help()
+		print('%s: error: -g cannot be specified with commands to run.' % sys.argv[0])
+		sys.exit(1)
 
 	if args.s:
 		print(fmdb.generate_op_sql())
@@ -39,15 +54,7 @@ if __name__ == "__main__":
 	else:
 		fmdb = fmdb.fmdb(None, args.database, os.access(args.database, os.W_OK))
 
-	if args.g and len(args.commands) > 0:
-		print('-g cannot be specified with commands to run.')
-		parser.print_help()
-		sys.exit(1)
-
 	if args.g:
-		import fmgui
-		from PyQt4 import QtGui, uic
-		app = QtGui.QApplication([])
 		fmgui = fmgui.fmgui(fmdb)
 		sys.exit(app.exec_())
 	else:

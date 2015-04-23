@@ -1622,7 +1622,7 @@ class fmgui(QtGui.QMainWindow):
 	def export_extents(self):
 		'''Export extents to a CSV file.'''
 		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
-				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
+				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
 		idx = self.querytype_combo.currentIndex()
@@ -1652,7 +1652,7 @@ class fmgui(QtGui.QMainWindow):
 	def export_inodes(self):
 		'''Export inodes to a CSV file.'''
 		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
-				filter = 'Comma Separated Value Tables (*.csv);;All files (*)')
+				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
 		idx = self.querytype_combo.currentIndex()
@@ -1688,7 +1688,7 @@ class fmgui(QtGui.QMainWindow):
 	def export_overview(self):
 		'''Export overview to a HTML file.'''
 		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
-				filter = 'Hypertext Markup Language (*.html);;All files (*)')
+				filter = 'Hypertext Markup Language(*.html);;All Files(*)')
 		if fn == '':
 			return
 		idx = self.querytype_combo.currentIndex()
@@ -1732,3 +1732,11 @@ p {
 </div>
 </body>
 </html>''')
+
+def start_qt():
+	'''Initialize QT.'''
+	return QtGui.QApplication([])
+
+def get_db_fname():
+	'''Ask the user for the path to the database.'''
+	return QtGui.QFileDialog.getOpenFileName(None, 'Open FileMapper Database', filter = 'FileMapper Databases(*.db);;All Files(*)')
