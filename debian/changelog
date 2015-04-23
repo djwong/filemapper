@@ -1,3 +1,9 @@
+filemapper (0.7.1-1) unstable; urgency=low
+
+  * Build and install fatmapper/xfsmapper if possible.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Wed, 22 Apr 2015 20:19:00 -0700
+
 filemapper (0.7-1) unstable; urgency=low
 
   * Add XFS raw support.

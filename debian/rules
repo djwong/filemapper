@@ -4,5 +4,11 @@
 # Uncomment this to turn on verbose mode.
 export DH_VERBOSE=1
 
+# Set XFSPROGS to the xfsprogs source tree and pass '-eXFSPROGS' to debuild to get xfsmapper.
+export XFSPROGS
+
+# Set DOSFSTOOLS to the xfsprogs source tree and pass '-eDOSFSTOOLS' to debuild to get fatmapper.
+export DOSFSTOOLS
+
 %:
 	dh $@ --with python3
