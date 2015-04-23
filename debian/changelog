@@ -1,3 +1,14 @@
+filemapper (0.7-1) unstable; urgency=low
+
+  * Add XFS raw support.
+  * Compute average travel scores for files.
+  * Handle extents that go "beyond" the end of the FS (i.e. fsstat lied).
+  * Editable zoom levels and bytes-per-cell zoom levels.
+  * Export reports in CSV/HTML.
+  * Record the FS type in the database.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Wed, 22 Apr 2015 19:44:00 -0700
+
 filemapper (0.6-1) unstable; urgency=low
 
   * Enable queries of inode data, and update the GUI to retrieve both when
