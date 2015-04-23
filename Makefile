@@ -1,5 +1,5 @@
 CFLAGS=-Wall -O3 -g
-VERSION=0.7
+VERSION=0.7.1
 
 prefix = /usr
 exec_prefix = ${prefix}
@@ -13,7 +13,17 @@ XFSPROGS ?= Please_set_XFSPROGS_to_the_XFS_source_directory
 DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
 DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
 
-all: e2mapper filemapper e2mapper.1.gz filemapper.1.gz filemapper.desktop ntfsmapper ntfsmapper.1.gz
+ifeq ("$(notdir $(wildcard $(XFSPROGS)/libxfs/.libs/libxfs.a))", "libxfs.a")
+xfsmapper=xfsmapper
+endif
+ifeq ("$(notdir $(wildcard $(DOSFSTOOLS)/fat.o))", "fat.o")
+fatmapper=fatmapper
+endif
+
+progs=filemapper e2mapper ntfsmapper $(xfsmapper) $(fatmapper)
+manpages=$(patsubst %,%.1.gz,$(progs))
+
+all: $(progs) $(manpages) filemapper.desktop
 
 %.1.gz: %.1
 	gzip -9 < $< > $@
@@ -52,7 +62,7 @@ fatmapper.o: fatmapper.c filemapper.h $(DOSFS_HEADERS)
 	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
 
 clean:;
-	rm -rf e2mapper *.pyc __pycache__ filemapper e2mapper.1.gz filemapper.1.gz ntfsmapper.1.gz filemapper.desktop *.o ntfsmapper fatmapper xfsmapper
+	rm -rf $(progs) $(manpages) xfsmapper xfsmapper.1.gz fatmapper fatmapper.1.gz *.pyc __pycache__ filemapper.desktop *.o
 
 filemapper: filemapper.in
 	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
@@ -72,7 +82,9 @@ install: all
 	install -d $(DESTDIR)$(appdir)
 	install -m 0644 filemapper.desktop $(DESTDIR)$(appdir)
 	-test -e fatmapper && install -s fatmapper $(DESTDIR)$(bindir)
+	-test -e fatmapper && install -m 0644 fatmapper.1.gz $(DESTDIR)$(man1dir)
 	-test -e xfsmapper && install -s xfsmapper $(DESTDIR)$(bindir)
+	-test -e xfsmapper && install -m 0644 xfsmapper.1.gz $(DESTDIR)$(man1dir)
 
 dist:
 	@if test "`git describe`" != "$(VERSION)" ; then \
