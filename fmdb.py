@@ -428,7 +428,7 @@ class fmdb(object):
 		self.fs = None
 		statfs = os.statvfs(self.fspath)
 		qstr = 'INSERT INTO fs_t VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)'
-		nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = fmcli.tz_gmt)
+		nowgmt = datetime.datetime.utcnow().replace(microsecond = 0, tzinfo = tz_gmt)
 		qarg = (self.fspath, statfs.f_bsize, \
 			statfs.f_frsize, \
 			statfs.f_blocks * statfs.f_bsize, \
@@ -436,7 +436,7 @@ class fmdb(object):
 			statfs.f_bavail * statfs.f_bsize, \
 			statfs.f_files, statfs.f_ffree, \
 			statfs.f_favail, statfs.f_namemax, \
-			int(nowgmt), \
+			int(nowgmt.timestamp()), \
 			os.sep, 'fiemap')
 		print_sql(qstr, qarg)
 		self.conn.execute(qstr, qarg)
