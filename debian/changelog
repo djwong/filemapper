@@ -1,3 +1,9 @@
+filemapper (0.7.4-1) unstable; urgency=low
+
+  * Fix some bugs reading the rmapbt due to format differences from allocbt.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Sun, 24 Jan 2016 00:42:17 -0800
+
 filemapper (0.7.3-1) unstable; urgency=low
 
   * Build and install fatmapper/xfsmapper if possible.
