@@ -1,3 +1,10 @@
+filemapper (0.7.2-1) unstable; urgency=low
+
+  * Build and install fatmapper/xfsmapper if possible.
+  * Update to xfsprogs 4.3 and dosfstools 3.0.28.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Sat, 23 Jan 2016 17:55:00 -0800
+
 filemapper (0.7.1-1) unstable; urgency=low
 
   * Build and install fatmapper/xfsmapper if possible.
