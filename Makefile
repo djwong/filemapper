@@ -1,5 +1,5 @@
 CFLAGS=-Wall -O3 -g
-VERSION=0.7.2
+VERSION=0.7.3
 
 prefix = /usr
 exec_prefix = ${prefix}
