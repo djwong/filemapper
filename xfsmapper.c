@@ -1,10 +1,10 @@
 /*
  * Generate filemapper databases from ntfs filesystems.
- * Copyright 2015 Darrick J. Wong.
+ * Copyright 2016 Darrick J. Wong.
  * Licensed under the GPLv2.
  */
 #undef DEBUG
-#include <xfs/libxfs.h>
+#include <libxfs.h>
 #include <repair/btree.h>
 #include <signal.h>
 #include <libgen.h>
@@ -12,6 +12,10 @@
 
 #define XFS_FSBLOCK_TO_BYTES(fs, fsblock) \
 		(XFS_FSB_TO_DADDR((fs), (fsblock)) << BBSHIFT)
+
+#ifdef XFS_ALLOC_SET_ASIDE
+#define xfs_alloc_set_aside XFS_ALLOC_SET_ASIDE
+#endif
 
 struct xfs_extent_t
 {
@@ -210,16 +214,20 @@ fail:
 #define STR_INOBT_FILE		"inobt"
 #define INO_FINOBT_FILE		(-6)
 #define STR_FINOBT_FILE		"finobt"
-#define INO_FL_FILE		(-7)
+#define INO_RMAPBT_FILE		(-7)
+#define STR_RMAPBT_FILE		"rmapbt"
+#define INO_REFCOUNTBT_FILE	(-8)
+#define STR_REFCOUNTBT_FILE	"refcountbt"
+#define INO_FL_FILE		(-9)
 #define STR_FL_FILE		"freelist"
-#define INO_JOURNAL_FILE	(-8)
+#define INO_JOURNAL_FILE	(-10)
 #define STR_JOURNAL_FILE	"journal"
-#define INO_ITABLE_FILE		(-9)
+#define INO_ITABLE_FILE		(-11)
 #define STR_ITABLE_FILE		"inodes"
-#define INO_HIDDEN_DIR		(-10)
+#define INO_HIDDEN_DIR		(-12)
 #define STR_HIDDEN_DIR		"hidden_files"
 /* This must come last */
-#define INO_GROUPS_DIR		(-11)
+#define INO_GROUPS_DIR		(-13)
 #define STR_GROUPS_DIR		"groups"
 
 /* Hidden inode paths */
@@ -247,6 +255,7 @@ static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
 	int			i;
 	xfs_ino_t		ino;
 	uint8_t			filetype;
+	const struct xfs_dir_ops	*dops = xfs_dir_get_ops(ip->i_mount, ip);
 
 	ASSERT(ip->i_df.if_flags & XFS_IFINLINE);
 	/*
@@ -266,11 +275,11 @@ static int iterate_inline_dir(xfs_inode_t *ip, dentry_walk_fn fn,
 	for (i = 0; i < sfp->count; i++) {
 		memcpy(namebuf, sfep->name, sfep->namelen);
 		namebuf[sfep->namelen] = 0;
-		ino = xfs_dir3_sfe_get_ino(ip->i_mount, sfp, sfep);
-		filetype = xfs_dir3_sfe_get_ftype(ip->i_mount, sfp, sfep);
+		ino = dops->sf_get_ino(sfp, sfep);
+		filetype = dops->sf_get_ftype(sfep);
 		if (fn(ip->i_ino, namebuf, sfep->namelen, ino, filetype, priv_data))
 			break;
-		sfep = xfs_dir3_sf_nextentry(ip->i_mount, sfp, sfep);
+		sfep = dops->sf_nextentry(sfp, sfep);
 	}
 	return 0;
 }
@@ -288,20 +297,21 @@ static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, dentry_walk_fn fn,
 	xfs_dir2_block_tail_t	*btp = NULL;
 	xfs_ino_t		ino;
 	uint8_t			filetype;
+	const struct xfs_dir_ops	*dops = xfs_dir_get_ops(ip->i_mount, ip);
 
 	hdr = bp->b_addr;
-	ptr = start = (char *)xfs_dir3_data_unused_p(hdr);
+	ptr = start = (char *)dops->data_unused_p(hdr);
 	switch (hdr->magic) {
 	case cpu_to_be32(XFS_DIR2_BLOCK_MAGIC):
 	case cpu_to_be32(XFS_DIR3_BLOCK_MAGIC):
-		btp = xfs_dir2_block_tail_p(ip->i_mount, hdr);
+		btp = xfs_dir2_block_tail_p(ip->i_mount->m_dir_geo, hdr);
 		endptr = (char *)xfs_dir2_block_leaf_p(btp);
 		if (endptr <= ptr || endptr > (char *)btp)
-			endptr = (char *)hdr + ip->i_mount->m_dirblksize;
+			endptr = (char *)hdr + ip->i_mount->m_dir_geo->blksize;
 		break;
 	case cpu_to_be32(XFS_DIR3_DATA_MAGIC):
 	case cpu_to_be32(XFS_DIR2_DATA_MAGIC):
-		endptr = (char *)hdr + ip->i_mount->m_dirblksize;
+		endptr = (char *)hdr + ip->i_mount->m_dir_geo->blksize;
 		break;
 	default:
 		printf("Bad directory magic %x\n", be32_to_cpu(hdr->magic));
@@ -319,15 +329,15 @@ static int iterate_dirblock(xfs_inode_t *ip, xfs_buf_t *bp, dentry_walk_fn fn,
 		memcpy(namebuf, dep->name, dep->namelen);
 		namebuf[dep->namelen] = 0;
 		ino = be64_to_cpu(dep->inumber);
-		filetype = xfs_dir3_dirent_get_ftype(ip->i_mount, dep);
+		filetype = dops->data_get_ftype(dep);
 		dbg_printf("fn dino=%ld name='%s' (%d), ino=%ld ft=%d ptr=%ld entsz=%d\n",
 			   ip->i_ino, namebuf, dep->namelen, ino, filetype,
 			   ptr - (char *)hdr,
-			   xfs_dir3_data_entsize(ip->i_mount, dep->namelen));
+			   dops->data_entsize(dep->namelen));
 		if (fn(ip->i_ino, namebuf, dep->namelen, ino, filetype,
 		       priv_data))
 			break;
-		ptr += xfs_dir3_data_entsize(ip->i_mount, dep->namelen);
+		ptr += dops->data_entsize(dep->namelen);
 	}
 
 	return 0;
@@ -403,7 +413,7 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 
 		for (i = 0; i < blen; i += dblen, off += dblen, poff += dblen) {
 			/* directory entries are never higher than 32GB */
-			if (off >= ip->i_mount->m_dirleafblk)
+			if (off >= ip->i_mount->m_dir_geo->leafblk)
 				return 0;
 
 			bp = libxfs_readbuf(ip->i_mount->m_ddev_targp,
@@ -1031,7 +1041,7 @@ static int big_bmap_init(xfs_mount_t *fs, struct big_bmap **bbmap,
 	for (agno = 0; agno < u->sz; agno++) {
 		if (agno == u->sz - 1)
 			ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
-				   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * agno);
+				   (xfs_rfsblock_t)fs->m_sb.sb_agblocks * agno);
 		u->bmap_sizes[agno] = ag_size * multiplier;
 		btree_init(&u->bmap[agno]);
 		btree_clear(u->bmap[agno]);
@@ -1111,7 +1121,7 @@ static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
 	ag_size = bbmap->fs->m_sb.sb_agblocks;
 	if (agno == bbmap->sz - 1)
 		ag_size = (xfs_extlen_t)(bbmap->fs->m_sb.sb_dblocks -
-			   (xfs_drfsbno_t)bbmap->fs->m_sb.sb_agblocks * agno);
+			   (xfs_rfsblock_t)bbmap->fs->m_sb.sb_agblocks * agno);
 	ag_size *= bbmap->multiplier;
 	key = 0;
 	bmap = bbmap->bmap[agno];
@@ -1139,7 +1149,7 @@ static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 	ag_size = fs->m_sb.sb_agblocks;
 	if (agno == bbmap->sz - 1)
 		ag_size = (xfs_extlen_t)(fs->m_sb.sb_dblocks -
-			   (xfs_drfsbno_t)fs->m_sb.sb_agblocks * agno);
+			   (xfs_rfsblock_t)fs->m_sb.sb_agblocks * agno);
 	ag_size *= bbmap->multiplier;
 	key = 0;
 	bmap = bbmap->bmap[agno];
@@ -1348,6 +1358,34 @@ static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
 				   left_node_agbno, 1);
 }
 
+#ifndef XFS_RMAP_CRC_MAGIC
+#define XFS_RMAP_BTREE_REF	1
+const struct xfs_buf_ops xfs_rmapbt_buf_ops = {NULL};
+#define xfs_sb_version_hasrmapbt(mp)	(0)
+#endif
+
+static int walk_ag_rmapbt_nodes(xfs_mount_t *fs, int64_t ino,
+				xfs_agnumber_t agno, xfs_agblock_t rootbno,
+				extent_walk_fn fn, void *priv_data)
+{
+	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_RMAP_BTREE_REF,
+				   &xfs_rmapbt_buf_ops, fn, priv_data, NULL, 0);
+}
+
+#ifndef XFS_REFC_CRC_MAGIC
+#define XFS_REFC_BTREE_REF	1
+const struct xfs_buf_ops xfs_refcountbt_buf_ops = {NULL};
+#define xfs_sb_version_hasreflink(mp)	(0)
+#endif
+
+static int walk_ag_refcountbt_nodes(xfs_mount_t *fs, int64_t ino,
+				    xfs_agnumber_t agno, xfs_agblock_t rootbno,
+				    extent_walk_fn fn, void *priv_data)
+{
+	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_REFC_BTREE_REF,
+				   &xfs_refcountbt_buf_ops, fn, priv_data, NULL, 0);
+}
+
 /* Walk the inode blocks of a AG */
 static int walk_ag_inode_blocks(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t left_node_bno,
@@ -1442,7 +1480,8 @@ static void walk_metadata(struct xfsmap_t *wf)
 	xfs_fsblock_t		s;
 	char			path[PATH_MAX + 1];
 	struct big_bmap		*bmap_ag, *bmap_agfl, *bmap_bnobt, *bmap_cntbt,
-				*bmap_inobt, *bmap_finobt, *bmap_itable;
+				*bmap_inobt, *bmap_finobt, *bmap_itable,
+				*bmap_rmapbt, *bmap_refcountbt;
 	struct xfs_ag		*ags = NULL;
 	xfs_agf_t		*agf;
 	xfs_agi_t		*agi;
@@ -1467,7 +1506,8 @@ static void walk_metadata(struct xfsmap_t *wf)
 #undef H
 
 	bmap_ag = bmap_agfl = bmap_bnobt = bmap_cntbt = bmap_inobt =
-			bmap_finobt = bmap_itable = NULL;
+			bmap_finobt = bmap_itable = bmap_rmapbt =
+			bmap_refcountbt = NULL;
 
 	wf->err = read_ags(fs, &ags);
 	if (wf->err)
@@ -1484,6 +1524,10 @@ static void walk_metadata(struct xfsmap_t *wf)
 	INJECT_ROOT_METADATA(INOBT_FILE, XFS_DIR3_XT_METADATA);
 	if (xfs_sb_version_hasfinobt(&fs->m_sb))
 		INJECT_ROOT_METADATA(FINOBT_FILE, XFS_DIR3_XT_METADATA);
+	if (xfs_sb_version_hasrmapbt(&fs->m_sb))
+		INJECT_ROOT_METADATA(RMAPBT_FILE, XFS_DIR3_XT_METADATA);
+	if (xfs_sb_version_hasreflink(&fs->m_sb))
+		INJECT_ROOT_METADATA(REFCOUNTBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(ITABLE_FILE, XFS_DIR3_XT_METADATA);
 
 	/* Handle the log */
@@ -1518,6 +1562,12 @@ static void walk_metadata(struct xfsmap_t *wf)
 	if (wf->err)
 		goto out;
 	wf->err = big_block_bmap_init(fs, &bmap_itable);
+	if (wf->err)
+		goto out;
+	wf->err = big_block_bmap_init(fs, &bmap_rmapbt);
+	if (wf->err)
+		goto out;
+	wf->err = big_block_bmap_init(fs, &bmap_refcountbt);
 	if (wf->err)
 		goto out;
 
@@ -1648,6 +1698,49 @@ no_finobt:
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
+
+		/* rmapbt */
+		if (!xfs_sb_version_hasrmapbt(&fs->m_sb))
+			goto no_rmapbt;
+#ifdef XFS_RMAP_CRC_MAGIC
+		wf->bbmap = bmap_rmapbt;
+		INJECT_METADATA(group_ino, path, ino, STR_RMAPBT_FILE,
+				XFS_DIR3_XT_METADATA);
+		err = walk_ag_rmapbt_nodes(fs, ino, agno,
+				be32_to_cpu(agf->agf_roots[XFS_BTNUM_RMAP]),
+				insert_meta_extent, wf);
+		if (!wf->err)
+			wf->err = err;
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+		ino--;
+#endif
+no_rmapbt:
+
+		/* refcountbt */
+		if (!xfs_sb_version_hasreflink(&fs->m_sb))
+			goto no_refcountbt;
+#ifdef XFS_REFC_CRC_MAGIC
+		wf->bbmap = bmap_refcountbt;
+		INJECT_METADATA(group_ino, path, ino, STR_REFCOUNTBT_FILE,
+				XFS_DIR3_XT_METADATA);
+		err = walk_ag_refcountbt_nodes(fs, ino, agno,
+				be32_to_cpu(agf->agf_refcount_root),
+				insert_meta_extent, wf);
+		if (!wf->err)
+			wf->err = err;
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+		ino--;
+#endif
+no_refcountbt:
+		;
 	}
 
 	/* Emit extents for the overall files */
@@ -1674,6 +1767,16 @@ no_finobt:
 	walk_bitmap(wf, INO_ITABLE_FILE, bmap_itable);
 	if (wf->err || wf->wf_db_err)
 		goto out;
+	if (xfs_sb_version_hasrmapbt(&fs->m_sb)) {
+		walk_bitmap(wf, INO_RMAPBT_FILE, bmap_rmapbt);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+	}
+	if (xfs_sb_version_hasreflink(&fs->m_sb)) {
+		walk_bitmap(wf, INO_REFCOUNTBT_FILE, bmap_refcountbt);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+	}
 
 	/* Now go for the hidden files */
 	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);
@@ -1686,6 +1789,10 @@ no_finobt:
 			goto out;
 	}
 out:
+	if (bmap_refcountbt)
+		big_bmap_destroy(bmap_refcountbt);
+	if (bmap_rmapbt)
+		big_bmap_destroy(bmap_rmapbt);
 	if (bmap_itable)
 		big_bmap_destroy(bmap_itable);
 	if (bmap_finobt)
@@ -1816,6 +1923,40 @@ main(
 	}
 	//blkbb = 1 << fs->m_blkbb_log;
 
+	if (!xfs_sb_good_version(sbp)) {
+		fprintf(stderr,
+	_("%s: unknown version code 0x%x.\n"),
+			fsdev, sbp->sb_versionnum);
+	}
+
+	if (XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5 &&
+	    xfs_sb_has_compat_feature(sbp, XFS_SB_FEAT_COMPAT_UNKNOWN)) {
+		fprintf(stderr,
+	_("%s: unknown compat feature 0x%x; continuing anyway.\n"),
+			fsdev, fs->m_sb.sb_features_compat);
+	}
+
+	if (XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5 &&
+	    xfs_sb_has_ro_compat_feature(sbp, XFS_SB_FEAT_RO_COMPAT_UNKNOWN)) {
+		fprintf(stderr,
+	_("%s: unknown rocompat feature 0x%x; continuing anyway.\n"),
+			fsdev, fs->m_sb.sb_features_ro_compat);
+	}
+
+	if (XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5 &&
+	    xfs_sb_has_incompat_feature(sbp, XFS_SB_FEAT_INCOMPAT_UNKNOWN)) {
+		fprintf(stderr,
+	_("%s: unknown incompat feature 0x%x; continuing anyway.\n"),
+			fsdev, fs->m_sb.sb_features_incompat);
+	}
+
+	if (XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5 &&
+	    xfs_sb_has_incompat_log_feature(sbp, XFS_SB_FEAT_INCOMPAT_LOG_UNKNOWN)) {
+		fprintf(stderr,
+	_("%s: unknown incompatlog feature 0x%x; continuing anyway.\n"),
+			fsdev, fs->m_sb.sb_features_log_incompat);
+	}
+
 	/*
 	 * xfs_check needs corrected incore superblock values
 	 */
@@ -1867,8 +2008,8 @@ main(
 	 * log towards total bytes, unlike XFS.
 	 */
 	total_bytes = fs->m_sb.sb_dblocks * fs->m_sb.sb_blocksize;
-	free_bytes = (fs->m_sb.sb_fdblocks - XFS_ALLOC_SET_ASIDE(fs)) * fs->m_sb.sb_blocksize;
-	fakeinos = (fs->m_sb.sb_fdblocks - XFS_ALLOC_SET_ASIDE(fs)) << fs->m_sb.sb_inopblog;
+	free_bytes = (fs->m_sb.sb_fdblocks - xfs_alloc_set_aside(fs)) * fs->m_sb.sb_blocksize;
+	fakeinos = (fs->m_sb.sb_fdblocks - xfs_alloc_set_aside(fs)) << fs->m_sb.sb_inopblog;
 	total_inodes = MIN(fs->m_sb.sb_icount + fakeinos, (uint64_t)XFS_MAXINUMBER);
 	if (fs->m_maxicount)
 		total_inodes = MIN(total_inodes, fs->m_maxicount);
