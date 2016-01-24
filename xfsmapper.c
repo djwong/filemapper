@@ -109,7 +109,9 @@ static void big_bmap_set(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset, xfs_extlen_t blen, int state);
 static int big_bmap_test(struct big_bmap *bbmap, xfs_agnumber_t agno,
 			 xfs_agblock_t offset);
+#ifdef DEBUG
 static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno);
+#endif
 
 /* AG data */
 
@@ -118,6 +120,45 @@ struct xfs_ag {
 	xfs_buf_t *agi;
 	xfs_buf_t *agfl;
 };
+
+/* buffer ops */
+struct xfs_metadata_btree_ops {
+	const struct xfs_buf_ops	*buf_ops;
+	void *(*ptraddr)(struct xfs_mount *mp, struct xfs_btree_block *block);
+};
+
+#define XFS_METADATA_BTREE_OPS3(name, macro) \
+static void *xfs_##name##_ptr( \
+	struct xfs_mount	*mp, \
+	struct xfs_btree_block	*block) \
+{ \
+	return XFS_##macro##_PTR_ADDR((block), 1, xfs_##name##_maxrecs((mp), (mp)->m_sb.sb_blocksize, 0)); \
+} \
+static struct xfs_metadata_btree_ops xfs_##name##_metadata_ops = { \
+	.buf_ops = &xfs_##name##_buf_ops, \
+	.ptraddr = xfs_##name##_ptr, \
+};
+
+#define XFS_METADATA_BTREE_OPS4(name, macro) \
+static void *xfs_##name##_ptr( \
+	struct xfs_mount	*mp, \
+	struct xfs_btree_block	*block) \
+{ \
+	return XFS_##macro##_PTR_ADDR((mp), (block), 1, xfs_##name##_maxrecs((mp), (mp)->m_sb.sb_blocksize, 0)); \
+} \
+static struct xfs_metadata_btree_ops xfs_##name##_metadata_ops = { \
+	.buf_ops = &xfs_##name##_buf_ops, \
+	.ptraddr = xfs_##name##_ptr, \
+};
+
+#ifdef XFS_RMAP_CRC_MAGIC
+XFS_METADATA_BTREE_OPS3(rmapbt, RMAP);
+#endif
+#ifdef XFS_REFC_CRC_MAGIC
+XFS_METADATA_BTREE_OPS3(refcountbt, REFCOUNT);
+#endif
+XFS_METADATA_BTREE_OPS4(allocbt, ALLOC);
+XFS_METADATA_BTREE_OPS4(inobt, INOBT);
 
 /*
  * Read in the allocation group free block array.
@@ -446,26 +487,6 @@ int iterate_directory(xfs_inode_t *ip, dentry_walk_fn fn, void *priv_data)
 #define XFS_BMAP_BROOT_KEY_ADDR(mp, bb, i) \
 	XFS_BMBT_KEY_ADDR(mp, bb, i)
 
-static int
-xfs_bmap_sanity_check(
-	struct xfs_mount	*mp,
-	struct xfs_buf		*bp,
-	int			level)
-{
-	struct xfs_btree_block  *block = XFS_BUF_TO_BLOCK(bp);
-
-	if (block->bb_magic != cpu_to_be32(XFS_BMAP_CRC_MAGIC) &&
-	    block->bb_magic != cpu_to_be32(XFS_BMAP_MAGIC))
-		return 0;
-
-	if (be16_to_cpu(block->bb_level) != level ||
-	    be16_to_cpu(block->bb_numrecs) == 0 ||
-	    be16_to_cpu(block->bb_numrecs) > mp->m_bmap_dmxr[level != 0])
-		return 0;
-
-	return 1;
-}
-
 /* Walk the internal nodes of a bmap btree */
 int walk_bmap_btree_nodes(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 			  void *priv_data)
@@ -540,8 +561,6 @@ int walk_bmap_btree_nodes(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 			if (bp->b_error)
 				goto err;
 			block = XFS_BUF_TO_BLOCK(bp);
-			if (!xfs_bmap_sanity_check(fs, bp, level))
-				goto err;
 			kp = XFS_BMBT_KEY_ADDR(fs, block, 1);
 			pp = XFS_BMBT_PTR_ADDR(fs, block, 1, fs->m_bmap_dmxr[1]);
 		} while (1);
@@ -560,8 +579,6 @@ int walk_bmap_btree_nodes(xfs_inode_t *ip, int whichfork, extent_walk_fn fn,
 		if (bp->b_error)
 			goto err;
 		block = XFS_BUF_TO_BLOCK(bp);
-		if (!xfs_bmap_sanity_check(fs, bp, level))
-			goto err;
 		kp = XFS_BMBT_KEY_ADDR(fs, block, 1);
 		pp = XFS_BMBT_PTR_ADDR(fs, block, 1, fs->m_bmap_dmxr[1]);
 		next_level_bno = be64_to_cpu(*pp);
@@ -1109,6 +1126,7 @@ static int big_bmap_test(struct big_bmap *bbmap, xfs_agnumber_t agno,
 	return val == &big_bmap_states[BBMAP_INUSE];
 }
 
+#ifdef DEBUG
 /* Dump a big bitmap */
 static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
 {
@@ -1133,6 +1151,7 @@ static void big_bmap_dump(struct big_bmap *bbmap, xfs_agnumber_t agno)
 		val = btree_lookup_next(bmap, &key);
 	}
 }
+#endif
 
 /* Walk an AG's bitmap, attaching extents for the in use blocks to the inode */
 static void walk_ag_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
@@ -1186,21 +1205,10 @@ static void walk_bitmap(struct xfsmap_t *wf, xfs_ino_t ino,
 	}
 }
 
-/* Find a btree block's pointers */
-static void *ag_btree_ptr_addr(xfs_mount_t *fs, struct xfs_btree_block *block,
-			       int is_inobt)
-{
-	if (is_inobt)
-		return XFS_INOBT_PTR_ADDR(fs, block, 1,
-			xfs_inobt_maxrecs(fs, fs->m_sb.sb_blocksize, 0));
-	return XFS_ALLOC_PTR_ADDR(fs, block, 1,
-			xfs_allocbt_maxrecs(fs, fs->m_sb.sb_blocksize, 0));
-}
-
 /* Walk the internal nodes of a AG btree */
 static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t rootbno,
-			       int refval, const struct xfs_buf_ops *ops,
+			       int refval, const struct xfs_metadata_btree_ops *ops,
 			       extent_walk_fn fn, void *priv_data,
 			       xfs_agblock_t *left_node_agbno, int is_inobt)
 {
@@ -1232,7 +1240,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	fsbno = XFS_AGB_TO_FSB(fs, agno, bno);
 	if (!XFS_FSB_SANITY_CHECK(fs, fsbno))
 		return EFSCORRUPTED;
-	error = xfs_btree_read_bufl(fs, NULL, fsbno, 0, &bp, refval, ops);
+	error = xfs_btree_read_bufl(fs, NULL, fsbno, 0, &bp, refval, ops->buf_ops);
 	if (error)
 		return error;
 	error = EFSCORRUPTED;
@@ -1259,7 +1267,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 	}
 
 	/* Prepare to iterate */
-	pp = ag_btree_ptr_addr(fs, block, is_inobt);
+	pp = ops->ptraddr(fs, block);
 	next_level_bno = be32_to_cpu(*pp);
 	next_level_fsbno = XFS_AGB_TO_FSB(fs, agno, next_level_bno);
 	if (!XFS_FSB_SANITY_CHECK(fs, next_level_fsbno))
@@ -1293,7 +1301,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			if (bp)
 				xfsmapper_putbuf(bp);
 			error = xfs_btree_read_bufl(fs, NULL, fsbno, 0, &bp,
-					refval, ops);
+					refval, ops->buf_ops);
 			if (error)
 				return error;
 			error = EFSCORRUPTED;
@@ -1301,9 +1309,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 				goto err;
 			block = XFS_BUF_TO_BLOCK(bp);
 			num_recs = xfs_btree_get_numrecs(block);
-			if (!xfs_bmap_sanity_check(fs, bp, level))
-				goto err;
-			pp = ag_btree_ptr_addr(fs, block, is_inobt);
+			pp = ops->ptraddr(fs, block);
 		} while (1);
 
 		/* now go down the tree */
@@ -1316,7 +1322,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 		if (bp)
 			xfsmapper_putbuf(bp);
 		error = xfs_btree_read_bufl(fs, NULL, next_level_fsbno, 0, &bp,
-				refval, ops);
+				refval, ops->buf_ops);
 		if (error)
 			return error;
 		error = EFSCORRUPTED;
@@ -1324,9 +1330,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			goto err;
 		block = XFS_BUF_TO_BLOCK(bp);
 		num_recs = xfs_btree_get_numrecs(block);
-		if (!xfs_bmap_sanity_check(fs, bp, level))
-			goto err;
-		pp = ag_btree_ptr_addr(fs, block, is_inobt);
+		pp = ops->ptraddr(fs, block);
 		next_level_bno = be32_to_cpu(*pp);
 		next_level_fsbno = XFS_AGB_TO_FSB(fs, agno, next_level_bno);
 		if (!XFS_FSB_SANITY_CHECK(fs, next_level_fsbno))
@@ -1345,7 +1349,7 @@ static int walk_ag_allocbt_nodes(xfs_mount_t *fs, int64_t ino,
 				 extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_ALLOC_BTREE_REF,
-				   &xfs_allocbt_buf_ops, fn, priv_data, NULL, 0);
+				   &xfs_allocbt_metadata_ops, fn, priv_data, NULL, 0);
 }
 
 static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
@@ -1354,37 +1358,35 @@ static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agblock_t *left_node_agbno)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_INO_BTREE_REF,
-				   &xfs_inobt_buf_ops, fn, priv_data,
+				   &xfs_inobt_metadata_ops, fn, priv_data,
 				   left_node_agbno, 1);
 }
 
 #ifndef XFS_RMAP_CRC_MAGIC
-#define XFS_RMAP_BTREE_REF	1
-const struct xfs_buf_ops xfs_rmapbt_buf_ops = {NULL};
-#define xfs_sb_version_hasrmapbt(mp)	(0)
-#endif
-
+# define XFS_RMAP_BTREE_REF	1
+# define xfs_sb_version_hasrmapbt(mp)	(0)
+#else
 static int walk_ag_rmapbt_nodes(xfs_mount_t *fs, int64_t ino,
 				xfs_agnumber_t agno, xfs_agblock_t rootbno,
 				extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_RMAP_BTREE_REF,
-				   &xfs_rmapbt_buf_ops, fn, priv_data, NULL, 0);
+				   &xfs_rmapbt_metadata_ops, fn, priv_data, NULL, 0);
 }
-
-#ifndef XFS_REFC_CRC_MAGIC
-#define XFS_REFC_BTREE_REF	1
-const struct xfs_buf_ops xfs_refcountbt_buf_ops = {NULL};
-#define xfs_sb_version_hasreflink(mp)	(0)
 #endif
 
+#ifndef XFS_REFC_CRC_MAGIC
+# define XFS_REFC_BTREE_REF	1
+# define xfs_sb_version_hasreflink(mp)	(0)
+#else
 static int walk_ag_refcountbt_nodes(xfs_mount_t *fs, int64_t ino,
 				    xfs_agnumber_t agno, xfs_agblock_t rootbno,
 				    extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_REFC_BTREE_REF,
-				   &xfs_refcountbt_buf_ops, fn, priv_data, NULL, 0);
+				   &xfs_refcountbt_metadata_ops, fn, priv_data, NULL, 0);
 }
+#endif
 
 /* Walk the inode blocks of a AG */
 static int walk_ag_inode_blocks(xfs_mount_t *fs, int64_t ino,
