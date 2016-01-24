@@ -182,7 +182,7 @@ static int walk_dir(DOS_FS *fs, DOS_FILE *start, FDSC **cp, walk_file_fn fn,
 	return 0;
 }
 
-static time_t decode_time(__u16 date, __u16 time)
+static time_t decode_time(uint16_t date, uint16_t time)
 {
 	struct tm ret;
 
