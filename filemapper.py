@@ -9,6 +9,8 @@ import fmcli
 import sys
 import argparse
 
+VER = 'filemapper v0.7.5'
+
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(prog = sys.argv[0],
 		description = 'Display an overview of commands.')
@@ -64,4 +66,4 @@ if __name__ == "__main__":
 		for c in args.commands:
 			fmcli.push(c)
 		if len(args.commands) == 0:
-			fmcli.interact('filemapper v0.7.4')
+			fmcli.interact(VER)

@@ -1,6 +1,12 @@
+filemapper (0.7.5-1) unstable; urgency=low
+
+  * Redefine fragmentation as extents / blocks; and calculate the avg travel for the last inode.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Sun, 24 Jan 2016 01:42:52 -0800
+
 filemapper (0.7.4-1) unstable; urgency=low
 
-  * Fix some bugs reading the rmapbt due to format differences from allocbt.
+  * Fix some xfsmapper bugs reading the rmapbt due to format differences from allocbt.
 
  -- Darrick J. Wong <djwong@djwong.org>  Sun, 24 Jan 2016 00:42:17 -0800
 
