@@ -1210,7 +1210,7 @@ static int walk_ag_btree_nodes(xfs_mount_t *fs, int64_t ino,
 			       xfs_agnumber_t agno, xfs_agblock_t rootbno,
 			       int refval, const struct xfs_metadata_btree_ops *ops,
 			       extent_walk_fn fn, void *priv_data,
-			       xfs_agblock_t *left_node_agbno, int is_inobt)
+			       xfs_agblock_t *left_node_agbno)
 {
 	struct xfs_btree_block	*block;	/* current btree block */
 	xfs_agblock_t		bno;	/* block # of "block" */
@@ -1349,7 +1349,7 @@ static int walk_ag_allocbt_nodes(xfs_mount_t *fs, int64_t ino,
 				 extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_ALLOC_BTREE_REF,
-				   &xfs_allocbt_metadata_ops, fn, priv_data, NULL, 0);
+				   &xfs_allocbt_metadata_ops, fn, priv_data, NULL);
 }
 
 static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
@@ -1359,7 +1359,7 @@ static int walk_ag_inobt_nodes(xfs_mount_t *fs, int64_t ino,
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_INO_BTREE_REF,
 				   &xfs_inobt_metadata_ops, fn, priv_data,
-				   left_node_agbno, 1);
+				   left_node_agbno);
 }
 
 #ifndef XFS_RMAP_CRC_MAGIC
@@ -1371,7 +1371,7 @@ static int walk_ag_rmapbt_nodes(xfs_mount_t *fs, int64_t ino,
 				extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_RMAP_BTREE_REF,
-				   &xfs_rmapbt_metadata_ops, fn, priv_data, NULL, 0);
+				   &xfs_rmapbt_metadata_ops, fn, priv_data, NULL);
 }
 #endif
 
@@ -1384,7 +1384,7 @@ static int walk_ag_refcountbt_nodes(xfs_mount_t *fs, int64_t ino,
 				    extent_walk_fn fn, void *priv_data)
 {
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_REFC_BTREE_REF,
-				   &xfs_refcountbt_metadata_ops, fn, priv_data, NULL, 0);
+				   &xfs_refcountbt_metadata_ops, fn, priv_data, NULL);
 }
 #endif
 
