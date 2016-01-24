@@ -721,6 +721,23 @@ void calc_inode_stats(struct filemapper_t *wf)
 next:
 		err = sqlite3_step(ino_stmt);
 	}
+	if (has_ino) {
+		err = sqlite3_reset(upd_stmt);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(upd_stmt, 1, extents);
+		if (err)
+			goto out;
+		err = sqlite3_bind_double(upd_stmt, 2, (double)p_dist / l_dist);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(upd_stmt, 3, last_ino);
+		if (err)
+			goto out;
+		err = sqlite3_step(upd_stmt);
+		if (err && err != SQLITE_DONE)
+			goto out;
+	}
 	if (err && err != SQLITE_DONE)
 		goto out;
 	err = 0;

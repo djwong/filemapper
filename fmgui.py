@@ -1152,6 +1152,7 @@ class fmgui(QtGui.QMainWindow):
 			overview_len = self.overview.total_length()
 		inodes = self.fs.inodes if self.fs.inodes != 0 else 1
 		extents = self.fs.extents if self.fs.extents != 0 else 1
+		extents_blocks = self.fs.extents_bytes / self.fs.block_size if self.fs.extents_bytes != 0 else 1
 		s = "%s of %s (%.0f%%) used; %s of %s (%.0f%%) inodes; %s extents; %s/cell; %.1f%% frag; %s avg. travel" % \
 			(fmcli.format_size(fmcli.units_auto, self.fs.total_bytes - self.fs.free_bytes), \
 			 fmcli.format_size(fmcli.units_auto, self.fs.total_bytes), \
@@ -1161,7 +1162,7 @@ class fmgui(QtGui.QMainWindow):
 			 100 * (1.0 - (float(fi) / ti)), \
 			 fmcli.format_number(fmcli.units_auto, self.fs.extents), \
 			 fmcli.format_size(fmcli.units_auto, float(self.fs.total_bytes) / overview_len), \
-			 100.0 * extents / inodes - 100, \
+			 100.0 * extents / extents_blocks, \
 			 fmcli.format_size(fmcli.units_auto, self.fmdb.query_avg_travel_score()))
 		return s
 

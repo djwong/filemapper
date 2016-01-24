@@ -37,7 +37,7 @@ fs_summary = namedtuple('fs_summary', ['path', 'block_size', 'frag_size',
 				       'avail_bytes', 'total_inodes',
 				       'free_inodes', 'avail_inodes',
 				       'extents', 'pathsep', 'inodes',
-				       'date', 'fstype'])
+				       'date', 'fstype', 'extents_bytes'])
 
 # Inode type codes
 INO_TYPE_FILE		= 0
@@ -684,9 +684,14 @@ class fmdb(object):
 
 		cur = self.conn.cursor()
 		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
+
 		cur.execute('SELECT COUNT(ino) FROM extent_t WHERE type IN (%s)' % etypes)
 		rows = cur.fetchall()
 		extents = rows[0][0]
+
+		cur.execute('SELECT SUM(length) FROM extent_t WHERE type IN (%s)' % etypes)
+		rows = cur.fetchall()
+		extent_bytes = rows[0][0]
 
 		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE ino IN (SELECT DISTINCT ino FROM extent_t WHERE extent_t.type IN (%s))' % etypes)
 		rows = cur.fetchall()
@@ -706,7 +711,7 @@ class fmdb(object):
 		self.fs = fs_summary(res[0], int(res[1]), int(res[2]), \
 				 int(res[3]), int(res[4]), int(res[5]), \
 				 int(res[6]), int(res[7]), int(res[8]),
-				 int(extents), res[9], int(inodes), d, res[11])
+				 int(extents), res[9], int(inodes), d, res[11], int(extent_bytes))
 		return self.fs
 
 	## Querying extents and inodes with extents that happen to overlap a range
@@ -1176,13 +1181,14 @@ class fmdb(object):
 
 	## More in-depth inode analysis
 
-	def calc_inode_stats(self):
+	def calc_inode_stats(self, force = False):
 		'''Analyze the extent/inode relations.'''
 		cur = self.conn.cursor()
 		cur.arraysize = self.result_batch_size
 
 		t0 = datetime.datetime.now()
-		qstr = 'SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.l_off IS NOT NULL AND extent_t.ino = inode_t.ino AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL) ORDER BY extent_t.ino, l_off'
+		ino_str = 'AND inode_t.ino IN (SELECT ino FROM inode_t WHERE travel_score IS NULL OR nr_extents IS NULL)' if not force else ''
+		qstr = 'SELECT extent_t.ino, inode_t.type AS itype, extent_t.type AS etype, p_off, l_off, length FROM extent_t INNER JOIN inode_t WHERE extent_t.l_off IS NOT NULL AND extent_t.ino = inode_t.ino %s ORDER BY extent_t.ino, l_off' % ino_str
 		print_sql(qstr)
 		cur.execute(qstr)
 		upd = []
@@ -1208,6 +1214,9 @@ class fmdb(object):
 			l_dist += length
 			last_poff = p_off + length - 1
 			last_loff = l_off + length - 1
+		if last_ino is not None:
+			travel_score = float(p_dist) / l_dist if l_dist != 0 else 0
+			upd.append((extents, travel_score, last_ino))
 		t2 = datetime.datetime.now()
 		if len(upd) > 0:
 			print_sql('BEGIN TRANSACTION')

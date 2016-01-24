@@ -375,7 +375,8 @@ class fmcli(code.InteractiveConsole):
 		print("Inodes w/ extents:\t%s" % format_number(units_none, res.inodes))
 		inodes = res.inodes if res.inodes != 0 else 1
 		extents = res.extents if res.extents != 0 else 1
-		print("Fragmentation:\t\t%.1f%%" % ((100.0 * extents / inodes) - 100))
+		extents_blocks = self.fs.extents_bytes / self.fs.block_size if self.fs.extents_bytes != 0 else 1
+		print("Fragmentation:\t\t%.1f%%" % (100.0 * extents / extents_blocks))
 		print("Avg. Travel Score:\t%.02f bytes" % self.fmdb.query_avg_travel_score())
 
 	def do_set_units(self, argv):
@@ -435,8 +436,9 @@ class fmcli(code.InteractiveConsole):
 	def do_calc_inode_stats(self, argv):
 		parser = argparse.ArgumentParser(prog = argv[0],
 			description = 'Calculate inode statistics.')
+		parser.add_argument('-f', '--force', help = 'Force recalculation.', action = 'store_true')
 		args = parser.parse_args(argv[1:])
-		self.fmdb.calc_inode_stats()
+		self.fmdb.calc_inode_stats(args.force)
 
 	## Overview management
 
