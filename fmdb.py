@@ -692,6 +692,8 @@ class fmdb(object):
 		cur.execute('SELECT SUM(length) FROM extent_t WHERE type IN (%s)' % etypes)
 		rows = cur.fetchall()
 		extent_bytes = rows[0][0]
+		if extent_bytes is None:
+			extent_bytes = 0
 
 		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE ino IN (SELECT DISTINCT ino FROM extent_t WHERE extent_t.type IN (%s))' % etypes)
 		rows = cur.fetchall()

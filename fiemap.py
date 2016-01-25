@@ -218,13 +218,16 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			try:
 				for extent in fiemap2(fd, flags = flags):
 					extent_fn(fstat, extent, False)
-				for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
-					extent_fn(fstat, extent, True)
 			except:
 				if stat.S_ISREG(fstat.st_mode):
 					do_map.fiemap_broken = True
 				for extent in fibmap2(fd, flags = flags):
 					extent_fn(fstat, extent, False)
+			try:
+				for extent in fiemap2(fd, flags = flags | FIEMAP_FLAG_XATTR):
+					extent_fn(fstat, extent, True)
+			except:
+				pass
 		finally:
 			os.close(fd)
 
