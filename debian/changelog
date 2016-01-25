@@ -1,3 +1,9 @@
+filemapper (0.7.6-1) unstable; urgency=low
+
+  * Fix the FIEMAP backend so that xattr fiemap failures don't land us in fibmap for the data fork.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Mon, 25 Jan 2016 00:02:23 -0800
+
 filemapper (0.7.5-1) unstable; urgency=low
 
   * Redefine fragmentation as extents / blocks; and calculate the avg travel for the last inode.
