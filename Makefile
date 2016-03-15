@@ -34,7 +34,7 @@ xfsmapper: filemapper.o xfsmapper.o $(XFSPROGS)/libxfs/.libs/libxfs.a
 	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h
-	$(CC) $(CFLAGS) -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/
 
 e2mapper: filemapper.o e2mapper.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs

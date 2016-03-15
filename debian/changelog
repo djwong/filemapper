@@ -3,7 +3,7 @@ filemapper (0.7.6-2) xenial; urgency=medium
   * Rebuild for Xenial.
   * Fix debian/source/format since we don't use quilt.
 
- -- djwong <djwong@xenial>  Tue, 15 Mar 2016 15:47:56 -0700
+ -- Darrick J. Wong <djwong@djwong.org>  Tue, 15 Mar 2016 15:47:56 -0700
 
 filemapper (0.7.6-1) unstable; urgency=low
 
