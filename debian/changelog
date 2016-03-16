@@ -1,3 +1,9 @@
+filemapper (0.7.7-2) xenial; urgency=medium
+
+  * fmgui now supports qt4 and qt5.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Tue, 15 Mar 2016 18:13:56 -0700
+
 filemapper (0.7.6-2) xenial; urgency=medium
 
   * Rebuild for Xenial.
