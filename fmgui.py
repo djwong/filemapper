@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 # QT GUI routines for filemapper
-# Copyright(C) 2015 Darrick J. Wong
+# Copyright(C) 2016 Darrick J. Wong
 # Licensed under GPLv2.
 
 import sys
-from PyQt4 import QtGui, uic, QtCore
+try:
+	from PyQt5 import QtGui, uic, QtCore, QtWidgets, Qt
+	print("Loading qt5...")
+except:
+	from PyQt4 import QtGui, uic, QtCore, Qt
+	from PyQt4 import QtGui as QtWidgets
+	print("Loading qt4...")
 import fmcli
 import datetime
 import fmdb
@@ -67,7 +73,7 @@ class MessagePump(object):
 			if self.interval == self.i_start:
 				self.on_fn()
 			self.interval = self.i_run
-			QtGui.QApplication.processEvents()
+			QtWidgets.QApplication.processEvents()
 			self.last = now
 
 	def stop(self):
@@ -127,7 +133,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		nlen = min(len(new_data), self.rows_to_show)
 		self.rows = nlen
 		parent = self.createIndex(-1, -1)
-		self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+		self.layoutAboutToBeChanged.emit()
 		if olen > nlen:
 			self.beginRemoveRows(parent, nlen, olen)
 		elif nlen > olen:
@@ -140,7 +146,7 @@ class ExtentTableModel(QtCore.QAbstractTableModel):
 		tl = self.createIndex(0, 0)
 		br = self.createIndex(olen - 1, len(self.headers) - 1)
 		self.dataChanged.emit(tl, br)
-		self.emit(QtCore.SIGNAL("layoutChanged()"))
+		self.layoutChanged.emit()
 
 	def canFetchMore(self, parent):
 		return self.rows < len(self.__data)
@@ -284,7 +290,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		nlen = min(len(new_data), self.rows_to_show)
 		self.rows = nlen
 		parent = self.createIndex(-1, -1)
-		self.emit(QtCore.SIGNAL("layoutAboutToBeChanged()"))
+		self.layoutAboutToBeChanged.emit()
 		if olen > nlen:
 			self.beginRemoveRows(parent, nlen, olen)
 		elif nlen > olen:
@@ -297,7 +303,7 @@ class InodeTableModel(QtCore.QAbstractTableModel):
 		tl = self.createIndex(0, 0)
 		br = self.createIndex(olen - 1, len(self.headers) - 1)
 		self.dataChanged.emit(tl, br)
-		self.emit(QtCore.SIGNAL("layoutChanged()"))
+		self.layoutChanged.emit()
 
 	def canFetchMore(self, parent):
 		return self.rows < len(self.__data)
@@ -645,7 +651,7 @@ class OverviewModel(QtCore.QObject):
 
 	def resize_ctl(self, event):
 		'''Handle the resizing of the text view control.'''
-		QtGui.QTextEdit.resizeEvent(self.ctl, event)
+		QtWidgets.QTextEdit.resizeEvent(self.ctl, event)
 		if self.resize_viewport():
 			self.rst.start(40)
 
@@ -881,20 +887,20 @@ class TimestampQuery(FmQuery):
 
 ## Custom widgets
 
-class XLineEdit(QtGui.QLineEdit):
+class XLineEdit(QtWidgets.QLineEdit):
 	'''QLineEdit with clear button, which appears when user enters text.'''
 	def __init__(self, parent=None):
 		super(XLineEdit, self).__init__(parent)
-		self.layout = QtGui.QHBoxLayout(self)
-		self.image = QtGui.QLabel(self)
+		self.layout = QtWidgets.QHBoxLayout(self)
+		self.image = QtWidgets.QLabel(self)
 		self.image.setCursor(QtCore.Qt.ArrowCursor)
 		self.image.setFocusPolicy(QtCore.Qt.NoFocus)
 		self.image.setStyleSheet("border: none;")
 		pixmap = QtGui.QIcon.fromTheme('locationbar-erase').pixmap(16, 16)
 		self.image.setPixmap(pixmap)
 		self.image.setSizePolicy(
-			QtGui.QSizePolicy.Expanding,
-			QtGui.QSizePolicy.Expanding)
+			QtWidgets.QSizePolicy.Expanding,
+			QtWidgets.QSizePolicy.Expanding)
 		self.image.adjustSize()
 		self.image.setScaledContents(True)
 		self.layout.addWidget(
@@ -907,7 +913,7 @@ class XLineEdit(QtGui.QLineEdit):
 		self.setTextMargins(qm)
 
 	def clear_mouse_release(self, ev):
-		QtGui.QLabel.mouseReleaseEvent(self.image, ev)
+		QtWidgets.QLabel.mouseReleaseEvent(self.image, ev)
 		if ev.button() == QtCore.Qt.LeftButton:
 			self.clear()
 
@@ -950,7 +956,7 @@ class ZoomValidator(QtGui.QValidator):
 
 ## GUI
 
-class fmgui(QtGui.QMainWindow):
+class fmgui(QtWidgets.QMainWindow):
 	'''Manage the GUI widgets and interactions.'''
 	def __init__(self, fmdbX, histfile=os.path.join(os.path.expanduser('~'), \
 						'.config', 'fmgui-history')):
@@ -969,7 +975,7 @@ class fmgui(QtGui.QMainWindow):
 		# Set up the menu
 		units = fmcli.units_auto
 		self.unit_actions = self.menuUnits.actions()
-		ag = QtGui.QActionGroup(self)
+		ag = QtWidgets.QActionGroup(self)
 		for u in self.unit_actions:
 			u.setActionGroup(ag)
 		ag.triggered.connect(self.change_units)
@@ -983,7 +989,7 @@ class fmgui(QtGui.QMainWindow):
 		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
 
-		ag = QtGui.QActionGroup(self)
+		ag = QtWidgets.QActionGroup(self)
 		ag.setExclusive(False)
 		self.extent_type_actions = self.menuOverview.actions()[2:2 + len(fmdb.extent_types)]
 		for a in self.extent_type_actions:
@@ -1005,13 +1011,13 @@ class fmgui(QtGui.QMainWindow):
 		self.unit_actions[0].setChecked(True)
 		self.extent_table.setModel(self.etm)
 		self.extent_table.selectionModel().selectionChanged.connect(self.pick_extent_table)
-		self.extent_table.sortByColumn(-1)
+		self.extent_table.sortByColumn(-1, 0) #Qt.AscendingOrder)
 
 		# Set up the inode view
 		self.itm = InodeTableModel(self.fs, [], units)
 		self.inode_table.setModel(self.itm)
 		self.inode_table.selectionModel().selectionChanged.connect(self.pick_inode_table)
-		self.extent_table.sortByColumn(-1)
+		self.extent_table.sortByColumn(-1, 0)
 
 		# Set up the fs tree view
 		de = self.fmdb.query_root()
@@ -1027,14 +1033,11 @@ class fmgui(QtGui.QMainWindow):
 
 		# Set up the query UI
 		# First, the combobox-lineedit widget weirdness
-		self.query_text.setAutoCompletion(True)
-		self.query_text.setAutoCompletionCaseSensitivity(True)
 		self.query_text.setDuplicatesEnabled(False)
 		self.xle = XLineEdit(self.query_text)
 		self.xle.returnPressed.connect(self.run_query)
 		self.query_text.setLineEdit(self.xle)
-		#XXX only run query if someone picked something off the popup... self.query_text.activated.connect(self.run_query)
-		self.query_text.completer().setCompletionMode(QtGui.QCompleter.PopupCompletion)
+		self.query_text.completer().setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
 
 		# Next the checklist thing
 		addReturnPressedEvents(self.query_checklist)
@@ -1099,7 +1102,7 @@ class fmgui(QtGui.QMainWindow):
 		self.zoom_combo.setValidator(ZoomValidator(self.fs))
 
 		# Set up the status bar
-		self.status_label = QtGui.QLabel()
+		self.status_label = QtWidgets.QLabel()
 		self.status_bar.addWidget(self.status_label)
 
 		# Here we go!
@@ -1265,7 +1268,7 @@ class fmgui(QtGui.QMainWindow):
 					n = 0
 				n += 1
 		t1 = datetime.datetime.today()
-		self.extent_table.sortByColumn(-1)
+		self.extent_table.sortByColumn(-1, 0)
 		t2 = datetime.datetime.today()
 		self.etm.revise(new_data)
 		self.actionExportExtents.setEnabled(len(new_data) > 0)
@@ -1292,7 +1295,7 @@ class fmgui(QtGui.QMainWindow):
 					n = 0
 				n += 1
 		t1 = datetime.datetime.today()
-		self.inode_table.sortByColumn(-1)
+		self.inode_table.sortByColumn(-1, 0)
 		t2 = datetime.datetime.today()
 		self.itm.revise(new_data)
 		self.actionExportInodes.setEnabled(len(new_data) > 0)
@@ -1319,7 +1322,7 @@ class fmgui(QtGui.QMainWindow):
 		self.ost.stop()
 		extent_paths = set()
 		query_paths = []
-		keymod = int(QtGui.QApplication.keyboardModifiers())
+		keymod = int(QtWidgets.QApplication.keyboardModifiers())
 		is_meta = (keymod & QtCore.Qt.MetaModifier) != 0
 		for m in self.fs_tree.selectedIndexes():
 			node = m.internalPointer()
@@ -1439,7 +1442,7 @@ class fmgui(QtGui.QMainWindow):
 		y = self.overview_text.document().defaultFont()
 		if y.family() == 'Source Code Pro,monospace':
 			y.setFamily('monospace')
-		(f, x) = QtGui.QFontDialog.getFont(y)
+		(f, x) = QtWidgets.QFontDialog.getFont(y)
 		if x:
 			y.setFamily(f.family())
 			y.setPointSizeF(f.pointSizeF())
@@ -1622,7 +1625,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def export_extents(self):
 		'''Export extents to a CSV file.'''
-		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
+		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
 				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
@@ -1652,7 +1655,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def export_inodes(self):
 		'''Export inodes to a CSV file.'''
-		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
+		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
 				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
@@ -1688,7 +1691,7 @@ class fmgui(QtGui.QMainWindow):
 
 	def export_overview(self):
 		'''Export overview to a HTML file.'''
-		fn = QtGui.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
+		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
 				filter = 'Hypertext Markup Language(*.html);;All Files(*)')
 		if fn == '':
 			return
@@ -1736,8 +1739,8 @@ p {
 
 def start_qt():
 	'''Initialize QT.'''
-	return QtGui.QApplication([])
+	return QtWidgets.QApplication([])
 
 def get_db_fname():
 	'''Ask the user for the path to the database.'''
-	return QtGui.QFileDialog.getOpenFileName(None, 'Open FileMapper Database', filter = 'FileMapper Databases(*.db);;All Files(*)')
+	return QtWidgets.QFileDialog.getOpenFileName(None, 'Open FileMapper Database', filter = 'FileMapper Databases(*.db);;All Files(*)')
