@@ -10,7 +10,7 @@ Homepage: http://djwong.org/
 
 Package: filemapper
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends}, python3-pyqt4, python3-dateutil
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${python3:Depends}, python3-pyqt5 | python3-pyqt4, python3-dateutil
 Description: Explore the physical layout of a filesystem
  This program snapshots the extent metadata of a filesystem for later
  display and analysis in a graphical program.
