@@ -1,4 +1,5 @@
-CFLAGS=-Wall -O3 -g
+CFLAGS=-Wall -O3 -g -flto
+LDFLAGS=-Wall -O3 -g -flto
 VERSION=0.7.6
 
 prefix = /usr

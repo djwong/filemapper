@@ -1,3 +1,9 @@
+filemapper (0.7.7-3) xenial; urgency=medium
+
+  * Rebuild with LTO.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Sun, 20 Mar 2016 13:45:56 -0700
+
 filemapper (0.7.7-2) xenial; urgency=medium
 
   * fmgui now supports qt4 and qt5.
