@@ -808,7 +808,7 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 	const char	*old_dirpath;
 	int		type, sz;
 	struct xfsmap_t	*wf = priv_data;
-	xfs_inode_t	*inode = NULL;
+	struct xfs_inode	*inode = NULL;
 	time_t		atime, crtime, ctime, mtime;
 	time_t		*pcrtime = NULL;
 	ssize_t		size;
@@ -838,19 +838,19 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 			goto out;
 		}
 	} else {
-		if (S_ISREG(inode->i_d.di_mode))
+		if (S_ISREG(VFS_I(inode)->i_mode))
 			type = XFS_DIR3_FT_REG_FILE;
-		else if (S_ISDIR(inode->i_d.di_mode))
+		else if (S_ISDIR(VFS_I(inode)->i_mode))
 			type = XFS_DIR3_FT_DIR;
-		else if (S_ISLNK(inode->i_d.di_mode))
+		else if (S_ISLNK(VFS_I(inode)->i_mode))
 			type = XFS_DIR3_FT_SYMLINK;
 		else
 			goto out;
 	}
 
-	atime = inode->i_d.di_atime.t_sec;
-	mtime = inode->i_d.di_mtime.t_sec;
-	ctime = inode->i_d.di_ctime.t_sec;
+	atime = VFS_I(inode)->i_atime.tv_sec;
+	mtime = VFS_I(inode)->i_mtime.tv_sec;
+	ctime = VFS_I(inode)->i_ctime.tv_sec;
 	if (inode->i_d.di_version >= 3) {
 		crtime = inode->i_d.di_crtime.t_sec;
 		pcrtime = &crtime;
