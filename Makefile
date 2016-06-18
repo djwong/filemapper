@@ -1,6 +1,6 @@
 CFLAGS=-Wall -O3 -g -flto
 LDFLAGS=-Wall -O3 -g -flto
-VERSION=0.7.6
+VERSION=0.7.7
 
 prefix = /usr
 exec_prefix = ${prefix}
