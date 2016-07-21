@@ -1,3 +1,9 @@
+filemapper (0.7.7-3.2) xenial; urgency=medium
+
+  * Rebuild with xfsprogs "4.7.0-rc0" (i.e. up to date rmap/reflink/rtrmapbt)
+
+ -- Darrick J. Wong <djwong@djwong.org>  Wed, 20 Jul 2016 20:52:56 -0700
+
 filemapper (0.7.7-3.1) xenial; urgency=medium
 
   * Rebuild with xfsprogs "4.7.0-rc0" (i.e. up to date rmap/reflink)
