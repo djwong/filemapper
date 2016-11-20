@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1522</width>
+    <width>1585</width>
     <height>656</height>
    </rect>
   </property>
@@ -416,7 +416,7 @@ S = symbolic links</string>
     <string/>
    </property>
    <property name="windowTitle">
-    <string>File System Tree</string>
+    <string>Fi&amp;le System Tree</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>1</number>
@@ -462,7 +462,7 @@ S = symbolic links</string>
   </widget>
   <widget class="QDockWidget" name="results_dock">
    <property name="windowTitle">
-    <string>Query Results</string>
+    <string>&amp;Query Results</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>8</number>
@@ -620,8 +620,8 @@ S = symbolic links</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1522</width>
-     <height>23</height>
+     <width>1585</width>
+     <height>33</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -642,6 +642,7 @@ S = symbolic links</string>
     <addaction name="actionExtent_List"/>
     <addaction name="separator"/>
     <addaction name="actionToolbar"/>
+    <addaction name="actionHeatMap"/>
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuUnits">
@@ -962,6 +963,23 @@ S = symbolic links</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actionHeatMap">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>&amp;Heat Map</string>
+   </property>
+   <property name="toolTip">
+    <string>Show Heat Map</string>
+   </property>
+   <property name="statusTip">
+    <string>Color the overview cells according to their usage.</string>
    </property>
   </action>
  </widget>

@@ -281,6 +281,19 @@ class overview_block(object):
 		self.xattrs += value.xattrs
 		self.symlinks += value.symlinks
 
+	def to_color(ov):
+		'''Determine a heatmap color scheme.'''
+		userdata = ov.files + ov.xattrs
+		filemeta = ov.dirs + ov.mappings + ov.symlinks
+		fsmeta = ov.metadata
+		tot = userdata + filemeta + fsmeta
+		if tot == 0:
+			return None
+		red = 127 + int(128 * userdata / tot)
+		green = 127 + int(128 * fsmeta / tot)
+		blue = 127 + int(128 * filemeta / tot)
+		return (red & 0xFF, green & 0xFF, blue & 0xFF)
+
 	def to_letter(ov):
 		def on(t):
 			return ov.ets is None or t in ov.ets

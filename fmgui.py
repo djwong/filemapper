@@ -549,6 +549,7 @@ class OverviewModel(QtCore.QObject):
 		self.yield_fn = yield_fn
 		self.auto_size = True
 		self.has_rendered = False
+		self.heatmap = True
 
 		self.resize_viewport()
 
@@ -605,7 +606,7 @@ class OverviewModel(QtCore.QObject):
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
 		t1 = datetime.datetime.today()
-		h = False
+		old_style_str = None
 		for i in range(0, olen):
 			x = int(round(i * o2s))
 			y = int(round((i + 1) * o2s))
@@ -615,15 +616,21 @@ class OverviewModel(QtCore.QObject):
 			for s in ss:
 				ovs.add(s)
 			if sum(rh) > 0:
-				if not h:
-					ov_str.append('<span style="background: #e0e0e0; font-weight: bold;">')
-				h = True
+				style_str = 'background: #e0e0e0; font-weight: bold;'
 			else:
-				if h:
+				bgcolor = ovs.to_color() if self.heatmap else None
+				if bgcolor is None:
+					style_str = None
+				else:
+					style_str = 'background: #%02x%02x%02x;' % (bgcolor[0], bgcolor[1], bgcolor[2])
+			if old_style_str != style_str:
+				if old_style_str is not None:
 					ov_str.append('</span>')
-				h = False
+				if style_str is not None:
+					ov_str.append('<span style="%s">' % style_str)
 			ov_str.append(ovs.to_letter())
-		if h:
+			old_style_str = style_str
+		if old_style_str is not None:
 			ov_str.append('</span>')
 		t2 = datetime.datetime.today()
 		fmdb.print_times('render', [t0, t1, t2])
@@ -985,6 +992,7 @@ class fmgui(QtWidgets.QMainWindow):
 		self.actionExportInodes.setIcon(QtGui.QIcon.fromTheme('document-save'))
 		self.actionExportOverview.triggered.connect(self.export_overview)
 		self.actionExportOverview.setIcon(QtGui.QIcon.fromTheme('document-save'))
+		self.actionHeatMap.triggered.connect(self.toggle_heatmap)
 		self.actionChangeFont.triggered.connect(self.change_font)
 		self.actionChangeFont.setIcon(QtGui.QIcon.fromTheme('preferences-desktop-font'))
 		self.actionQuit.setIcon(QtGui.QIcon.fromTheme('application-exit'))
@@ -1193,6 +1201,7 @@ class fmgui(QtWidgets.QMainWindow):
 			'overview_font_family': str(of.family()),
 			'overview_font_points': of.pointSizeF(),
 			'extent_types': eta(),
+			'heatmap': self.overview.heatmap,
 			'results_tab': self.results_tab.currentIndex(),
 			'extent_headers': base64.b64encode(self.extent_table.header().saveState()).decode('utf-8'),
 			'inode_headers': base64.b64encode(self.inode_table.header().saveState()).decode('utf-8'),
@@ -1226,6 +1235,7 @@ class fmgui(QtWidgets.QMainWindow):
 			of = self.overview_text.document().defaultFont()
 			of.setFamily(data['overview_font_family'])
 			of.setPointSizeF(data['overview_font_points'])
+			self.overview.heatmap = data['heatmap']
 			self.overview_text.document().setDefaultFont(of)
 			self.overview.font_changed()
 			opts = {fmdb.extent_type_strings_long[t] for t in data['extent_types']}
@@ -1460,6 +1470,10 @@ class fmgui(QtWidgets.QMainWindow):
 		'''Handle a change in the zoom selector.'''
 		s = self.zoom_combo.currentText()
 		self.overview.set_zoom(s)
+
+	def toggle_heatmap(self):
+		self.overview.heatmap = not self.overview.heatmap
+		self.overview.render()
 
 	## Queries
 
