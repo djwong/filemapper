@@ -1639,7 +1639,7 @@ class fmgui(QtWidgets.QMainWindow):
 
 	def export_extents(self):
 		'''Export extents to a CSV file.'''
-		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
+		fn, fmt = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Extents to CSV', \
 				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
@@ -1669,7 +1669,7 @@ class fmgui(QtWidgets.QMainWindow):
 
 	def export_inodes(self):
 		'''Export inodes to a CSV file.'''
-		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
+		fn, fmt = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Inodes to CSV', \
 				filter = 'Comma Separated Value Tables(*.csv);;All Files(*)')
 		if fn == '':
 			return
@@ -1705,7 +1705,7 @@ class fmgui(QtWidgets.QMainWindow):
 
 	def export_overview(self):
 		'''Export overview to a HTML file.'''
-		fn = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
+		fn, fmt = QtWidgets.QFileDialog.getSaveFileName(self, 'Export Overview to HTML', \
 				filter = 'Hypertext Markup Language(*.html);;All Files(*)')
 		if fn == '':
 			return
