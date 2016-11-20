@@ -160,6 +160,7 @@ XFS_METADATA_BTREE_OPS3(refcountbt, REFCOUNT);
 XFS_METADATA_BTREE_OPS4(allocbt, ALLOC);
 XFS_METADATA_BTREE_OPS4(inobt, INOBT);
 
+#if 0
 /*
  * Read in the allocation group free block array.
  */
@@ -185,6 +186,7 @@ xfs_alloc_read_agfl(
 	*bpp = bp;
 	return 0;
 }
+#endif
 
 /* Free AG information */
 static void free_ags(xfs_mount_t *fs, struct xfs_ag *ags)
@@ -823,7 +825,7 @@ static int walk_fs_helper(xfs_ino_t dir, const char *dname, size_t dname_len,
 	dbg_printf("dir=%ld name=%s/%s ino=%ld type=%d\n", dir, wf->wf_dirpath, name,
 		   ino, file_type);
 
-	wf->err = libxfs_iget(wf->fs, NULL, ino, 0, &inode, 0);
+	wf->err = libxfs_iget(wf->fs, NULL, ino, 0, &inode);
 	if (wf->err)
 		return -1;
 
