@@ -9,7 +9,7 @@ import fmcli
 import sys
 import argparse
 
-VER = 'filemapper v0.7.7'
+VER = 'filemapper v0.8.0'
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(prog = sys.argv[0],
