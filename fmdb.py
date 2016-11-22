@@ -9,6 +9,7 @@ import datetime
 import stat
 import array
 import fiemap
+import math
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 from dateutil import tz
@@ -44,12 +45,14 @@ INO_TYPE_FILE		= 0
 INO_TYPE_DIR		= 1
 INO_TYPE_METADATA	= 2
 INO_TYPE_SYMLINK	= 3
+INO_TYPE_FREESP		= 4
 
 inode_types = {
 	INO_TYPE_FILE:		'f',
 	INO_TYPE_DIR:		'd',
 	INO_TYPE_METADATA:	'm',
 	INO_TYPE_SYMLINK:	's',
+	INO_TYPE_FREESP:	'u',
 }
 
 inode_types_long = {
@@ -57,6 +60,7 @@ inode_types_long = {
 	INO_TYPE_DIR:		'Directory',
 	INO_TYPE_METADATA:	'Metadata',
 	INO_TYPE_SYMLINK:	'Symbolic Link',
+	INO_TYPE_FREESP:	'Free Space'
 }
 
 inode_type_strings = {inode_types[i]: i for i in inode_types}
@@ -77,6 +81,7 @@ EXT_TYPE_EXTENT		= 2
 EXT_TYPE_METADATA	= 3
 EXT_TYPE_XATTR		= 4
 EXT_TYPE_SYMLINK	= 5
+EXT_TYPE_FREESP		= 6
 
 extent_types = {
 	EXT_TYPE_FILE:		'f',
@@ -85,6 +90,7 @@ extent_types = {
 	EXT_TYPE_METADATA:	'm',
 	EXT_TYPE_XATTR:		'x',
 	EXT_TYPE_SYMLINK:	's',
+	EXT_TYPE_FREESP:	'u',
 }
 
 extent_types_long = {
@@ -94,6 +100,7 @@ extent_types_long = {
 	EXT_TYPE_METADATA:	'Metadata',
 	EXT_TYPE_XATTR:		'Extended Attribute',
 	EXT_TYPE_SYMLINK:	'Symbolic Link',
+	EXT_TYPE_FREESP:	'Free Space',
 }
 
 primary_extent_type_for_inode = {
@@ -101,6 +108,7 @@ primary_extent_type_for_inode = {
 	INO_TYPE_DIR:		EXT_TYPE_DIR,
 	INO_TYPE_METADATA:	EXT_TYPE_METADATA,
 	INO_TYPE_SYMLINK:	EXT_TYPE_SYMLINK,
+	INO_TYPE_FREESP:	EXT_TYPE_FREESP,
 }
 
 extent_type_strings = {extent_types[i]: i for i in extent_types}
@@ -227,7 +235,7 @@ CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGE
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));
 CREATE TABLE extent_type_t (id INTEGER PRIMARY KEY UNIQUE, code TEXT NOT NULL);
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));
-CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
+CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, freesp INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;
 CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode_t.nr_extents, inode_t.travel_score, inode_t.atime, inode_t.crtime, inode_t.ctime, inode_t.mtime, inode_t.size FROM path_t, inode_t WHERE inode_t.ino = path_t.ino;
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;''' % (PAGE_SIZE, APP_ID)]
@@ -261,9 +269,65 @@ def utctimestamp_to_datetime(t):
 		return None
 	return datetime.datetime.utcfromtimestamp(t).replace(tzinfo = tz_gmt)
 
+def clamp(n, smallest, largest):
+	return max(smallest, min(n, largest))
+
+class color(object):
+	'''RGB triad.  All color components range from 0-255.'''
+	def __init__(self, red, green, blue):
+		self.red = red
+		self.green = green
+		self.blue = blue
+
+	def clamp(self):
+		return color(clamp(self.red, 0, 255), \
+			     clamp(self.green, 0, 255), \
+			     clamp(self.blue, 0, 255))
+
+	def scale(self, value):
+		return color(self.red * value, \
+			     self.green * value, \
+			     self.blue * value)
+
+	def __mul__(self, value):
+		if type(value) is color:
+			return color(self.red * value.red, \
+				     self.green * value.green, \
+				     self.blue * value.blue)
+		return color(self.red * value, \
+			     self.green * value, \
+			     self.blue * value)
+
+	def __add__(self, value):
+		if type(value) is color:
+			return color(self.red + value.red, \
+				     self.green + value.green, \
+				     self.blue + value.blue)
+		return color(self.red + value, \
+			     self.green + value, \
+			     self.blue + value)
+
+	def sqrt(self):
+		'''Return the sqrt'd color.'''
+		return color(math.sqrt(self.red), math.sqrt(self.green), \
+				math.sqrt(self.blue))
+
+	def html(self):
+		'''Render as HTML string.'''
+		return '#%02x%02x%02x' % (int(self.red), int(self.green), int(self.blue))
+
+def scale_colors(colors):
+	'''Mix colors together from a list of colors and proportions.'''
+	ret = color(0, 0, 0)
+	pct = 0
+	for c, p in colors:
+		ret += (c * c).scale(p)
+		pct += p
+	return ret.sqrt().clamp()
+
 class overview_block(object):
 	def __init__(self, extents_to_show, files = 0, dirs = 0, mappings = 0, \
-		     metadata = 0, xattrs = 0, symlinks = 0):
+		     metadata = 0, xattrs = 0, symlinks = 0, freesp = 0):
 		self.ets = extents_to_show
 		self.files = files
 		self.dirs = dirs
@@ -271,6 +335,7 @@ class overview_block(object):
 		self.metadata = metadata
 		self.xattrs = xattrs
 		self.symlinks = symlinks
+		self.freesp = freesp
 
 	def add(self, value):
 		'''Add another overview block to this one.'''
@@ -280,25 +345,29 @@ class overview_block(object):
 		self.metadata += value.metadata
 		self.xattrs += value.xattrs
 		self.symlinks += value.symlinks
+		self.freesp += value.freesp
 
-	def to_color(ov):
+	def to_color(ov, bgcolor, userdatacolor, filemetacolor, fsmetacolor, freespcolor):
 		'''Determine a heatmap color scheme.'''
 		userdata = ov.files + ov.xattrs
 		filemeta = ov.dirs + ov.mappings + ov.symlinks
 		fsmeta = ov.metadata
-		tot = userdata + filemeta + fsmeta
+		freesp = ov.freesp
+		tot = userdata + filemeta + fsmeta + freesp
+		#print(str(ov), userdata, filemeta, fsmeta, freesp, tot)
 		if tot == 0:
-			return None
-		red = 127 + int(128 * userdata / tot)
-		green = 127 + int(128 * fsmeta / tot)
-		blue = 127 + int(128 * filemeta / tot)
-		return (red & 0xFF, green & 0xFF, blue & 0xFF)
+			return bgcolor
+		colorinfo = [(userdatacolor, userdata / tot),
+			     (filemetacolor, filemeta / tot),
+			     (fsmetacolor, fsmeta / tot),
+			     (freespcolor, freesp / tot)]
+		return scale_colors(colorinfo)
 
 	def to_letter(ov):
 		def on(t):
 			return ov.ets is None or t in ov.ets
 		'''Render this overview block as a string.'''
-		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlinks
+		tot = ov.files + ov.dirs + ov.mappings + ov.metadata + ov.xattrs + ov.symlinks + ov.freesp
 		if tot == 0:
 			return '.'
 		elif ov.files == tot and on(EXT_TYPE_FILE):
@@ -313,6 +382,8 @@ class overview_block(object):
 			return 'X'
 		elif ov.symlinks == tot and on(EXT_TYPE_SYMLINK):
 			return 'S'
+		elif ov.freesp == tot and on(EXT_TYPE_FREESP):
+			return 'U'
 
 		x = 0
 		if ov.files > x and on(EXT_TYPE_FILE):
@@ -333,13 +404,17 @@ class overview_block(object):
 		if ov.symlinks > x and on(EXT_TYPE_SYMLINK):
 			x = ov.symlinks
 			letter = 's'
+		if ov.freesp > x and on(EXT_TYPE_FREESP):
+			x = ov.freesp
+			letter = 'u'
 		if x == 0:
 			letter = '.'
 		return letter
 
 	def __str__(ov):
-		return '(f:%d d:%d e:%d m:%d x:%d s:%d)' % (ov.files, ov.dirs, \
-				ov.mappings, ov.metadata, ov.xattrs, ov.symlinks)
+		return '(f:%d d:%d e:%d m:%d x:%d s:%d u:%d)' % (ov.files, \
+				ov.dirs, ov.mappings, ov.metadata, ov.xattrs, \
+				ov.symlinks, ov.freesp)
 
 ## Main database object
 #
@@ -577,6 +652,11 @@ class fmdb(object):
 				elif e_type == EXT_TYPE_SYMLINK:
 					for i in range(start_cell, end_cell + 1):
 						overview[i].symlinks += 1
+				elif e_type == EXT_TYPE_FREESP:
+					for i in range(start_cell, end_cell + 1):
+						overview[i].freesp += 1
+				else:
+					assert(False)
 		t3 = datetime.datetime.today()
 		print_times('generate_overview', [t0, t1, t2, t3])
 		return overview
@@ -595,10 +675,11 @@ class fmdb(object):
 			cur = self.conn.cursor()
 			cur.arraysize = self.result_batch_size
 			t0 = datetime.datetime.today()
-			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
+			qstr = 'INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);'
 			qarg = [(length, i, overview[i].files, overview[i].dirs, \
 				 overview[i].mappings, overview[i].metadata, \
-				 overview[i].xattrs, overview[i].symlinks) \
+				 overview[i].xattrs, overview[i].symlinks,
+				 overview[i].freesp) \
 				 for i in range(0, length)]
 			print_sql(qstr, [])
 			cur.executemany(qstr, qarg)
@@ -622,7 +703,7 @@ class fmdb(object):
 		cur.execute(qstr, qarg)
 		if cur.fetchall()[0][0] == self.overview_len:
 			t0 = datetime.datetime.today()
-			qstr = 'SELECT files, dirs, mappings, metadata, xattrs, symlinks FROM overview_t WHERE length = ?'
+			qstr = 'SELECT files, dirs, mappings, metadata, xattrs, symlinks, freesp FROM overview_t WHERE length = ?'
 			qarg = [self.overview_len]
 			cur.execute(qstr, qarg)
 			while True:
@@ -633,7 +714,7 @@ class fmdb(object):
 					yield overview_block(self.extent_types_to_show, \
 							r[0], r[1], \
 							r[2], r[3], r[4], \
-							r[5])
+							r[5], r[6])
 			t1 = datetime.datetime.today()
 			print_times('cached_overview', [t0, t1])
 			return
@@ -696,7 +777,7 @@ class fmdb(object):
 			return self.fs
 
 		cur = self.conn.cursor()
-		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK]))
+		etypes = ', '.join(map(str, [EXT_TYPE_FILE, EXT_TYPE_DIR, EXT_TYPE_XATTR, EXT_TYPE_SYMLINK, EXT_TYPE_FREESP]))
 
 		cur.execute('SELECT COUNT(ino) FROM extent_t WHERE type IN (%s)' % etypes)
 		rows = cur.fetchall()
@@ -711,7 +792,6 @@ class fmdb(object):
 		cur.execute('SELECT COUNT(ino) FROM inode_t WHERE ino IN (SELECT DISTINCT ino FROM extent_t WHERE extent_t.type IN (%s))' % etypes)
 		rows = cur.fetchall()
 		inodes = rows[0][0]
-		#print(extents, inodes)
 
 		cur.execute('SELECT path, block_size, frag_size, total_bytes, free_bytes, avail_bytes, total_inodes, free_inodes, avail_inodes, path_separator, timestamp, fstype FROM fs_t;')
 		rows = cur.fetchall()

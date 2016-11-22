@@ -36,12 +36,14 @@ struct overview_t {
 	uint64_t metadata;
 	uint64_t xattrs;
 	uint64_t symlinks;
+	uint64_t freesp;
 };
 
 #define INO_TYPE_FILE		0
 #define INO_TYPE_DIR		1
 #define INO_TYPE_METADATA	2
 #define INO_TYPE_SYMLINK	3
+#define INO_TYPE_FREESP		4
 
 #define EXT_TYPE_FILE		0
 #define EXT_TYPE_DIR		1
@@ -49,6 +51,7 @@ struct overview_t {
 #define EXT_TYPE_METADATA	3
 #define EXT_TYPE_XATTR		4
 #define EXT_TYPE_SYMLINK	5
+#define EXT_TYPE_FREESP		6
 
 /* Extent flags.  Yes, these are the FIEMAP flags. */
 #define EXTENT_LAST		0x00000001 /* Last extent in file. */

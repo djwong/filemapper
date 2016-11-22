@@ -63,6 +63,8 @@ static DOS_FILE *root;
 #define STR_PRIMARY_FAT_FILE	"primary_fat"
 #define INO_BACKUP_FAT_FILE	(-4)
 #define STR_BACKUP_FAT_FILE	"backup_fat"
+#define INO_FREESP_FILE		(-5)
+#define STR_FREESP_FILE		"freespace"
 
 #define FSTART(p,fs) \
   ((uint32_t)le16toh(p->dir_ent.start) | \
@@ -334,6 +336,40 @@ out:
 	return;
 }
 
+#define INVALID_CLUSTER		(~0U)
+static void walk_freesp(struct fatmap_t *wf)
+{
+	DOS_FS *fs = wf->fs;
+	FAT_ENTRY ent;
+	uint32_t cluster;
+	uint32_t freestart = INVALID_CLUSTER;
+
+	for (cluster = 0; cluster < fs->clusters; cluster++) {
+		get_fat(&ent, fs->fat, cluster, fs);
+		if (ent.value == 0 && freestart == INVALID_CLUSTER)
+			freestart = cluster;
+		else if (ent.value && freestart != INVALID_CLUSTER) {
+			insert_extent(&wf->base, INO_FREESP_FILE,
+				      freestart * fs->cluster_size, NULL,
+				      (cluster - freestart) * fs->cluster_size,
+				      0, EXT_TYPE_FREESP);
+			if (wf->wf_db_err)
+				goto out;
+			freestart = INVALID_CLUSTER;
+		}
+	}
+	if (freestart != INVALID_CLUSTER) {
+		insert_extent(&wf->base, INO_FREESP_FILE,
+			      freestart * fs->cluster_size, NULL,
+			      (cluster - freestart) * fs->cluster_size,
+			      0, EXT_TYPE_FREESP);
+		if (wf->wf_db_err)
+			goto out;
+	}
+out:
+	return;
+}
+
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
 	do { \
 		inject_metadata(&wf->base, (parent_ino), (path), (ino), (name), (type)); \
@@ -354,13 +390,23 @@ static void walk_metadata(struct fatmap_t *wf)
 	INJECT_ROOT_METADATA(SB_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_SB_FILE, 0, NULL,
 		      fs->cluster_size, 0, EXT_TYPE_METADATA);
+	if (wf->wf_db_err)
+		goto out;
 	INJECT_ROOT_METADATA(PRIMARY_FAT_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_PRIMARY_FAT_FILE, fs->fat_start, NULL,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
+	if (wf->wf_db_err)
+		goto out;
 	INJECT_ROOT_METADATA(BACKUP_FAT_FILE, INO_TYPE_METADATA);
 	insert_extent(&wf->base, INO_BACKUP_FAT_FILE,
 		      fs->fat_start + fs->fat_size, NULL,
 		      fs->fat_size, 0, EXT_TYPE_METADATA);
+	if (wf->wf_db_err)
+		goto out;
+	INJECT_ROOT_METADATA(FREESP_FILE, INO_TYPE_FREESP);
+	walk_freesp(wf);
+	if (wf->wf_db_err)
+		goto out;
 out:
 	return;
 }

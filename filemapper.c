@@ -7,6 +7,7 @@
 #undef PROGRESS_REPORT
 #include <inttypes.h>
 #include <assert.h>
+#include <math.h>
 #include "filemapper.h"
 
 static char *opschema = "\
@@ -37,6 +38,7 @@ INSERT INTO inode_type_t VALUES (0, 'f');\
 INSERT INTO inode_type_t VALUES (1, 'd');\
 INSERT INTO inode_type_t VALUES (2, 'm');\
 INSERT INTO inode_type_t VALUES (3, 's');\
+INSERT INTO inode_type_t VALUES (4, 'u');\
 CREATE TABLE inode_t(ino INTEGER PRIMARY KEY UNIQUE NOT NULL, type INTEGER NOT NULL, nr_extents INTEGER, travel_score REAL, atime INTEGER, crtime INTEGER, ctime INTEGER, mtime INTEGER, size INTEGER, FOREIGN KEY(type) REFERENCES inode_type_t(id));\
 CREATE TABLE dir_t(dir_ino INTEGER NOT NULL, name TEXT NOT NULL, name_ino INTEGER NOT NULL, FOREIGN KEY(dir_ino) REFERENCES inode_t(ino), FOREIGN KEY(name_ino) REFERENCES inode_t(ino));\
 CREATE TABLE path_t(path TEXT PRIMARY KEY UNIQUE NOT NULL, ino INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino));\
@@ -47,8 +49,9 @@ INSERT INTO extent_type_t VALUES (2, 'e');\
 INSERT INTO extent_type_t VALUES (3, 'm');\
 INSERT INTO extent_type_t VALUES (4, 'x');\
 INSERT INTO extent_type_t VALUES (5, 's');\
+INSERT INTO extent_type_t VALUES (6, 'u');\
 CREATE TABLE extent_t(ino INTEGER NOT NULL, p_off INTEGER NOT NULL, l_off INTEGER, flags INTEGER NOT NULL, length INTEGER NOT NULL, type INTEGER NOT NULL, p_end INTEGER NOT NULL, FOREIGN KEY(ino) REFERENCES inode_t(ino), FOREIGN KEY(type) REFERENCES extent_type_t(id));\
-CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));\
+CREATE TABLE overview_t(length INTEGER NOT NULL, cell_no INTEGER NOT NULL, files INTEGER NOT NULL, dirs INTEGER NOT NULL, mappings INTEGER NOT NULL, metadata INTEGER NOT NULL, xattrs INTEGER NOT NULL, symlinks INTEGER NOT NULL, freesp INTEGER NOT NULL, CONSTRAINT pk_overview PRIMARY KEY (length, cell_no));\
 CREATE VIEW path_extent_v AS SELECT path_t.path, extent_t.p_off, extent_t.l_off, extent_t.length, extent_t.flags, extent_t.type, extent_t.p_end, extent_t.ino FROM extent_t, path_t WHERE extent_t.ino = path_t.ino;\
 CREATE VIEW path_inode_v AS SELECT path_t.path, inode_t.ino, inode_t.type, inode_t.nr_extents, inode_t.travel_score, inode_t.atime, inode_t.crtime, inode_t.ctime, inode_t.mtime, inode_t.size FROM path_t, inode_t WHERE inode_t.ino = path_t.ino;\
 CREATE VIEW dentry_t AS SELECT dir_t.dir_ino, dir_t.name, dir_t.name_ino, inode_t.type FROM dir_t, inode_t WHERE dir_t.name_ino = inode_t.ino;";
@@ -71,6 +74,7 @@ static int primary_extent_type_for_inode[] = {
 	[INO_TYPE_DIR]		= EXT_TYPE_DIR,
 	[INO_TYPE_METADATA]	= EXT_TYPE_METADATA,
 	[INO_TYPE_SYMLINK]	= EXT_TYPE_SYMLINK,
+	[INO_TYPE_FREESP]	= EXT_TYPE_FREESP,
 };
 
 /* Convert a directory pathname */
@@ -276,7 +280,7 @@ void insert_extent(struct filemapper_t *wf, int64_t ino, uint64_t physical,
 	int err, err2, col = 1;
 
 	dbg_printf("%s: ino=%"PRId64" phys=%"PRIu64" logical=%"PRIu64" len=%"PRIu64" flags=0x%x type=%d\n", __func__,
-		   ino, physical, logical, length, flags, type);
+		   ino, physical, *logical, length, flags, type);
 
 	/* Update the dentry table */
 	err = sqlite3_prepare_v2(wf->db, extent_sql, -1, &stmt, NULL);
@@ -496,7 +500,8 @@ void cache_overview(struct filemapper_t *wf, uint64_t length)
 {
 	sqlite3 *db = wf->db;
 	uint64_t start_cell, end_cell, i;
-	uint64_t bytes_per_cell, e_p_off, e_p_end;
+	uint64_t e_p_off, e_p_end;
+	double bytes_per_cell;
 	int e_type;
 	sqlite3_stmt *stmt = NULL;
 	struct overview_t *overview = NULL;
@@ -528,7 +533,7 @@ void cache_overview(struct filemapper_t *wf, uint64_t length)
 		goto out;
 	}
 
-	bytes_per_cell = total_bytes / length;
+	bytes_per_cell = (double)total_bytes / length;
 
 	/* Aggregate the extents */
 	sql = "SELECT p_off, p_end, type FROM extent_t;";
@@ -569,6 +574,10 @@ void cache_overview(struct filemapper_t *wf, uint64_t length)
 			for (i = start_cell; i <= end_cell; i++)
 				overview[i].symlinks++;
 			break;
+		case EXT_TYPE_FREESP:
+			for (i = start_cell; i <= end_cell; i++)
+				overview[i].freesp++;
+			break;
 		}
 		err = sqlite3_step(stmt);
 	}
@@ -580,7 +589,7 @@ void cache_overview(struct filemapper_t *wf, uint64_t length)
 	stmt = NULL;
 
 	/* Now spit it back to the database */
-	err = sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+	err = sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO overview_t VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
 				 -1, &stmt, NULL);
 	if (err)
 		goto out;
@@ -607,6 +616,9 @@ void cache_overview(struct filemapper_t *wf, uint64_t length)
 		if (err)
 			goto out;
 		err = sqlite3_bind_int64(stmt, 8, overview[i].symlinks);
+		if (err)
+			goto out;
+		err = sqlite3_bind_int64(stmt, 9, overview[i].freesp);
 		if (err)
 			goto out;
 		err = sqlite3_step(stmt);

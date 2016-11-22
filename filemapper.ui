@@ -58,27 +58,13 @@
        <bool>false</bool>
       </property>
       <property name="whatsThis">
-       <string>The physical layout of the file system.  Each letter represents a certain range (&quot;extent&quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.
-
-F = file
-D = directory
-E = file extent mappings
-M = metadata
-X = extended attributes
-S = symbolic links</string>
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;The physical layout of the file system.  Each letter represents a certain range (&amp;quot;extent&amp;quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;p&gt;F = file&lt;/p&gt;&lt;p&gt;D = directory&lt;/p&gt;&lt;p&gt;E = file extent mappings&lt;/p&gt;&lt;p&gt;M = metadata&lt;/p&gt;&lt;p&gt;X = extended attributes&lt;/p&gt;&lt;p&gt;S = symbolic links&lt;/p&gt;&lt;p&gt;U = unused/free space&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
       </property>
       <property name="accessibleName">
        <string>Physical layout</string>
       </property>
       <property name="accessibleDescription">
-       <string>The physical layout of the file system.  Each letter represents a certain range (&quot;extent&quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.
-
-F = file
-D = directory
-E = file extent mappings
-M = metadata
-X = extended attributes
-S = symbolic links</string>
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;The physical layout of the file system.  Each letter represents a certain range (&amp;quot;extent&amp;quot;) of bytes on the underlying storage device.  One of the following letters summarizes the contents of each physical range.  An upper-case letter means that all ranges are of the given type; a lower-case letter means that most of the ranges are of the given type.&lt;/p&gt;&lt;p&gt;&lt;br/&gt;&lt;/p&gt;&lt;p&gt;F = file&lt;/p&gt;&lt;p&gt;D = directory&lt;/p&gt;&lt;p&gt;E = file extent mappings&lt;/p&gt;&lt;p&gt;M = metadata&lt;/p&gt;&lt;p&gt;X = extended attributes&lt;/p&gt;&lt;p&gt;S = symbolic links&lt;/p&gt;&lt;p&gt;U = unused/free space&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
       </property>
       <property name="verticalScrollBarPolicy">
        <enum>Qt::ScrollBarAlwaysOn</enum>
@@ -670,6 +656,7 @@ S = symbolic links</string>
     <addaction name="actionShowMetadataExtents"/>
     <addaction name="actionShowExtendedAttributeExtents"/>
     <addaction name="actionShowSymbolicLinkExtents"/>
+    <addaction name="actionShowFreeSpace"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -980,6 +967,20 @@ S = symbolic links</string>
    </property>
    <property name="statusTip">
     <string>Color the overview cells according to their usage.</string>
+   </property>
+  </action>
+  <action name="actionShowFreeSpace">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Show &amp;Unused/Free Space</string>
+   </property>
+   <property name="statusTip">
+    <string>Show free space in the overview.</string>
    </property>
   </action>
  </widget>

@@ -26,20 +26,22 @@ struct e2map_t {
 	struct ext2fs_extent last;
 	int type;
 };
-#define wf_db		base.db
-#define wf_db_err	base.db_err
-#define wf_dirpath	base.dirpath
-#define wf_iconv	base.iconv
+#define wf_db			base.db
+#define wf_db_err		base.db_err
+#define wf_dirpath		base.dirpath
+#define wf_iconv		base.iconv
 
 #define EXT2_XT_METADATA	(EXT2_FT_MAX + 16)
 #define EXT2_XT_EXTENT		(EXT2_FT_MAX + 17)
 #define EXT2_XT_XATTR		(EXT2_FT_MAX + 18)
+#define EXT2_XT_FREESP		(EXT2_FT_MAX + 19)
 
 static int type_codes[] = {
 	[EXT2_FT_REG_FILE]	= INO_TYPE_FILE,
 	[EXT2_FT_DIR]		= INO_TYPE_DIR,
 	[EXT2_FT_SYMLINK]	= INO_TYPE_SYMLINK,
 	[EXT2_XT_METADATA]	= INO_TYPE_METADATA,
+	[EXT2_XT_FREESP]	= INO_TYPE_FREESP,
 };
 
 #ifndef EXT4_INLINE_DATA_FL
@@ -53,6 +55,7 @@ static int extent_codes[] = {
 	[EXT2_XT_METADATA]	= EXT_TYPE_METADATA,
 	[EXT2_XT_XATTR]		= EXT_TYPE_XATTR,
 	[EXT2_FT_SYMLINK]	= EXT_TYPE_SYMLINK,
+	[EXT2_XT_FREESP]	= EXT_TYPE_FREESP,
 };
 
 /* Fake inodes for FS metadata */
@@ -70,6 +73,8 @@ static int extent_codes[] = {
 #define STR_ITABLE_FILE		"inodes"
 #define INO_HIDDEN_DIR		(-7)
 #define STR_HIDDEN_DIR		"hidden_files"
+#define INO_FREESP_FILE		(-8)
+#define STR_FREESP_FILE		"freespace"
 /* This must come last */
 #define INO_GROUPS_DIR		(-8)
 #define STR_GROUPS_DIR		"groups"
@@ -642,7 +647,7 @@ static void walk_metadata(struct e2map_t *wf)
 	ext2_filsys fs = wf->fs;
 	dgrp_t group;
 	int64_t ino, group_ino;
-	blk64_t s, o, n, first_data_block;
+	blk64_t s, o, n, y, first_data_block;
 	blk_t u;
 	struct ext2_inode inode;
 	char path[PATH_MAX + 1];
@@ -651,6 +656,7 @@ static void walk_metadata(struct e2map_t *wf)
 	struct hidden_file *hf;
 	int w;
 
+	sb_bmap = sb_gdt = sb_bbitmap = sb_ibitmap = sb_itable = NULL;
 	INJECT_METADATA(EXT2_ROOT_INO, "", INO_METADATA_DIR, \
 			STR_METADATA_DIR, EXT2_FT_DIR);
 	INJECT_ROOT_METADATA(SB_FILE, EXT2_XT_METADATA);
@@ -660,6 +666,11 @@ static void walk_metadata(struct e2map_t *wf)
 	INJECT_ROOT_METADATA(ITABLE_FILE, EXT2_XT_METADATA);
 	INJECT_ROOT_METADATA(GROUPS_DIR, EXT2_FT_DIR);
 	INJECT_ROOT_METADATA(HIDDEN_DIR, EXT2_FT_DIR);
+	INJECT_ROOT_METADATA(FREESP_FILE, EXT2_XT_FREESP);
+
+	wf->err = ext2fs_read_block_bitmap(fs);
+	if (wf->err)
+		goto out;
 
 	first_data_block = fs->super->s_first_data_block;
 	fs->super->s_first_data_block = 0;
@@ -754,6 +765,46 @@ static void walk_metadata(struct e2map_t *wf)
 			goto out;
 		ino--;
 
+		/* Record free space. */
+		s = ext2fs_group_first_block2(fs, group);
+		n = ext2fs_group_last_block2(fs, group);
+		INJECT_METADATA(group_ino, path, ino, "freespace",
+				EXT2_XT_FREESP);
+		while (s <= n) {
+			wf->err = ext2fs_find_first_zero_block_bitmap2(
+					fs->block_map, s, n, &o);
+			if (wf->err == ENOENT) {
+				wf->err = 0;
+				break;
+			}
+			if (wf->err)
+				goto out;
+			wf->err = ext2fs_find_first_set_block_bitmap2(
+					fs->block_map, o, n, &y);
+			if (wf->err == ENOENT) {
+				y = n;
+				wf->err = 0;
+			}
+			if (wf->err)
+				goto out;
+			if (o == y)
+				break;
+			insert_extent(&wf->base, ino, o * fs->blocksize, NULL,
+				      (y - o) * fs->blocksize, EXTENT_SHARED,
+				      extent_codes[EXT2_XT_FREESP]);
+			if (wf->wf_db_err)
+				goto out;
+			insert_extent(&wf->base, INO_FREESP_FILE,
+				      o * wf->fs->blocksize, NULL,
+				      (y - o) * wf->fs->blocksize,
+				      EXTENT_SHARED,
+				      extent_codes[EXT2_XT_FREESP]);
+			if (wf->wf_db_err)
+				goto out;
+			s = y + 1;
+		}
+		ino--;
+
 		/* Record inode bitmap */
 		s = ext2fs_inode_bitmap_loc(fs, group);
 		ext2fs_fast_mark_block_bitmap2(sb_ibitmap, s);
@@ -796,7 +847,6 @@ static void walk_metadata(struct e2map_t *wf)
 	walk_bitmap(wf, INO_ITABLE_FILE, sb_itable);
 	if (wf->err || wf->wf_db_err)
 		goto out;
-
 	/* Now go for the hidden files */
 	memset(zero_buf, 0, sizeof(zero_buf));
 	snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, STR_HIDDEN_DIR);

@@ -32,18 +32,18 @@ all: $(progs) $(manpages) filemapper.desktop
 filemapper.c: filemapper.h
 
 xfsmapper: filemapper.o xfsmapper.o $(XFSPROGS)/libxfs/.libs/libxfs.a
-	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid
+	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/
 
 e2mapper: filemapper.o e2mapper.o
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs -lm
 
 e2mapper.c: filemapper.h
 
 ntfsmapper: filemapper.o ntfsmapper.o
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g -lm
 
 ntfsmapper.c: filemapper.h
 
@@ -51,7 +51,7 @@ libfat.a: $(DOSFSTOOLS)/boot.o $(DOSFSTOOLS)/charconv.o $(DOSFSTOOLS)/common.o $
 	$(AR) cr libfat.a $^
 
 fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lm
 
 fatcheck.c: $(DOSFSTOOLS)/src/check.c $(DOSFS_HEADERS)
 	sed -e 's/static void add_file/void add_file/g' < $< > $@

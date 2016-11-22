@@ -601,8 +601,12 @@ class OverviewModel(QtCore.QObject):
 		t0 = datetime.datetime.today()
 		if self.overview_big is None:
 			return None
+		bgcolor = fmdb.color(255, 255, 255)
+		userdatacolor = fmdb.color(255, 0, 0)
+		filemetacolor = fmdb.color(0, 255, 0)
+		fsmetacolor = fmdb.color(0, 0, 255)
+		freespcolor = fmdb.color(192, 192, 192)
 		olen = int(length)
-		#print(self.length, self.zoom)
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
 		t1 = datetime.datetime.today()
@@ -618,11 +622,13 @@ class OverviewModel(QtCore.QObject):
 			if sum(rh) > 0:
 				style_str = 'background: #e0e0e0; font-weight: bold;'
 			else:
-				bgcolor = ovs.to_color() if self.heatmap else None
-				if bgcolor is None:
+				color = ovs.to_color(bgcolor, userdatacolor, \
+						filemetacolor, fsmetacolor, \
+						freespcolor)
+				if color is None:
 					style_str = None
 				else:
-					style_str = 'background: #%02x%02x%02x;' % (bgcolor[0], bgcolor[1], bgcolor[2])
+					style_str = 'background: %s;' % (color.html())
 			if old_style_str != style_str:
 				if old_style_str is not None:
 					ov_str.append('</span>')
@@ -676,8 +682,9 @@ class OverviewModel(QtCore.QObject):
 		# Cheat with the textedit width/height -- use one less
 		# column than we probably could, and force wrapping at
 		# that column.
-		w = (sz.width() // overview_font_width) - 1
+		w = (sz.width() // overview_font_width)
 		h = (sz.height() // overview_font_height) - 1
+		#print("overview: %d x %d vs. %d x %d" % (sz.width(), sz.height(), overview_font_width, overview_font_height))
 		self.ctl.setLineWrapColumnOrWidth(w)
 		#print("overview; %f x %f = %f" % (w, h, w * h))
 		if self.auto_size:
