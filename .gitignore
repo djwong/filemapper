@@ -13,3 +13,4 @@ fatmapper
 xfsmapper
 fatcheck.c
 libfat.a
+db/
