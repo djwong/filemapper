@@ -1,8 +1,10 @@
 filemapper (0.8.0-1) xenial; urgency=medium
 
   * Rebuild with xfsprogs "4.9.0-rc1+" (i.e. up to date rmap/reflink/rtrmapbt)
+  * Record free space data to distinguish it from unaccounted space.
+  * Heatmaps in the main display!
 
- -- Darrick J. Wong <djwong@djwong.org>  Sun, 20 Nov 2016 12:34:56 -0700
+ -- Darrick J. Wong <djwong@djwong.org>  Fri,  2 Dec 2016 20:04:56 -0700
 
 filemapper (0.7.7-3.2) xenial; urgency=medium
 
