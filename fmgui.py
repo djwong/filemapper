@@ -605,7 +605,7 @@ class OverviewModel(QtCore.QObject):
 		userdatacolor = fmdb.color(255, 0, 0)
 		filemetacolor = fmdb.color(0, 255, 0)
 		fsmetacolor = fmdb.color(0, 0, 255)
-		freespcolor = fmdb.color(192, 192, 192)
+		freespcolor = fmdb.color(193, 225, 193)
 		olen = int(length)
 		o2s = float(len(self.overview_big)) / olen
 		ov_str = []
