@@ -622,9 +622,12 @@ class OverviewModel(QtCore.QObject):
 			if sum(rh) > 0:
 				style_str = 'background: #e0e0e0; font-weight: bold;'
 			else:
-				color = ovs.to_color(bgcolor, userdatacolor, \
-						filemetacolor, fsmetacolor, \
-						freespcolor)
+				if self.heatmap:
+					color = ovs.to_color(bgcolor, \
+						userdatacolor, filemetacolor, \
+						fsmetacolor, freespcolor)
+				else:
+					color = None
 				if color is None:
 					style_str = None
 				else:
