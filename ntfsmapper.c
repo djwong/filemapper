@@ -39,6 +39,13 @@ struct ntfsmap_t {
 #define wf_dirpath	base.dirpath
 #define wf_iconv	base.iconv
 
+/* Fake inodes for metadata */
+
+#define INO_METADATA_DIR	(-1)
+#define STR_METADATA_DIR	"$metadata"
+#define INO_FREESP_FILE		(-2)
+#define STR_FREESP_FILE		"freespace"
+
 /* These bits are more or less copied from ntfsprogs. */
 
 static const char *invalid_ntfs_msg =
@@ -197,6 +204,7 @@ static int walk_fs_helper(void *priv_data, const ntfschar * de_name,
 	ntfs_inode *ni = NULL;
 	time_t atime, crtime, ctime, mtime;
 	struct timespec ts;
+	u64 parent_ino;
 
 	/* Skip the 8.3 names */
 	if ((name_type & FILE_NAME_WIN32_AND_DOS) == FILE_NAME_DOS)
@@ -222,7 +230,7 @@ static int walk_fs_helper(void *priv_data, const ntfschar * de_name,
 		return -1;
 	}
 
-	if (de_name && MREF(mref) < FILE_first_user) {
+	if (de_name && MREF(mref) < FILE_first_user && dt_type == NTFS_DT_REG) {
 		type = INO_TYPE_METADATA;
 		goto have_type;
 	}
@@ -243,8 +251,8 @@ static int walk_fs_helper(void *priv_data, const ntfschar * de_name,
 	}
 
 have_type:
-	dbg_printf("dir=%"PRIu64" name=%s/%s nametype=0x%x ino=%"PRIu64" type=%d\n",
-		   wf->dir_ino, wf->wf_dirpath, name, name_type, ni->mft_no, type);
+	dbg_printf("dir=%"PRIu64" name=%s/%s nametype=0x%x ino=%"PRIu64" type=%d:%d\n",
+		   wf->dir_ino, wf->wf_dirpath, name, name_type, ni->mft_no, type, dt_type);
 
 	ts = ntfs2timespec(ni->last_access_time);
 	atime = ts.tv_sec;
@@ -255,16 +263,24 @@ have_type:
 	ts = ntfs2timespec(ni->last_data_change_time);
 	mtime = ts.tv_sec;
 
+
 	if (de_name)
 		snprintf(path, PATH_MAX, "%s/%s", wf->wf_dirpath, name);
 	else
 		path[0] = 0;
+	if (MREF(mref) < FILE_first_user && wf->dir_ino == FILE_root) {
+		parent_ino = INO_METADATA_DIR;
+		snprintf(path, PATH_MAX, "/%s/%s", STR_METADATA_DIR, name);
+	} else
+		parent_ino = wf->dir_ino;
+
+	dbg_printf("parent_ino = %lld path = %s\n", parent_ino, path);
 	insert_inode(&wf->base, ni->mft_no, type, path, &atime, &crtime, &ctime,
 		     &mtime, &ni->data_size);
 	if (wf->wf_db_err)
 		goto err;
 	if (de_name)
-		insert_dentry(&wf->base, wf->dir_ino, name, ni->mft_no);
+		insert_dentry(&wf->base, parent_ino, name, ni->mft_no);
 	if (wf->wf_db_err)
 		goto err;
 
@@ -308,11 +324,101 @@ static void walk_fs(struct ntfsmap_t *wf)
 		return;
 	}
 
+	inject_metadata(&wf->base, FILE_root, "", INO_METADATA_DIR,
+			STR_METADATA_DIR, INO_TYPE_DIR);
+	if (wf->wf_db_err)
+		return;
+
 	walk_fs_helper(wf, NULL, 0, FILE_NAME_WIN32, 0, FILE_root, NTFS_DT_DIR);
 
 	free(wf->ino_bmap);
 	wf->ino_bmap = NULL;
 }
+
+/* Walk a byte in the bitmap... */
+#define CL(c)		((c) * wf->fs->cluster_size)
+static inline void walk_block_bitmap_byte(struct ntfsmap_t *wf,
+					  unsigned char b, long long blknow,
+					  long long *freestart)
+{
+	int j;
+
+	switch (b) {
+	case 0:
+		if (*freestart < 0)
+			*freestart = blknow;
+		break;
+	case 255:
+		if (*freestart >= 0) {
+			insert_extent(&wf->base, INO_FREESP_FILE,
+			      CL(*freestart), NULL,
+			      CL(blknow - *freestart), 0,
+			      EXT_TYPE_FREESP);
+			dbg_printf("freestart %llu blknow %llu\n",
+				   *freestart, blknow);
+			*freestart = -1;
+		}
+		break;
+	default:
+		for (j = 0; j < 8; j++, blknow++) {
+			if ( (b & (1 << j)) && *freestart >= 0) {
+				insert_extent(&wf->base, INO_FREESP_FILE,
+					      CL(*freestart), NULL,
+					      CL(blknow - *freestart),
+					      0, EXT_TYPE_FREESP);
+				dbg_printf("freestart %llu blknow %llu\n",
+					   *freestart, blknow);
+				*freestart = -1;
+			} else if ( !(b & (1 << j)) && *freestart < 0) {
+				*freestart = blknow;
+			}
+		}
+		break;
+	}
+}
+
+/* Read bitmap? */
+#define BITMAP_LEN	65536
+static void walk_block_bitmap(struct ntfsmap_t *wf)
+{
+	ntfs_attr *bmp_na = wf->fs->lcnbmp_na;
+	unsigned char buf[BITMAP_LEN];
+	unsigned char *b;
+	long long bmp_offset = 0;
+	long long br;
+	long long freestart;
+	long long blk;
+	long long blknow;
+
+	inject_metadata(&wf->base, INO_METADATA_DIR, "/" STR_METADATA_DIR,
+			INO_FREESP_FILE, STR_FREESP_FILE, INO_TYPE_FREESP);
+	if (wf->wf_db_err)
+		return;
+
+	freestart = -1;
+	while (1) {
+		br = ntfs_attr_pread(bmp_na, bmp_offset, BITMAP_LEN, buf);
+		if (br <= 0)
+			break;
+
+		/* Look for zero bits == free clusters. */
+		for (b = buf, blk = 0; b < buf + br; b++, blk += 8) {
+			blknow = (bmp_offset << 3) + blk;
+			walk_block_bitmap_byte(wf, *b, blknow, &freestart);
+		}
+
+		bmp_offset += br;
+	}
+	if (freestart >= 0) {
+		insert_extent(&wf->base, INO_FREESP_FILE,
+			      CL(freestart), NULL,
+			      CL(blknow - freestart),
+			      0, EXT_TYPE_FREESP);
+		dbg_printf("freestart %llu eofs %llu\n", freestart,
+			   wf->fs->nr_clusters);
+	}
+}
+#undef CL
 
 #define CHECK_ERROR(msg) \
 do { \
@@ -427,6 +533,8 @@ int main(int argc, char *argv[])
 	/* Walk the filesystem */
 	walk_fs(&wf);
 	CHECK_ERROR("while analyzing filesystem");
+	walk_block_bitmap(&wf);
+	CHECK_ERROR("while analyzing free space");
 
 	/* Generate indexes and finalize. */
 	index_db(&wf.base);
