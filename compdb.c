@@ -127,37 +127,37 @@ static struct compressor_type compressors[] = {
         const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
 	        (type *)( (char *)__mptr - offsetof(type,member) );})
 
-struct compdbvfs_vfs {
+struct compdb_vfs {
 	struct sqlite3_vfs		vfs;
 	struct sqlite3_vfs		*oldvfs;
 	struct compressor_type		*compressor;
 
 };
 
-enum compdbvfs_type {
+enum compdb_type {
 	DB_UNKNOWN,
 	DB_REGULAR,
 	DB_COMPRESSED,
 };
 
-struct compdbvfs_file {
+struct compdb_file {
 	struct sqlite3_io_methods	methods;
-	struct compdbvfs_vfs		*cvfs;
+	struct compdb_vfs		*cvfs;
 	int				(*old_read)(sqlite3_file*, void*,
 						    int, sqlite3_int64);
 	int				(*old_write)(sqlite3_file*, const void*,
 						    int, sqlite3_int64);
 	unsigned long long		data_start;
 	int				pagesize;
-	enum compdbvfs_type		db_type;
+	enum compdb_type		db_type;
 };
 
-/* Convert a sqlite file into a compdbvfs file */
-static inline struct compdbvfs_file *
-COMPDBVFS_F(
+/* Convert a sqlite file into a compdb file */
+static inline struct compdb_file *
+COMPDB_F(
 	sqlite3_file		*file)
 {
-	return container_of(file->pMethods, struct compdbvfs_file, methods);
+	return container_of(file->pMethods, struct compdb_file, methods);
 }
 
 /*
@@ -165,7 +165,7 @@ COMPDBVFS_F(
  * 0xDA as the first byte.
  */
 static const uint8_t FAKEVFS_BLOCK_MAGIC[] = {0xDA, 0xAD};
-struct compdbvfs_block_head {
+struct compdb_block_head {
 	uint8_t			magic[2];
 	uint16_t		len;		/* compressed length */
 	uint32_t		offset;		/* page number */
@@ -203,8 +203,8 @@ struct sqlite3_super {
 
 /* Figure out database parameters. */
 static int
-compdbvfs_sniff(
-	struct compdbvfs_file		*ff,
+compdb_sniff(
+	struct compdb_file		*ff,
 	const struct sqlite3_super	*super,
 	int				is_write)
 {
@@ -249,19 +249,19 @@ compdbvfs_sniff(
 
 /* Do some sort of read io. */
 static int
-compdbvfs_read(
+compdb_read(
 	sqlite3_file			*file,
 	void				*ptr,
 	int				iAmt,
 	sqlite3_int64			iOfst)
 {
-	struct compdbvfs_file		*ff;
-	struct compdbvfs_block_head	*bhead;
+	struct compdb_file		*ff;
+	struct compdb_block_head	*bhead;
 	char				*buf;
 	int				clen;
 	int				ret;
 
-	ff = COMPDBVFS_F(file);
+	ff = COMPDB_F(file);
 	assert(iOfst == 0 || ff->db_type != DB_UNKNOWN);
 
 	ret = ff->old_read(file, ptr, iAmt, iOfst);
@@ -310,25 +310,25 @@ compdbvfs_read(
 
 /* Do some sort of write. */
 static int
-compdbvfs_write(
+compdb_write(
 	sqlite3_file			*file,
 	const void			*ptr,
 	int				iAmt,
 	sqlite3_int64			iOfst)
 {
-	struct compdbvfs_file		*ff;
-	struct compdbvfs_block_head	*bhead;
+	struct compdb_file		*ff;
+	struct compdb_block_head	*bhead;
 	char				*buf;
 	sqlite3_int64			isize;
 	int				clen;
 	int				ret;
 
-	ff = COMPDBVFS_F(file);
+	ff = COMPDB_F(file);
 
 	/* If we don't know db geometry, let's try to pull them in here. */
 	if (ff->db_type == DB_UNKNOWN) {
 		assert(iOfst == 0);
-		ret = compdbvfs_sniff(ff, ptr, 1);
+		ret = compdb_sniff(ff, ptr, 1);
 		if (ret)
 			return ret;
 		assert(ff->db_type != DB_UNKNOWN);
@@ -352,7 +352,7 @@ compdbvfs_write(
 	clen = ret + sizeof(*bhead);
 
 	/* Attach compression header. */
-	bhead = (struct compdbvfs_block_head *)buf;
+	bhead = (struct compdb_block_head *)buf;
 	memcpy(bhead->magic, FAKEVFS_BLOCK_MAGIC, sizeof(bhead->magic));
 	bhead->len = htons(ret);
 	bhead->offset = htonl(iOfst / ff->pagesize);
@@ -395,7 +395,7 @@ no_compr:
  * can just pass through to the underlying VFS.
  */
 static int
-compdbvfs_open(
+compdb_open(
 	sqlite3_vfs		*vfs,
 	const char		*zName,
 	sqlite3_file		*file,
@@ -403,11 +403,11 @@ compdbvfs_open(
 	int			*pOutFlags)
 {
 	struct sqlite3_super	super;
-	struct compdbvfs_vfs	*cvfs;
-	struct compdbvfs_file	*ff;
+	struct compdb_vfs	*cvfs;
+	struct compdb_file	*ff;
 	int			ret;
 
-	cvfs = container_of(vfs, struct compdbvfs_vfs, vfs);
+	cvfs = container_of(vfs, struct compdb_vfs, vfs);
 	dbg_printf("%s(%d): zName %s flags %xh\n", __func__, __LINE__,
 			zName, flags);
 
@@ -417,11 +417,11 @@ compdbvfs_open(
 		return ret;
 
 	/* Shim ourselves in. */
-	ff = (struct compdbvfs_file *)(((char *)file) + cvfs->oldvfs->szOsFile);
+	ff = (struct compdb_file *)(((char *)file) + cvfs->oldvfs->szOsFile);
 	ff->cvfs = cvfs;
 	ff->methods = *(file->pMethods);
-	ff->methods.xRead = compdbvfs_read;
-	ff->methods.xWrite = compdbvfs_write;
+	ff->methods.xRead = compdb_read;
+	ff->methods.xWrite = compdb_write;
 	ff->old_read = file->pMethods->xRead;
 	ff->old_write = file->pMethods->xWrite;
 	ff->db_type = DB_UNKNOWN;
@@ -441,7 +441,7 @@ compdbvfs_open(
 		return ret;
 	}
 
-	ret = compdbvfs_sniff(ff, &super, 0);
+	ret = compdb_sniff(ff, &super, 0);
 	if (ret) {
 		ff->methods.xClose(file);
 		return ret;
@@ -450,15 +450,15 @@ compdbvfs_open(
 	return SQLITE_OK;
 }
 
-/* Create compdbvfs as a compression shim atop some other VFS. */
+/* Create compdb as a compression shim atop some other VFS. */
 int
-compdbvfs_init(
+compdb_init(
 	const char		*under_vfs,
 	const char		*vfs_name,
 	const char		*compressor)
 {
 	sqlite3_vfs		*vfs;
-	struct compdbvfs_vfs	*newvfs;
+	struct compdb_vfs	*newvfs;
 	struct compressor_type	*cengine;
 	struct compressor_type	*ct;
 	int			ret;
@@ -497,9 +497,9 @@ compdbvfs_init(
 	newvfs->compressor = cengine;
 	newvfs->vfs = *vfs;
 	newvfs->vfs.zName = strdup(vfs_name);
-	newvfs->vfs.xOpen = compdbvfs_open;
+	newvfs->vfs.xOpen = compdb_open;
 	newvfs->vfs.pNext = NULL;
-	newvfs->vfs.szOsFile += sizeof(struct compdbvfs_file);
+	newvfs->vfs.szOsFile += sizeof(struct compdb_file);
 
 	ret = sqlite3_vfs_register(&newvfs->vfs, under_vfs ? 0 : 1);
 	if (ret)
@@ -512,11 +512,11 @@ compdbvfs_init(
 
 #ifdef PYMOD
 
-#define MOD_NAME		"compdbvfs"
+#define MOD_NAME		"compdb"
 
 /* Register a compressed-VFS */
 static PyObject *
-compdbvfs_register(
+compdb_register(
 	PyObject	*self,
 	PyObject	*args)
 {
@@ -528,7 +528,7 @@ compdbvfs_register(
 	if (!PyArg_ParseTuple(args, "zsz", &under, &name, &compr))
 		return NULL;
 
-	err = compdbvfs_init(under, name, compr);
+	err = compdb_init(under, name, compr);
         if (err)
 		PyErr_SetString(PyExc_RuntimeError, strerror(err));
 
@@ -537,7 +537,7 @@ compdbvfs_register(
 
 /* Unregister a VFS */
 static PyObject *
-compdbvfs_unregister(
+compdb_unregister(
 	PyObject	*self,
 	PyObject	*args)
 {
@@ -565,9 +565,9 @@ out:
 	return Py_BuildValue("i", err);
 }
 
-static PyMethodDef compdbvfs_methods[] = {
-	{"register", compdbvfs_register, METH_VARARGS, NULL},
-	{"unregister", compdbvfs_unregister, METH_VARARGS, NULL},
+static PyMethodDef compdb_methods[] = {
+	{"register", compdb_register, METH_VARARGS, NULL},
+	{"unregister", compdb_unregister, METH_VARARGS, NULL},
 	{NULL, NULL, 0, NULL}
 };
 
@@ -576,7 +576,7 @@ static struct PyModuleDef moduledef = {
         MOD_NAME,
         NULL,
         0,
-        compdbvfs_methods,
+        compdb_methods,
         NULL,
         NULL,
         NULL,
@@ -585,7 +585,7 @@ static struct PyModuleDef moduledef = {
 
 #if PY_MAJOR_VERSION >= 3
 PyMODINIT_FUNC
-PyInit_compdbvfs(void)
+PyInit_compdb(void)
 {
 	PyObject	*m;
 
@@ -597,11 +597,11 @@ PyInit_compdbvfs(void)
 }
 #else
 PyMODINIT_FUNC
-init_compdbvfs(void)
+init_compdb(void)
 {
 	PyObject	*m;
 
-	m = Py_InitModule(MOD_NAME, compdbvfs_methods);
+	m = Py_InitModule(MOD_NAME, compdb_methods);
 	if (!m)
 		return;
 

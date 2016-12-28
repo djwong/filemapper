@@ -10,7 +10,7 @@ import stat
 import array
 import fiemap
 import math
-import compdbvfs
+import compdb
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 from dateutil import tz
@@ -444,7 +444,7 @@ class fmdb(object):
 	def __init__(self, fspath, dbpath, dbwrite):
 		'''Initialize a database object.'''
 		self.writable = dbwrite
-		compdbvfs.register('unix-excl', 'comp-unix-excl', None)
+		compdb.register('unix-excl', 'comp-unix-excl', None)
 
 		if dbpath == ':memory:':
 			self.writable = True

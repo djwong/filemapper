@@ -25,7 +25,7 @@ fatmapper=fatmapper
 endif
 
 progs=filemapper e2mapper ntfsmapper $(xfsmapper) $(fatmapper)
-libs=compdbvfs.so
+libs=compdb.so
 manpages=$(patsubst %,%.1.gz,$(progs))
 
 all: $(progs) $(libs) $(manpages) filemapper.desktop
@@ -33,12 +33,12 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
-compdbvfs.so: compdbvfs.c
+compdb.so: compdb.c
 	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 -llz4 -lz
 
 filemapper.c: filemapper.h
 
-xfsmapper: filemapper.o xfsmapper.o compdbvfs.o $(XFSPROGS)/libxfs/.libs/libxfs.a
+xfsmapper: filemapper.o xfsmapper.o compdb.o $(XFSPROGS)/libxfs/.libs/libxfs.a
 	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm -llz4 -lz
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h

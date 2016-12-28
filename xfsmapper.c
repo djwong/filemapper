@@ -2217,7 +2217,7 @@ _("%s: cannot init perag data (%d). Continuing anyway.\n"),
 		goto out;
 	}
 
-	err = compdbvfs_init("unix-excl", "comp-unix-excl", NULL);
+	err = compdb_init("unix-excl", "comp-unix-excl", NULL);
 	if (err) {
 		fprintf(stderr, "%s %s\n", sqlite3_errstr(err),
 			_("while setting up compressed db"));
