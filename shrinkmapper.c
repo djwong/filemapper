@@ -3,7 +3,6 @@
  * Copyright 2016 Darrick J. Wong.
  * Licensed under the GPLv2.
  */
-#define DEBUG
 #include <stdlib.h>
 #include <stdio.h>
 #include <sqlite3.h>
