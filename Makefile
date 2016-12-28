@@ -1,5 +1,6 @@
-CFLAGS=-Wall -O3 -g -flto -std=gnu11
-LDFLAGS=-Wall -O3 -g -flto -std=gnu11
+LTO=
+CFLAGS=-Wall -O3 -g $(LTO) -std=gnu11
+LDFLAGS=-Wall -O3 -g $(LTO) -std=gnu11
 LIB_CFLAGS=-Wall -O3 -g -std=gnu11 -shared -fPIC
 VERSION=0.8.0
 
@@ -32,12 +33,12 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 	gzip -9 < $< > $@
 
 compdbvfs.so: compdbvfs.c
-	$(CC) $(LIB_CFLAGS) -o $@ $< -lsqlite3 -llz4
+	$(CC) $(LIB_CFLAGS) -DPYMOD -o $@ $< -lsqlite3 -llz4 -lz
 
 filemapper.c: filemapper.h
 
 xfsmapper: filemapper.o xfsmapper.o compdbvfs.o $(XFSPROGS)/libxfs/.libs/libxfs.a
-	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm -llz4
+	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm -llz4 -lz
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/

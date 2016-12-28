@@ -1,18 +1,100 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sqlite3.h>
-#include <lz4.h>
 #include <stdint.h>
+#include <assert.h>
+#include <string.h>
+#include <errno.h>
 #include <arpa/inet.h>
-#include <python3.5m/Python.h>
+#include <lz4.h>
+#include <zlib.h>
+#ifdef PYMOD
+# include <python3.5m/Python.h>
+#endif
 
 #define VFS_NAME		"compdbvfs"
 
+#define DEBUG
 #ifdef DEBUG
 # define dbg_printf		printf
 #else
 # define dbg_printf(...)	{}
 #endif
+
+/* gzip deflate compression */
+static int
+GZIP_compress_default(
+	const char		*source,
+	const char		*dest,
+	int			sourceSize,
+	int			maxDestSize)
+{
+	z_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = deflateInit(&strm, 5);
+	if (ret)
+		return 0;
+
+	strm.avail_in = sourceSize;
+	strm.next_in = (unsigned char *)source;
+	strm.next_out = (unsigned char *)dest;
+	endp = (char *)dest + maxDestSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+//printf("ai %d ni %p ao %d no %p\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out);
+		ret = deflate(&strm, Z_FINISH);
+//printf("ai %d ni %p ao %d no %p ret %d\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out, ret);
+		if (ret != Z_STREAM_END && ret != Z_OK) {
+			deflateEnd(&strm);
+			return 0;
+		}
+		strm.next_out = (unsigned char *)endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	deflateEnd(&strm);
+
+	return (char *)strm.next_out - dest;
+}
+
+/* gzip inflate */
+static int
+GZIP_decompress_safe(
+	const char		*source,
+	const char		*dest,
+	int			compressedSize,
+	int			maxDecompressedSize)
+{
+	z_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = inflateInit(&strm);
+	if (ret != Z_OK)
+		return -1;
+
+	strm.avail_in = compressedSize;
+	strm.next_in = (unsigned char *)source;
+	strm.next_out = (unsigned char *)dest;
+	endp = (char *)dest + maxDecompressedSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+//printf("ai %d ni %p ao %d no %p\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out);
+		ret = inflate(&strm, Z_NO_FLUSH);
+//printf("ai %d ni %p ao %d no %p ret %d\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out, ret);
+		if (ret != Z_STREAM_END && ret != Z_OK) {
+			inflateEnd(&strm);
+			return 0;
+		}
+		strm.next_out = (unsigned char *)endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	inflateEnd(&strm);
+
+	if (strm.avail_in)
+		return -1;
+
+	return (char *)strm.next_out - dest;
+}
 
 static sqlite3_vfs		oldvfs;
 static sqlite3_vfs		compdbvfs;
@@ -140,12 +222,12 @@ compdbvfs_read(
 	ret = ff->old_read(file, ptr, iAmt, iOfst);
 	if (ff->db_type == DB_COMPRESSED && iOfst == 0)
 		memcpy(ptr, SQLITE_FILE_HEADER, sizeof(SQLITE_FILE_HEADER));
-	if (ret || ff->db_type == DB_REGULAR)
+	if (ret)
 		return ret;
 
 	/* We don't compress non-btree pages. */
 	bhead = ptr;
-	if (iOfst + iAmt <= ff->data_start ||
+	if (ff->db_type == DB_REGULAR || iOfst + iAmt <= ff->data_start ||
 	    memcmp(bhead->magic, FAKEVFS_BLOCK_MAGIC, sizeof(bhead->magic))) {
 		dbg_printf("%s(%d) len=%d off=%llu\n", __func__, __LINE__,
 				iAmt, iOfst);
@@ -163,12 +245,19 @@ compdbvfs_read(
 	buf = malloc(ff->pagesize);
 	if (!buf)
 		return SQLITE_NOMEM;
+
+#ifdef LZ4
 	ret = LZ4_decompress_safe(ptr + sizeof(*bhead), buf, clen,
 			ff->pagesize);
+#else
+	ret = GZIP_decompress_safe(ptr + sizeof(*bhead), buf, clen,
+			ff->pagesize);
+#endif
 	if (ret < 0) {
 		free(buf);
 		return SQLITE_CORRUPT;
 	}
+
 	assert(ret <= ff->pagesize);
 	memcpy(ptr, buf, ret);
 	memset(ptr + ret, 0, ff->pagesize - ret);
@@ -214,8 +303,13 @@ compdbvfs_write(
 	if (!buf)
 		return SQLITE_NOMEM;
 
+#ifdef LZ4
 	ret = LZ4_compress_default(ptr, buf + sizeof(*bhead), iAmt,
 			ff->pagesize - sizeof(*bhead));
+#else
+	ret = GZIP_compress_default(ptr, buf + sizeof(*bhead), iAmt,
+			ff->pagesize - sizeof(*bhead));
+#endif
 	if (ret == 0) {
 		free(buf);
 		goto no_compr;
@@ -351,6 +445,7 @@ compdbvfs_init(
 
 /* Make us a python module! */
 
+#ifdef PYMOD
 static PyMethodDef compdbvfs_methods[] = {
     {NULL, NULL}
 };
@@ -397,4 +492,5 @@ init_compdbvfs(void)
 
 	return;
 }
-#endif
+#endif /* PY_MAJOR_VERSION */
+#endif /* PYMOD */
