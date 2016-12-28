@@ -19,6 +19,7 @@
 #include <zlib.h>
 #include "filemapper.h"
 #include "compdb.h"
+#include "compress.h"
 
 #define swap(a, b) \
         do { typeof(a) __tmp = (a); (a) = (b); (b) = __tmp; } while (0)

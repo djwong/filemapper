@@ -52,18 +52,6 @@ struct sqlite3_super {
 	uint32_t		sqlite_version_number;
 };
 
-struct compressor_type {
-	const char		*name;
-	int			(*compress)(const char *, char *, int, int);
-	int			(*decompress)(const char *, char *, int, int);
-};
-
-/* Find compression engine. */
-struct compressor_type *compdb_find_compressor(const char *name);
-
-/* List of supported compressors. */
-char *compdb_compressors(void);
-
 /* Init compressed DB VFS for sqlite3. */
 int compdb_register(const char *under_vfs, const char *vfs_name,
 		const char *compressor);

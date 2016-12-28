@@ -39,25 +39,27 @@ compdb.so: compdb.c compdb.h filemapper.h
 
 compdb.o: compdb.h filemapper.h
 
+compress.o: compress.h
+
 filemapper.o: filemapper.h
 
-shrinkmapper: shrinkmapper.o compdb.o
+shrinkmapper: shrinkmapper.o compress.o compdb.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -llz4 -lz
 
 shrinkmapper.o: compdb.h filemapper.h
 
-xfsmapper: filemapper.o xfsmapper.o compdb.o $(XFSPROGS)/libxfs/.libs/libxfs.a
+xfsmapper: filemapper.o xfsmapper.o compress.o compdb.o $(XFSPROGS)/libxfs/.libs/libxfs.a
 	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm $(COMPDB_LIBS)
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h compdb.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/
 
-e2mapper: filemapper.o e2mapper.o compdb.o
+e2mapper: filemapper.o e2mapper.o compress.o compdb.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs -lm $(COMPDB_LIBS)
 
 e2mapper.o: e2mapper.c filemapper.h compdb.h
 
-ntfsmapper: filemapper.o ntfsmapper.o compdb.o
+ntfsmapper: filemapper.o ntfsmapper.o compress.o compdb.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g -lm $(COMPDB_LIBS)
 
 ntfsmapper.o: ntfsmapper.c filemapper.h compdb.h
@@ -65,7 +67,7 @@ ntfsmapper.o: ntfsmapper.c filemapper.h compdb.h
 libfat.a: $(DOSFSTOOLS)/boot.o $(DOSFSTOOLS)/charconv.o $(DOSFSTOOLS)/common.o $(DOSFSTOOLS)/fat.o $(DOSFSTOOLS)/file.o $(DOSFSTOOLS)/io.o $(DOSFSTOOLS)/lfn.o
 	$(AR) cr libfat.a $^
 
-fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a compdb.o
+fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a compress.o compdb.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lm $(COMPDB_LIBS)
 
 fatcheck.c: $(DOSFSTOOLS)/src/check.c $(DOSFS_HEADERS)
