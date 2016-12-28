@@ -15,6 +15,7 @@
 #include <ext2fs/ext2fs.h>
 #undef DEBUG
 #include "filemapper.h"
+#include "compdb.h"
 
 struct e2map_t {
 	struct filemapper_t base;
@@ -779,6 +780,7 @@ static void walk_metadata(struct e2map_t *wf)
 			}
 			if (wf->err)
 				goto out;
+			y = o;
 			wf->err = ext2fs_find_first_set_block_bitmap2(
 					fs->block_map, o, n, &y);
 			if (wf->err == ENOENT) {
@@ -934,9 +936,16 @@ int main(int argc, char *argv[])
 	}
 	fs->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
 
+	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	if (err) {
+		com_err(dbfile, 0, "%s while setting up compressed db",
+			sqlite3_errstr(err));
+		goto out;
+	}
+
 	err = sqlite3_open_v2(dbfile, &db,
 			      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-			      "unix-excl");
+			      "comp-unix-excl");
 	if (err) {
 		com_err(dbfile, 0, "%s while opening database",
 			sqlite3_errstr(err));

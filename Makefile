@@ -16,6 +16,7 @@ XFSPROGS ?= Please_set_XFSPROGS_to_the_XFS_source_directory
 DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
 DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
 PYINCLUDE ?= -I/usr/include/python3.5m/
+COMPDB_LIBS=-lz -llz4
 
 ifeq ("$(notdir $(wildcard $(XFSPROGS)/libxfs/.libs/libxfs.a))", "libxfs.a")
 xfsmapper=xfsmapper
@@ -34,7 +35,7 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 	gzip -9 < $< > $@
 
 compdb.so: compdb.c compdb.h filemapper.h
-	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 -llz4 -lz
+	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 $(COMPDB_LIBS)
 
 compdb.o: compdb.h filemapper.h
 
@@ -46,13 +47,13 @@ shrinkmapper: shrinkmapper.o compdb.o
 shrinkmapper.o: compdb.h filemapper.h
 
 xfsmapper: filemapper.o xfsmapper.o compdb.o $(XFSPROGS)/libxfs/.libs/libxfs.a
-	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm -llz4 -lz
+	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm $(COMPDB_LIBS)
 
 xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/repair/btree.h $(XFSPROGS)/libxfs/libxfs_api_defs.h compdb.h
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -o $@ -c $< -I$(XFSPROGS)/include/ -I$(XFSPROGS)/libxfs/ -I$(XFSPROGS)/
 
-e2mapper: filemapper.o e2mapper.o
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs -lm
+e2mapper: filemapper.o e2mapper.o compdb.o
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs -lm $(COMPDB_LIBS)
 
 e2mapper.c: filemapper.h
 
