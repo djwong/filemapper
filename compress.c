@@ -10,9 +10,82 @@
 #include <lz4hc.h>
 #include <zlib.h>
 #include <lzma.h>
+#include <bzlib.h>
 #include "compress.h"
 
+/* bzip2 */
+
+static inline int
+BZIP_compress(
+	const char		*source,
+	char			*dest,
+	int			sourceSize,
+	int			maxDestSize)
+{
+	bz_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = BZ2_bzCompressInit(&strm, 1, 0, 30);
+	if (ret)
+		return 0;
+
+	strm.avail_in = sourceSize;
+	strm.next_in = (char *)source;
+	strm.next_out = dest;
+	endp = dest + maxDestSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+		ret = BZ2_bzCompress(&strm, BZ_FINISH);
+		if (ret != BZ_STREAM_END && ret != BZ_OK) {
+			BZ2_bzCompressEnd(&strm);
+			return 0;
+		}
+		strm.next_out = endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	BZ2_bzCompressEnd(&strm);
+
+	return (char *)strm.next_out - dest;
+}
+
+static inline int
+BZIP_decompress(
+	const char		*source,
+	char			*dest,
+	int			compressedSize,
+	int			maxDecompressedSize)
+{
+	bz_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = BZ2_bzDecompressInit(&strm, 0, 0);
+	if (ret != BZ_OK)
+		return -1;
+
+	strm.avail_in = compressedSize;
+	strm.next_in = (char *)source;
+	strm.next_out = dest;
+	endp = dest + maxDecompressedSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+		ret = BZ2_bzDecompress(&strm);
+		if (ret != BZ_STREAM_END && ret != BZ_OK) {
+			BZ2_bzDecompressEnd(&strm);
+			return 0;
+		}
+		strm.next_out = endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	BZ2_bzDecompressEnd(&strm);
+
+	if (strm.avail_in)
+		return -1;
+
+	return (char *)strm.next_out - dest;
+}
+
 /* LZMA */
+
 static inline int
 LZMA_compress(
 	const char		*source,
@@ -174,6 +247,7 @@ static struct compressor_type compressors[] = {
 	{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
 	{"LZ4H", LZ4HC_compress,	LZ4_decompress_safe},
 	{"LZMA", LZMA_compress,		LZMA_decompress},
+	{"BZ2A", BZIP_compress,		BZIP_decompress},
 	{NULL, NULL, NULL},
 };
 
