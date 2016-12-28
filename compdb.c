@@ -17,13 +17,7 @@
 #ifdef PYMOD
 # include <Python.h>
 #endif
-
-#define DEBUG
-#ifdef DEBUG
-# define dbg_printf		printf
-#else
-# define dbg_printf(...)	{}
-#endif
+#include "compdb.h"
 
 /* gzip deflate compression */
 static inline int
@@ -108,12 +102,6 @@ LZ4HC_compress(
 			maxDestSize, 8);
 }
 
-struct compressor_type {
-	const char		*name;
-	int			(*compress)(const char *, char *, int, int);
-	int			(*decompress)(const char *, char *, int, int);
-};
-
 static struct compressor_type compressors[] = {
 	{"GZIP", GZIP_compress,		GZIP_decompress},
 	{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
@@ -131,13 +119,8 @@ struct compdb_vfs {
 	struct sqlite3_vfs		vfs;
 	struct sqlite3_vfs		*oldvfs;
 	struct compressor_type		*compressor;
+	char				compdb_file_header[16];
 
-};
-
-enum compdb_type {
-	DB_UNKNOWN,
-	DB_REGULAR,
-	DB_COMPRESSED,
 };
 
 struct compdb_file {
@@ -160,47 +143,6 @@ COMPDB_F(
 	return container_of(file->pMethods, struct compdb_file, methods);
 }
 
-/*
- * Put this ahead of every compressed page.  btree pages can't have
- * 0xDA as the first byte.
- */
-static const uint8_t FAKEVFS_BLOCK_MAGIC[] = {0xDA, 0xAD};
-struct compdb_block_head {
-	uint8_t			magic[2];
-	uint16_t		len;		/* compressed length */
-	uint32_t		offset;		/* page number */
-};
-
-/* SQLite superblock format. */
-#define SQLITE_FILE_HEADER 	"SQLite format 3"
-#define COMPDB_FILE_TEMPLATE	"SQLite %s v.3"
-static char COMPDB_FILE_HEADER[16];
-struct sqlite3_super {
-	uint8_t			magic[16];
-	uint16_t		pagesize;
-	uint8_t			write_format;
-	uint8_t			read_format;
-	uint8_t			page_reserve;
-	uint8_t			max_fraction;
-	uint8_t			min_fraction;
-	uint8_t			leaf_payload;
-	uint32_t		change_counter;
-	uint32_t		nr_pages;
-	uint32_t		freelist_start;
-	uint32_t		freelist_pages;
-	uint32_t		schema_coookie;
-	uint32_t		schema_format;
-	uint32_t		page_cache_size;
-	uint32_t		highest_btree_root;
-	uint32_t		text_encoding;
-	uint32_t		user_version;
-	uint32_t		vacuum_mode;
-	uint32_t		app_id;
-	uint8_t			reserved[20];
-	uint32_t		version_valid_for;
-	uint32_t		sqlite_version_number;
-};
-
 /* Figure out database parameters. */
 static int
 compdb_sniff(
@@ -217,7 +159,7 @@ compdb_sniff(
 	/* Is this really a database? */
 	is_sqlite = !memcmp(super->magic, SQLITE_FILE_HEADER,
 			sizeof(super->magic));
-	is_compr = !memcmp(super->magic, COMPDB_FILE_HEADER,
+	is_compr = !memcmp(super->magic, ff->cvfs->compdb_file_header,
 			sizeof(super->magic));
 	if ((!is_sqlite && !is_compr) ||
 	    super->max_fraction != 64 || super->min_fraction != 32 ||
@@ -273,7 +215,7 @@ compdb_read(
 	/* We don't compress non-btree pages. */
 	bhead = ptr;
 	if (ff->db_type == DB_REGULAR || iOfst + iAmt <= ff->data_start ||
-	    memcmp(bhead->magic, FAKEVFS_BLOCK_MAGIC, sizeof(bhead->magic))) {
+	    memcmp(bhead->magic, COMPDB_BLOCK_MAGIC, sizeof(bhead->magic))) {
 		dbg_printf("%s(%d) len=%d off=%llu\n", __func__, __LINE__,
 				iAmt, iOfst);
 		return SQLITE_OK;
@@ -283,8 +225,10 @@ compdb_read(
 	assert(ff->db_type == DB_COMPRESSED);
 	clen = ntohs(bhead->len);
 	if (clen > ff->pagesize - sizeof(*bhead) ||
-	    ntohl(bhead->offset) * ff->pagesize != iOfst)
+	    ntohl(bhead->offset) * ff->pagesize != iOfst) {
+		dbg_printf("%s(%d) header corrupt\n", __func__, __LINE__);
 		return SQLITE_CORRUPT;
+	}
 
 	/* Decompress and return. */
 	buf = malloc(ff->pagesize);
@@ -294,6 +238,7 @@ compdb_read(
 	ret = ff->cvfs->compressor->decompress(ptr + sizeof(*bhead), buf, clen,
 			ff->pagesize);
 	if (ret < 0) {
+		dbg_printf("%s(%d) decompress failed\n", __func__, __LINE__);
 		free(buf);
 		return SQLITE_CORRUPT;
 	}
@@ -353,9 +298,22 @@ compdb_write(
 
 	/* Attach compression header. */
 	bhead = (struct compdb_block_head *)buf;
-	memcpy(bhead->magic, FAKEVFS_BLOCK_MAGIC, sizeof(bhead->magic));
+	memcpy(bhead->magic, COMPDB_BLOCK_MAGIC, sizeof(bhead->magic));
 	bhead->len = htons(ret);
 	bhead->offset = htonl(iOfst / ff->pagesize);
+
+	/*
+	 * Truncate to where the end of the compressed block should be
+	 * so that XFS won't do speculative preallocation.
+	 */
+	ret = file->pMethods->xFileSize(file, &isize);
+	if (ret)
+		return ret;
+	if (iOfst + clen > isize) {
+		ret = file->pMethods->xTruncate(file, iOfst + clen);
+		if (ret)
+			return ret;
+	}
 
 	/* Write compressed data. */
 	dbg_printf("%s(%d) len=%d off=%llu clen=%d\n", __func__, __LINE__,
@@ -365,7 +323,9 @@ compdb_write(
 	if (ret)
 		goto no_compr;
 
-	/* "Truncate" to where the end of the block should be? */
+	/*
+	 * Truncate to the end of the block to avoid short reads.
+	 */
 	ret = file->pMethods->xFileSize(file, &isize);
 	if (ret)
 		return ret;
@@ -386,8 +346,8 @@ no_compr:
 		return ret;
 
 	/* Make sure we write out the compressed magic. */
-	return ff->old_write(file, COMPDB_FILE_HEADER,
-			sizeof(COMPDB_FILE_HEADER), 0);
+	return ff->old_write(file, ff->cvfs->compdb_file_header,
+			sizeof(ff->cvfs->compdb_file_header), 0);
 }
 
 /*
@@ -450,6 +410,22 @@ compdb_open(
 	return SQLITE_OK;
 }
 
+/* Find a compression engine. */
+struct compressor_type *
+compdb_find_compressor(
+	const char		*name)
+{
+	struct compressor_type	*ct;
+
+	if (!name)
+		return &compressors[0];
+
+	for (ct = compressors; ct->name; ct++)
+		if (strcmp(name, ct->name) == 0)
+			return ct;
+	return NULL;
+}
+
 /* Create compdb as a compression shim atop some other VFS. */
 int
 compdb_init(
@@ -460,7 +436,6 @@ compdb_init(
 	sqlite3_vfs		*vfs;
 	struct compdb_vfs	*newvfs;
 	struct compressor_type	*cengine;
-	struct compressor_type	*ct;
 	int			ret;
 
 	/* Find the underlying VFS. */
@@ -473,17 +448,9 @@ compdb_init(
 		return EEXIST;
 
 	/* Find our compressor */
-	if (compressor) {
-		cengine = NULL;
-		for (ct = compressors; ct->name; ct++)
-			if (strcmp(compressor, ct->name) == 0)
-				cengine = ct;
-		if (!cengine)
-			return ENOENT;
-	} else
-		cengine = &compressors[0];
-	snprintf(COMPDB_FILE_HEADER, sizeof(COMPDB_FILE_HEADER),
-			COMPDB_FILE_TEMPLATE, cengine->name);
+	cengine = compdb_find_compressor(compressor);
+	if (!cengine)
+		return ENOENT;
 
 	dbg_printf("%s: Stacking %s ver %d compressor %s\n", vfs_name,
 			vfs->zName, vfs->iVersion, cengine->name);
@@ -495,6 +462,8 @@ compdb_init(
 
 	newvfs->oldvfs = vfs;
 	newvfs->compressor = cengine;
+	snprintf(newvfs->compdb_file_header, sizeof(newvfs->compdb_file_header),
+			COMPDB_FILE_TEMPLATE, cengine->name);
 	newvfs->vfs = *vfs;
 	newvfs->vfs.zName = strdup(vfs_name);
 	newvfs->vfs.xOpen = compdb_open;

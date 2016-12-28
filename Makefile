@@ -24,7 +24,7 @@ ifeq ("$(notdir $(wildcard $(DOSFSTOOLS)/fat.o))", "fat.o")
 fatmapper=fatmapper
 endif
 
-progs=filemapper e2mapper ntfsmapper $(xfsmapper) $(fatmapper)
+progs=filemapper e2mapper ntfsmapper shrinkmapper $(xfsmapper) $(fatmapper)
 libs=compdb.so
 manpages=$(patsubst %,%.1.gz,$(progs))
 
@@ -36,7 +36,12 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 compdb.so: compdb.c
 	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 -llz4 -lz
 
+compdb.c: compdb.h
+
 filemapper.c: filemapper.h
+
+shrinkmapper: shrinkmapper.o compdb.o
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -llz4 -lz
 
 xfsmapper: filemapper.o xfsmapper.o compdb.o $(XFSPROGS)/libxfs/.libs/libxfs.a
 	$(CC) $(CFLAGS) -o $@ $^ $(XFSPROGS)/repair/btree.o -lsqlite3 -lpthread -luuid -lm -llz4 -lz
