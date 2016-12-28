@@ -12,7 +12,7 @@
 #include <lzma.h>
 #include "compress.h"
 
-/* lzma deflate compression */
+/* LZMA */
 static inline int
 LZMA_compress(
 	const char		*source,
@@ -46,7 +46,6 @@ LZMA_compress(
 	return (char *)strm.next_out - dest;
 }
 
-/* lzma inflate */
 static inline int
 LZMA_decompress(
 	const char		*source,
@@ -84,7 +83,8 @@ LZMA_decompress(
 	return (char *)strm.next_out - dest;
 }
 
-/* gzip deflate compression */
+/* gzip deflate */
+
 static inline int
 GZIP_compress(
 	const char		*source,
@@ -118,7 +118,6 @@ GZIP_compress(
 	return (char *)strm.next_out - dest;
 }
 
-/* gzip inflate */
 static inline int
 GZIP_decompress(
 	const char		*source,
@@ -156,6 +155,7 @@ GZIP_decompress(
 }
 
 /* LZ4 HC mode */
+
 static inline int
 LZ4HC_compress(
 	const char		*source,
@@ -166,6 +166,8 @@ LZ4HC_compress(
 	return LZ4_compressHC2_limitedOutput(source, dest, sourceSize,
 			maxDestSize, 8);
 }
+
+/* Generic stuff */
 
 static struct compressor_type compressors[] = {
 	{"GZIP", GZIP_compress,		GZIP_decompress},
