@@ -490,7 +490,7 @@ int main(int argc, char *argv[])
 
 	err = sqlite3_open_v2(dbfile, &db,
 			      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-			      "unix-excl");
+			      "comp-unix-excl");
 	if (err) {
 		ntfs_log_error("%s while opening database",
 			sqlite3_errstr(err));
