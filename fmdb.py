@@ -444,15 +444,17 @@ class fmdb(object):
 	def __init__(self, fspath, dbpath, dbwrite):
 		'''Initialize a database object.'''
 		self.writable = dbwrite
+		compdbvfs.register('unix-excl', 'comp-unix-excl', None)
+
 		if dbpath == ':memory:':
 			self.writable = True
 			db = dbpath
 		elif dbwrite:
 			self.writable = True
-			db = 'file:%s?mode=rwc&vfs=compdbvfs' % dbpath
+			db = 'file:%s?mode=rwc&vfs=comp-unix-excl' % dbpath
 		else:
 			self.writable = False
-			db = 'file:%s?mode=ro&vfs=compdbvfs' % dbpath
+			db = 'file:%s?mode=ro&vfs=comp-unix-excl' % dbpath
 		self.conn = None
 		try:
 			self.conn = sqlite3.connect(db, uri = True)

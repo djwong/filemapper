@@ -1,3 +1,8 @@
+/*
+ * Compress SQLite databases.
+ * Copyright 2016 Darrick J. Wong.
+ * Licensed under the GPLv2.
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <sqlite3.h>
@@ -118,10 +123,18 @@ static struct compressor_type compressors[] = {
 {NULL, NULL, NULL},
 };
 
-static struct compressor_type *cengine = &compressors[0];
+/* SQLite engine stuff */
 
-static sqlite3_vfs		oldvfs;
-static sqlite3_vfs		compdbvfs;
+#define container_of(ptr, type, member) ({                      \
+        const typeof( ((type *)0)->member ) *__mptr = (ptr);    \
+	        (type *)( (char *)__mptr - offsetof(type,member) );})
+
+struct compdbvfs_vfs {
+	struct sqlite3_vfs		vfs;
+	struct sqlite3_vfs		*oldvfs;
+	struct compressor_type		*compressor;
+
+};
 
 enum compdbvfs_type {
 	DB_UNKNOWN,
@@ -131,6 +144,7 @@ enum compdbvfs_type {
 
 struct compdbvfs_file {
 	struct sqlite3_io_methods	methods;
+	struct compdbvfs_vfs		*cvfs;
 	int				(*old_read)(sqlite3_file*, void*,
 						    int, sqlite3_int64);
 	int				(*old_write)(sqlite3_file*, const void*,
@@ -139,6 +153,14 @@ struct compdbvfs_file {
 	int				pagesize;
 	enum compdbvfs_type		db_type;
 };
+
+/* Convert a sqlite file into a compdbvfs file */
+static inline struct compdbvfs_file *
+COMPDBVFS_F(
+	sqlite3_file		*file)
+{
+	return container_of(file->pMethods, struct compdbvfs_file, methods);
+}
 
 /*
  * Put this ahead of every compressed page.  btree pages can't have
@@ -241,7 +263,7 @@ compdbvfs_read(
 	int				clen;
 	int				ret;
 
-	ff = (struct compdbvfs_file *)(((char *)file) + oldvfs.szOsFile);
+	ff = COMPDBVFS_F(file);
 	assert(iOfst == 0 || ff->db_type != DB_UNKNOWN);
 
 	ret = ff->old_read(file, ptr, iAmt, iOfst);
@@ -271,7 +293,7 @@ compdbvfs_read(
 	if (!buf)
 		return SQLITE_NOMEM;
 
-	ret = cengine->decompress(ptr + sizeof(*bhead), buf, clen,
+	ret = ff->cvfs->compressor->decompress(ptr + sizeof(*bhead), buf, clen,
 			ff->pagesize);
 	if (ret < 0) {
 		free(buf);
@@ -303,7 +325,7 @@ compdbvfs_write(
 	int				clen;
 	int				ret;
 
-	ff = (struct compdbvfs_file *)(((char *)file) + oldvfs.szOsFile);
+	ff = COMPDBVFS_F(file);
 
 	/* If we don't know db geometry, let's try to pull them in here. */
 	if (ff->db_type == DB_UNKNOWN) {
@@ -323,7 +345,7 @@ compdbvfs_write(
 	if (!buf)
 		return SQLITE_NOMEM;
 
-	ret = cengine->compress(ptr, buf + sizeof(*bhead), iAmt,
+	ret = ff->cvfs->compressor->compress(ptr, buf + sizeof(*bhead), iAmt,
 			ff->pagesize - sizeof(*bhead));
 	if (ret == 0) {
 		free(buf);
@@ -383,19 +405,22 @@ compdbvfs_open(
 	int			*pOutFlags)
 {
 	struct sqlite3_super	super;
+	struct compdbvfs_vfs	*cvfs;
 	struct compdbvfs_file	*ff;
 	int			ret;
 
+	cvfs = container_of(vfs, struct compdbvfs_vfs, vfs);
 	dbg_printf("%s(%d): zName %s flags %xh\n", __func__, __LINE__,
 			zName, flags);
 
 	/* Open the underlying file. */
-	ret = oldvfs.xOpen(&oldvfs, zName, file, flags, pOutFlags);
+	ret = cvfs->oldvfs->xOpen(cvfs->oldvfs, zName, file, flags, pOutFlags);
 	if (ret || !(flags & SQLITE_OPEN_MAIN_DB))
 		return ret;
 
 	/* Shim ourselves in. */
-	ff = (struct compdbvfs_file *)(((char *)file) + oldvfs.szOsFile);
+	ff = (struct compdbvfs_file *)(((char *)file) + cvfs->oldvfs->szOsFile);
+	ff->cvfs = cvfs;
 	ff->methods = *(file->pMethods);
 	ff->methods.xRead = compdbvfs_read;
 	ff->methods.xWrite = compdbvfs_write;
@@ -430,43 +455,57 @@ compdbvfs_open(
 /* Create compdbvfs as a compression shim atop some other VFS. */
 int
 compdbvfs_init(
-	const char		*under_vfs)
+	const char		*under_vfs,
+	const char		*vfs_name,
+	const char		*compressor)
 {
 	sqlite3_vfs		*vfs;
-	char			*compress;
+	struct compdbvfs_vfs	*newvfs;
+	struct compressor_type	*cengine;
 	struct compressor_type	*ct;
 	int			ret;
 
+	/* Find the underlying VFS. */
 	vfs = sqlite3_vfs_find(under_vfs);
-	if (!vfs) {
-		printf("%s: VFS not found?\n", under_vfs);
+	if (!vfs)
 		return ENOENT;
-	}
 
-	/* Find our compressor. */
-	compress = getenv("COMPDBVFS_COMPRESSOR");
-	if (compress) {
+	/* Already registered? */
+	if (sqlite3_vfs_find(vfs_name))
+		return EEXIST;
+
+	/* Find our compressor */
+	if (compressor) {
+		cengine = NULL;
 		for (ct = compressors; ct->name; ct++)
-			if (strcmp(compress, ct->name) == 0)
+			if (strcmp(compressor, ct->name) == 0)
 				cengine = ct;
-	}
+		if (!cengine)
+			return ENOENT;
+	} else
+		cengine = &compressors[0];
 	snprintf(COMPDB_FILE_HEADER, sizeof(COMPDB_FILE_HEADER),
 			COMPDB_FILE_TEMPLATE, cengine->name);
 
-	dbg_printf("%s: Found VFS ver %d\n", vfs->zName, vfs->iVersion);
-	dbg_printf("Using %s engine\n", cengine->name);
-	oldvfs = *vfs;
-	compdbvfs = *vfs;
-	compdbvfs.zName = VFS_NAME;
-	compdbvfs.xOpen = compdbvfs_open;
-	compdbvfs.pNext = NULL;
-	compdbvfs.szOsFile += sizeof(struct compdbvfs_file);
+	dbg_printf("%s: Stacking %s ver %d compressor %s\n", vfs_name,
+			vfs->zName, vfs->iVersion, cengine->name);
 
-	ret = sqlite3_vfs_register(&compdbvfs, 1);
-	if (ret) {
-		printf("%s: Unable to register, %d\n", VFS_NAME, ret);
+	/* Allocate new VFS structure. */
+	newvfs = malloc(sizeof(*newvfs));
+	if (!newvfs)
+		return ENOMEM;
+
+	newvfs->oldvfs = vfs;
+	newvfs->compressor = cengine;
+	newvfs->vfs = *vfs;
+	newvfs->vfs.zName = strdup(vfs_name);
+	newvfs->vfs.xOpen = compdbvfs_open;
+	newvfs->vfs.pNext = NULL;
+	newvfs->vfs.szOsFile += sizeof(struct compdbvfs_file);
+
+	ret = sqlite3_vfs_register(&newvfs->vfs, under_vfs ? 0 : 1);
+	if (ret)
 		return EIO;
-	}
 
 	return 0;
 }
@@ -474,8 +513,62 @@ compdbvfs_init(
 /* Make us a python module! */
 
 #ifdef PYMOD
+
+/* Register a compressed-VFS */
+static PyObject *
+compdbvfs_register(
+	PyObject	*self,
+	PyObject	*args)
+{
+	char		*under;
+	char		*name;
+	char		*compr;
+	int 		err;
+
+	if (!PyArg_ParseTuple(args, "zsz", &under, &name, &compr))
+		return NULL;
+
+	err = compdbvfs_init(under, name, compr);
+        if (err)
+		PyErr_SetString(PyExc_RuntimeError, strerror(err));
+
+	return Py_BuildValue("i", err);
+}
+
+/* Unregister a VFS */
+static PyObject *
+compdbvfs_unregister(
+	PyObject	*self,
+	PyObject	*args)
+{
+	sqlite3_vfs	*vfs;
+	char		*name;
+	int 		err;
+
+	if (!PyArg_ParseTuple(args, "z", &name))
+		return NULL;
+
+	vfs = sqlite3_vfs_find(name);
+	if (!vfs) {
+		err = ENOENT;
+		PyErr_SetString(PyExc_RuntimeError, strerror(err));
+		goto out;
+	}
+
+	err = sqlite3_vfs_unregister(vfs);
+	if (err != SQLITE_OK) {
+		err = EIO;
+		PyErr_SetString(PyExc_RuntimeError, strerror(err));
+	}
+
+out:
+	return Py_BuildValue("i", err);
+}
+
 static PyMethodDef compdbvfs_methods[] = {
-    {NULL, NULL}
+	{"register", compdbvfs_register, METH_VARARGS, NULL},
+	{"unregister", compdbvfs_unregister, METH_VARARGS, NULL},
+	{NULL, NULL, 0, NULL}
 };
 
 static struct PyModuleDef moduledef = {
@@ -496,9 +589,6 @@ PyInit_compdbvfs(void)
 {
 	PyObject	*m;
 
-	if (compdbvfs_init(NULL))
-		return NULL;
-
 	m = PyModule_Create(&moduledef);
 	if (!m)
 		return NULL;
@@ -510,9 +600,6 @@ PyMODINIT_FUNC
 init_compdbvfs(void)
 {
 	PyObject	*m;
-
-	if (compdbvfs_init(NULL))
-		return;
 
 	m = Py_InitModule(VFS_NAME, compdbvfs_methods);
 	if (!m)
