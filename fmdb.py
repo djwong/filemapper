@@ -444,23 +444,29 @@ class fmdb(object):
 	def __init__(self, fspath, dbpath, dbwrite):
 		'''Initialize a database object.'''
 		self.writable = dbwrite
-		compdb.register('unix-excl', 'comp-unix-excl', None)
+		for alg in compdb.compressors().split(','):
+			compdb.register('unix-excl', '%s-unix-excl' % alg, alg)
 
-		if dbpath == ':memory:':
-			self.writable = True
-			db = dbpath
-		elif dbwrite:
-			self.writable = True
-			db = 'file:%s?mode=rwc&vfs=comp-unix-excl' % dbpath
-		else:
-			self.writable = False
-			db = 'file:%s?mode=ro&vfs=comp-unix-excl' % dbpath
-		self.conn = None
-		try:
-			self.conn = sqlite3.connect(db, uri = True)
-		except TypeError:
-			# In Python 2.6 there's no uri parameter support
-			self.conn = sqlite3.connect(dbpath)
+			if dbpath == ':memory:':
+				self.writable = True
+				db = dbpath
+			elif dbwrite:
+				self.writable = True
+				db = 'file:%s?mode=rwc&vfs=%s-unix-excl' % (dbpath, alg)
+			else:
+				self.writable = False
+				db = 'file:%s?mode=ro&vfs=%s-unix-excl' % (dbpath, alg)
+			self.conn = None
+			try:
+				self.conn = sqlite3.connect(db, uri = True)
+				break;
+			except TypeError:
+				# In Python 2.6 there's no uri parameter support
+				self.conn = sqlite3.connect(dbpath)
+			except sqlite3.DatabaseError:
+				pass
+		if self.conn is None:
+			raise RuntimeError('Could not connect to database.')
 		self.conn.isolation_level = None
 		self.fs = None
 		self.overview_len = None

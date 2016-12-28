@@ -17,6 +17,7 @@
 #ifdef PYMOD
 # include <Python.h>
 #endif
+#include "filemapper.h"
 #include "compdb.h"
 
 /* gzip deflate compression */
@@ -428,7 +429,7 @@ compdb_find_compressor(
 
 /* Create compdb as a compression shim atop some other VFS. */
 int
-compdb_init(
+compdb_register(
 	const char		*under_vfs,
 	const char		*vfs_name,
 	const char		*compressor)
@@ -477,15 +478,56 @@ compdb_init(
 	return 0;
 }
 
+/* Return a comma separated list of compressors. */
+char *
+compdb_compressors(void)
+{
+	struct compressor_type	*ct;
+	char			*s;
+	int			len = 1;
+
+	for (ct = compressors; ct->name; ct++)
+		len += strlen(ct->name) + 1;
+	s = malloc(len);
+	if (!s)
+		return NULL;
+	for (ct = compressors, len = 0; ct->name; ct++) {
+		if (ct != compressors) {
+			strcpy(s + len, ",");
+			len++;
+		}
+		strcpy(s + len, ct->name);
+		len += strlen(ct->name);
+	}
+
+	return s;
+}
+
 /* Make us a python module! */
 
 #ifdef PYMOD
 
 #define MOD_NAME		"compdb"
 
+/* Get a list of supported compression algorithms. */
+static PyObject *
+compdb_compressors_py(
+	PyObject	*self,
+	PyObject	*args)
+{
+	char		*s;
+	PyObject	*o;
+
+	s = compdb_compressors();
+	o = Py_BuildValue("s", s);
+	free(s);
+
+	return o;
+}
+
 /* Register a compressed-VFS */
 static PyObject *
-compdb_register(
+compdb_register_py(
 	PyObject	*self,
 	PyObject	*args)
 {
@@ -497,7 +539,7 @@ compdb_register(
 	if (!PyArg_ParseTuple(args, "zsz", &under, &name, &compr))
 		return NULL;
 
-	err = compdb_init(under, name, compr);
+	err = compdb_register(under, name, compr);
         if (err)
 		PyErr_SetString(PyExc_RuntimeError, strerror(err));
 
@@ -506,7 +548,7 @@ compdb_register(
 
 /* Unregister a VFS */
 static PyObject *
-compdb_unregister(
+compdb_unregister_py(
 	PyObject	*self,
 	PyObject	*args)
 {
@@ -535,8 +577,9 @@ out:
 }
 
 static PyMethodDef compdb_methods[] = {
-	{"register", compdb_register, METH_VARARGS, NULL},
-	{"unregister", compdb_unregister, METH_VARARGS, NULL},
+	{"register", compdb_register_py, METH_VARARGS, NULL},
+	{"unregister", compdb_unregister_py, METH_VARARGS, NULL},
+	{"compressors", compdb_compressors_py, METH_NOARGS, NULL},
 	{NULL, NULL, 0, NULL}
 };
 

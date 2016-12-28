@@ -18,6 +18,7 @@
 #include <lz4.h>
 #include <lz4hc.h>
 #include <zlib.h>
+#include "filemapper.h"
 #include "compdb.h"
 
 #define swap(a, b) \

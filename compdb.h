@@ -6,12 +6,6 @@
 #ifndef COMPDB_H
 #define COMPDB_H
 
-#ifdef DEBUG
-# define dbg_printf		printf
-#else
-# define dbg_printf(...)	{}
-#endif
-
 enum compdb_type {
 	DB_UNKNOWN,
 	DB_REGULAR,
@@ -68,7 +62,7 @@ struct compressor_type {
 struct compressor_type *compdb_find_compressor(const char *name);
 
 /* Init compressed DB VFS for sqlite3. */
-int compdb_init(const char *under_vfs, const char *vfs_name,
+int compdb_register(const char *under_vfs, const char *vfs_name,
 		const char *compressor);
 
 #endif /* COMPDB_H */

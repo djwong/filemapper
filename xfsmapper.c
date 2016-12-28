@@ -9,7 +9,7 @@
 #include <signal.h>
 #include <libgen.h>
 #include "filemapper.h"
-#include "compdbvfs.h"
+#include "compdb.h"
 
 #define XFS_FSBLOCK_TO_BYTES(fs, fsblock) \
 		(XFS_FSB_TO_DADDR((fs), (fsblock)) << BBSHIFT)
@@ -2217,7 +2217,7 @@ _("%s: cannot init perag data (%d). Continuing anyway.\n"),
 		goto out;
 	}
 
-	err = compdb_init("unix-excl", "comp-unix-excl", NULL);
+	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
 	if (err) {
 		fprintf(stderr, "%s %s\n", sqlite3_errstr(err),
 			_("while setting up compressed db"));
