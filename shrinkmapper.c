@@ -3,6 +3,7 @@
  * Copyright 2016 Darrick J. Wong.
  * Licensed under the GPLv2.
  */
+#define DEBUG
 #include <stdlib.h>
 #include <stdio.h>
 #include <sqlite3.h>
@@ -19,11 +20,15 @@
 #include <zlib.h>
 #include "compdb.h"
 
+#define swap(a, b) \
+        do { typeof(a) __tmp = (a); (a) = (b); (b) = __tmp; } while (0)
+
 struct compdb_info {
 	enum compdb_type	type;
 	int			pagesize;
 	unsigned long long	datastart;
-	char			compdb_file_header[16];
+	char			in_file_header[16];
+	char			out_file_header[16];
 };
 
 /* Figure out database parameters. */
@@ -38,7 +43,7 @@ sniff(
 	/* Is this really a database? */
 	is_sqlite = !memcmp(super->magic, SQLITE_FILE_HEADER,
 			sizeof(super->magic));
-	is_compr = !memcmp(super->magic, cdb->compdb_file_header,
+	is_compr = !memcmp(super->magic, cdb->in_file_header,
 			sizeof(super->magic));
 	if ((!is_sqlite && !is_compr) ||
 	    super->max_fraction != 64 || super->min_fraction != 32 ||
@@ -69,19 +74,21 @@ main(
 	struct sqlite3_super	super;
 	struct compdb_info	cdb;
 	struct stat		sb;
-	struct compressor_type	*cengine;
 	char			*name;
 	void			*bin, *bout;
 	void			*outp;
 	struct compdb_block_head	*bhead;
+	struct compressor_type	*inc;
+	struct compressor_type	*outc;
 	int			fdin, fdout;
+	int			try_compress;
 	size_t			outlen;
 	size_t			page;
 	size_t			nr_pages;
 	ssize_t			ret;
 
-	if (argc != 3 && argc != 4) {
-		printf("Usage: %s infile outfile [compressor]\n", argv[0]);
+	if (argc < 3 || argc > 5) {
+		printf("Usage: %s infile outfile [compressor] [compressor]\n", argv[0]);
 		return 1;
 	}
 
@@ -104,19 +111,34 @@ main(
 		return 2;
 	}
 
-	/* Select compressor */
-	if (argc == 4)
+	/* Select compressor(s) */
+	if (argc >= 4 && argv[3][0] != 0)
 		name = argv[3];
 	else
 		name = NULL;
 
-	cengine = compdb_find_compressor(name);
-	if (!cengine) {
+	inc = compdb_find_compressor(name);
+	if (!inc) {
 		printf("%s: no such compressor?\n", name);
 		return 2;
 	}
-	snprintf(cdb.compdb_file_header, sizeof(cdb.compdb_file_header),
-			COMPDB_FILE_TEMPLATE, cengine->name);
+	snprintf(cdb.in_file_header, sizeof(cdb.in_file_header),
+			COMPDB_FILE_TEMPLATE, inc->name);
+
+	if (argc == 5 && argv[4][0] != 0)
+		name = argv[4];
+	else
+		name = NULL;
+
+	outc = compdb_find_compressor(name);
+	if (!outc) {
+		printf("%s: no such compressor?\n", name);
+		return 2;
+	}
+	snprintf(cdb.out_file_header, sizeof(cdb.out_file_header),
+			COMPDB_FILE_TEMPLATE, outc->name);
+	dbg_printf("recompress %s(%s) -> %s(%s)\n", argv[1], inc->name,
+			argv[2], outc->name);
 
 	/* Verify superblock */
 	ret = pread(fdin, &super, sizeof(super), 0);
@@ -166,19 +188,43 @@ main(
 		outlen = cdb.pagesize;
 		outp = bin;
 		bhead = bin;
-		if (cdb.type == DB_REGULAR && page == 0) {
+		try_compress = 0;
+		if ((cdb.type == DB_REGULAR || inc != outc) && page == 0) {
 			/* Do we need to change the header? */
-			memcpy(outp, cdb.compdb_file_header,
-					sizeof(cdb.compdb_file_header));
+			memcpy(outp, cdb.out_file_header,
+					sizeof(cdb.out_file_header));
 		} else if (cdb.type == DB_COMPRESSED &&
 			   !memcmp(bhead->magic, COMPDB_BLOCK_MAGIC,
 					sizeof(COMPDB_BLOCK_MAGIC)) &&
 			   ntohl(bhead->offset) == page) {
-			/* Compressed page, send it along. */
-			outlen = ntohs(bhead->len) + sizeof(*bhead);
+			if (inc == outc) {
+				/* Compressed page, send it along. */
+				outlen = ntohs(bhead->len) + sizeof(*bhead);
+			} else {
+				/* Changing compression types; decompress. */
+				ret = inc->decompress(bin + sizeof(*bhead),
+						bout,
+						ntohs(bhead->len),
+						cdb.pagesize);
+				if (ret <= 0) {
+					printf("%s: Decompression failed at "
+						" page %zu\n", argv[1], page);
+					return 3;
+				}
+				dbg_printf("%s(%d) off=%zu len=%d\n", __func__,
+						__LINE__, page * cdb.pagesize,
+						ntohs(bhead->len));
+				swap(bin, bout);
+				try_compress = 1;
+			}
 		} else if ((page + 1) * cdb.pagesize > cdb.datastart) {
+			/* Uncompressed; try to compress. */
+			try_compress = 1;
+		}
+
+		if (try_compress) {
 			/* Try to compress this page? */
-			ret = cengine->compress(bin, bout + sizeof(*bhead),
+			ret = outc->compress(bin, bout + sizeof(*bhead),
 					cdb.pagesize,
 					cdb.pagesize - sizeof(*bhead));
 			if (ret > 0) {
@@ -190,8 +236,6 @@ main(
 				outp = bout;
 				outlen = ret + sizeof(*bhead);
 			}
-		} else {
-			/* Not compressible or not a btree page; copy it */
 		}
 
 		/*
