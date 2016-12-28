@@ -1,0 +1,44 @@
+.\" (C) Copyright 2016 Darrick J. Wong <djwong@djwong.org>,
+.TH SHRINKMAPPER 1 "December 28, 2016"
+.SH NAME
+shrinkmapper \- Recompress filemapper databases.
+.SH SYNOPSIS
+.B shrinkmapper
+.I infile
+.I outfile
+.BI "[" incompressor "]"
+.BI "[" outcompressor "]"
+.SH DESCRIPTION
+This manual page documents briefly the
+.B shrinkmapper
+command.
+.PP
+\fBshrinkmapper\fP compresses a filemapper database to use less disk
+space.
+It can operate on any SQLite3 database, so long as one uses the compdb
+SQLite VFS shim to provide compressed file support.
+.SH OPTIONS
+These programs follow the usual GNU command line syntax, with long
+options starting with two dashes (`-').
+A summary of options is included below.
+For a complete description, see the Info files.
+.TP
+.I infile
+Read data from this database.
+.TP
+.I outfile
+Write database to this file.
+.TP
+.I incompressor
+If specified, use this compression algorithm to read in pages from the database.
+An empty string or no string selects the default (gzip).
+.TP
+.I outcompressor
+If specified, use this compression algorithm to write pages to the database.
+An empty string or no string selects the default (gzip).
+.TP
+.B \-h, \-\-help
+Show summary of options.
+.SH SEE ALSO
+.BR filemapper (1).
+.br
