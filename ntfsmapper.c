@@ -24,6 +24,7 @@
 #include <ntfs-3g/bitmap.h>
 #undef DEBUG
 #include "filemapper.h"
+#include "compdb.h"
 
 struct ntfsmap_t {
 	struct filemapper_t base;
@@ -477,6 +478,13 @@ int main(int argc, char *argv[])
 			ntfs_log_error("%s", opened_volume_msg);
 		else if (errno == ENXIO)
 			ntfs_log_error("%s", fakeraid_msg);
+		goto out;
+	}
+
+	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	if (err) {
+		ntfs_log_error("%s while setting up compressed db",
+			sqlite3_errstr(err));
 		goto out;
 	}
 

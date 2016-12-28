@@ -57,10 +57,10 @@ e2mapper: filemapper.o e2mapper.o compdb.o
 
 e2mapper.o: e2mapper.c filemapper.h compdb.h
 
-ntfsmapper: filemapper.o ntfsmapper.o
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g -lm
+ntfsmapper: filemapper.o ntfsmapper.o compdb.o
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g -lm $(COMPDB_LIBS)
 
-ntfsmapper.c: filemapper.h
+ntfsmapper.o: ntfsmapper.c filemapper.h compdb.h
 
 libfat.a: $(DOSFSTOOLS)/boot.o $(DOSFSTOOLS)/charconv.o $(DOSFSTOOLS)/common.o $(DOSFSTOOLS)/fat.o $(DOSFSTOOLS)/file.o $(DOSFSTOOLS)/io.o $(DOSFSTOOLS)/lfn.o
 	$(AR) cr libfat.a $^
