@@ -87,6 +87,11 @@ main(
 	size_t			nr_pages;
 	ssize_t			ret;
 
+	if (argc == 2 && !strcmp(argv[1], "-l")) {
+		printf("Supported: %s\n", compdb_compressors());
+		return 0;
+	}
+
 	if (argc < 3 || argc > 5) {
 		printf("Usage: %s infile outfile [compressor] [compressor]\n", argv[0]);
 		return 1;

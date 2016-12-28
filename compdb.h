@@ -61,6 +61,9 @@ struct compressor_type {
 /* Find compression engine. */
 struct compressor_type *compdb_find_compressor(const char *name);
 
+/* List of supported compressors. */
+char *compdb_compressors(void);
+
 /* Init compressed DB VFS for sqlite3. */
 int compdb_register(const char *under_vfs, const char *vfs_name,
 		const char *compressor);
