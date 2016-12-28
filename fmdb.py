@@ -10,6 +10,7 @@ import stat
 import array
 import fiemap
 import math
+import compdbvfs
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 from dateutil import tz
@@ -448,10 +449,10 @@ class fmdb(object):
 			db = dbpath
 		elif dbwrite:
 			self.writable = True
-			db = 'file:%s?mode=rwc' % dbpath
+			db = 'file:%s?mode=rwc&vfs=compdbvfs' % dbpath
 		else:
 			self.writable = False
-			db = 'file:%s?mode=ro' % dbpath
+			db = 'file:%s?mode=ro&vfs=compdbvfs' % dbpath
 		self.conn = None
 		try:
 			self.conn = sqlite3.connect(db, uri = True)

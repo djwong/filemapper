@@ -127,4 +127,7 @@ void calc_inode_stats(struct filemapper_t *wf);
 int fm_test_bit(const uint8_t *bmap, const uint64_t bit);
 void fm_set_bit(uint8_t *bmap, const uint64_t bit, const int new_value);
 
+/* Init compressed DB VFS for sqlite3. */
+int compdbvfs_init(const char *under_vfs);
+
 #endif /* ifdef FM_H_ */
