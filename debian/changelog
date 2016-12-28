@@ -1,3 +1,9 @@
+filemapper (0.8.1-1) xenial; urgency=medium
+
+  * Support various compression formats.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Wed, 28 Dec 2016 15:21:56 -0800
+
 filemapper (0.8.0-1) xenial; urgency=medium
 
   * Rebuild with xfsprogs "4.9.0-rc1+" (i.e. up to date rmap/reflink/rtrmapbt)
