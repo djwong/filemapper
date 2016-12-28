@@ -29,6 +29,7 @@
 #include <io.h>
 #undef DEBUG
 #include "filemapper.h"
+#include "compdb.h"
 
 /* from check.h */
 void add_file(DOS_FS * fs, DOS_FILE *** chain, DOS_FILE * parent,
@@ -458,9 +459,16 @@ int main(int argc, char *argv[])
 	read_boot(fs);
 	read_fat(fs);
 
+	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	if (err) {
+		die("%s while setting up compressed db",
+			sqlite3_errstr(err));
+		goto out;
+	}
+
 	err = sqlite3_open_v2(dbfile, &db,
 			      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-			      "unix-excl");
+			      "comp-unix-excl");
 	if (err) {
 		die("%s while opening database",
 			sqlite3_errstr(err));

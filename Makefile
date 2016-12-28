@@ -65,8 +65,8 @@ ntfsmapper.o: ntfsmapper.c filemapper.h compdb.h
 libfat.a: $(DOSFSTOOLS)/boot.o $(DOSFSTOOLS)/charconv.o $(DOSFSTOOLS)/common.o $(DOSFSTOOLS)/fat.o $(DOSFSTOOLS)/file.o $(DOSFSTOOLS)/io.o $(DOSFSTOOLS)/lfn.o
 	$(AR) cr libfat.a $^
 
-fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lm
+fatmapper: filemapper.o fatmapper.o fatcheck.o libfat.a compdb.o
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lm $(COMPDB_LIBS)
 
 fatcheck.c: $(DOSFSTOOLS)/src/check.c $(DOSFS_HEADERS)
 	sed -e 's/static void add_file/void add_file/g' < $< > $@
@@ -74,7 +74,7 @@ fatcheck.c: $(DOSFSTOOLS)/src/check.c $(DOSFS_HEADERS)
 fatcheck.o: fatcheck.c
 	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
 
-fatmapper.o: fatmapper.c filemapper.h $(DOSFS_HEADERS)
+fatmapper.o: fatmapper.c filemapper.h $(DOSFS_HEADERS) compdb.h
 	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
 
 clean:;
