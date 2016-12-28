@@ -55,7 +55,7 @@ xfsmapper.o: xfsmapper.c filemapper.h $(XFSPROGS)/include/libxfs.h $(XFSPROGS)/r
 e2mapper: filemapper.o e2mapper.o compdb.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lcom_err -lext2fs -lm $(COMPDB_LIBS)
 
-e2mapper.c: filemapper.h
+e2mapper.o: e2mapper.c filemapper.h compdb.h
 
 ntfsmapper: filemapper.o ntfsmapper.o
 	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -lntfs-3g -lm
