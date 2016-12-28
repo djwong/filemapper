@@ -5,10 +5,84 @@
  */
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <lz4.h>
 #include <lz4hc.h>
 #include <zlib.h>
+#include <lzma.h>
 #include "compress.h"
+
+/* lzma deflate compression */
+static inline int
+LZMA_compress(
+	const char		*source,
+	char			*dest,
+	int			sourceSize,
+	int			maxDestSize)
+{
+	lzma_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = lzma_easy_encoder(&strm, 6, LZMA_CHECK_CRC64);
+	if (ret)
+		return 0;
+
+	strm.avail_in = sourceSize;
+	strm.next_in = (unsigned char *)source;
+	strm.next_out = (unsigned char *)dest;
+	endp = dest + maxDestSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+		ret = lzma_code(&strm, LZMA_FINISH);
+		if (ret != LZMA_STREAM_END && ret != LZMA_OK) {
+			lzma_end(&strm);
+			return 0;
+		}
+		strm.next_out = (unsigned char *)endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	lzma_end(&strm);
+
+	return (char *)strm.next_out - dest;
+}
+
+/* lzma inflate */
+static inline int
+LZMA_decompress(
+	const char		*source,
+	char			*dest,
+	int			compressedSize,
+	int			maxDecompressedSize)
+{
+	lzma_stream		strm = {0};
+	char			*endp;
+	int			ret;
+
+	ret = lzma_stream_decoder(&strm, ULONG_MAX,
+			LZMA_TELL_UNSUPPORTED_CHECK | LZMA_CONCATENATED);
+	if (ret != LZMA_OK)
+		return -1;
+
+	strm.avail_in = compressedSize;
+	strm.next_in = (unsigned char *)source;
+	strm.next_out = (unsigned char *)dest;
+	endp = dest + maxDecompressedSize;
+	do {
+		strm.avail_out = endp - (char *)strm.next_out;
+		ret = lzma_code(&strm, LZMA_FINISH);
+		if (ret != LZMA_STREAM_END && ret != LZMA_OK) {
+			lzma_end(&strm);
+			return 0;
+		}
+		strm.next_out = (unsigned char *)endp - strm.avail_out;
+	} while (strm.avail_in && (char *)strm.next_out <= endp);
+	lzma_end(&strm);
+
+	if (strm.avail_in)
+		return -1;
+
+	return (char *)strm.next_out - dest;
+}
 
 /* gzip deflate compression */
 static inline int
@@ -97,6 +171,7 @@ static struct compressor_type compressors[] = {
 	{"GZIP", GZIP_compress,		GZIP_decompress},
 	{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
 	{"LZ4H", LZ4HC_compress,	LZ4_decompress_safe},
+	{"LZMA", LZMA_compress,		LZMA_decompress},
 	{NULL, NULL, NULL},
 };
 

@@ -16,7 +16,7 @@ XFSPROGS ?= Please_set_XFSPROGS_to_the_XFS_source_directory
 DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
 DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
 PYINCLUDE ?= -I/usr/include/python3.5m/
-COMPDB_LIBS=-lz -llz4
+COMPDB_LIBS=-lz -llz4 -llzma
 
 ifeq ("$(notdir $(wildcard $(XFSPROGS)/libxfs/.libs/libxfs.a))", "libxfs.a")
 xfsmapper=xfsmapper
@@ -34,8 +34,8 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
-compdb.so: compdb.c compdb.h filemapper.h
-	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 $(COMPDB_LIBS)
+compdb.so: compdb.c compress.c compdb.h filemapper.h
+	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ compdb.c compress.c -lsqlite3 $(COMPDB_LIBS)
 
 compdb.o: compdb.h filemapper.h
 
@@ -44,7 +44,7 @@ compress.o: compress.h
 filemapper.o: filemapper.h
 
 shrinkmapper: shrinkmapper.o compress.o compdb.o
-	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 -llz4 -lz
+	$(CC) $(CFLAGS) -o $@ $^ -lsqlite3 $(COMPDB_LIBS)
 
 shrinkmapper.o: compdb.h filemapper.h
 
