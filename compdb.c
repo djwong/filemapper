@@ -226,8 +226,10 @@ compdb_read(
 	assert(ff->db_type == DB_COMPRESSED);
 	clen = ntohs(bhead->len);
 	if (clen > ff->pagesize - sizeof(*bhead) ||
-	    ntohl(bhead->offset) * ff->pagesize != iOfst) {
-		dbg_printf("%s(%d) header corrupt\n", __func__, __LINE__);
+	    (unsigned long long)ntohl(bhead->offset) * ff->pagesize != iOfst) {
+		dbg_printf("%s(%d) header corrupt clen=%d boff=%u iofst=%lld\n",
+				__func__, __LINE__, clen, ntohl(bhead->offset),
+				iOfst);
 		return SQLITE_CORRUPT;
 	}
 
