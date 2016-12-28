@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <lz4.h>
+#include <lz4hc.h>
 #include <zlib.h>
 #ifdef PYMOD
 # include <python3.5m/Python.h>
@@ -22,10 +23,10 @@
 #endif
 
 /* gzip deflate compression */
-static int
-GZIP_compress_default(
+static inline int
+GZIP_compress(
 	const char		*source,
-	const char		*dest,
+	char			*dest,
 	int			sourceSize,
 	int			maxDestSize)
 {
@@ -40,12 +41,10 @@ GZIP_compress_default(
 	strm.avail_in = sourceSize;
 	strm.next_in = (unsigned char *)source;
 	strm.next_out = (unsigned char *)dest;
-	endp = (char *)dest + maxDestSize;
+	endp = dest + maxDestSize;
 	do {
 		strm.avail_out = endp - (char *)strm.next_out;
-//printf("ai %d ni %p ao %d no %p\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out);
 		ret = deflate(&strm, Z_FINISH);
-//printf("ai %d ni %p ao %d no %p ret %d\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out, ret);
 		if (ret != Z_STREAM_END && ret != Z_OK) {
 			deflateEnd(&strm);
 			return 0;
@@ -58,10 +57,10 @@ GZIP_compress_default(
 }
 
 /* gzip inflate */
-static int
-GZIP_decompress_safe(
+static inline int
+GZIP_decompress(
 	const char		*source,
-	const char		*dest,
+	char			*dest,
 	int			compressedSize,
 	int			maxDecompressedSize)
 {
@@ -76,12 +75,10 @@ GZIP_decompress_safe(
 	strm.avail_in = compressedSize;
 	strm.next_in = (unsigned char *)source;
 	strm.next_out = (unsigned char *)dest;
-	endp = (char *)dest + maxDecompressedSize;
+	endp = dest + maxDecompressedSize;
 	do {
 		strm.avail_out = endp - (char *)strm.next_out;
-//printf("ai %d ni %p ao %d no %p\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out);
 		ret = inflate(&strm, Z_NO_FLUSH);
-//printf("ai %d ni %p ao %d no %p ret %d\n", strm.avail_in, strm.next_in, strm.avail_out, strm.next_out, ret);
 		if (ret != Z_STREAM_END && ret != Z_OK) {
 			inflateEnd(&strm);
 			return 0;
@@ -95,6 +92,33 @@ GZIP_decompress_safe(
 
 	return (char *)strm.next_out - dest;
 }
+
+/* LZ4 HC mode */
+static inline int
+LZ4HC_compress(
+	const char		*source,
+	char			*dest,
+	int			sourceSize,
+	int			maxDestSize)
+{
+	return LZ4_compressHC2_limitedOutput(source, dest, sourceSize,
+			maxDestSize, 8);
+}
+
+struct compressor_type {
+	const char		*name;
+	int			(*compress)(const char *, char *, int, int);
+	int			(*decompress)(const char *, char *, int, int);
+};
+
+static struct compressor_type compressors[] = {
+{"GZIP", GZIP_compress,		GZIP_decompress},
+{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
+{"LZ4H", LZ4HC_compress,	LZ4_decompress_safe},
+{NULL, NULL, NULL},
+};
+
+static struct compressor_type *cengine = &compressors[0];
 
 static sqlite3_vfs		oldvfs;
 static sqlite3_vfs		compdbvfs;
@@ -120,16 +144,17 @@ struct compdbvfs_file {
  * Put this ahead of every compressed page.  btree pages can't have
  * 0xDA as the first byte.
  */
-const uint8_t FAKEVFS_BLOCK_MAGIC[] = {0xDA, 0xAD};
+static const uint8_t FAKEVFS_BLOCK_MAGIC[] = {0xDA, 0xAD};
 struct compdbvfs_block_head {
 	uint8_t			magic[2];
-	uint16_t		len;
-	uint32_t		offset;
+	uint16_t		len;		/* compressed length */
+	uint32_t		offset;		/* page number */
 };
 
 /* SQLite superblock format. */
 #define SQLITE_FILE_HEADER 	"SQLite format 3"
-#define COMPDB_FILE_HEADER	"SQLite LZ4 v. 3"
+#define COMPDB_FILE_TEMPLATE	"SQLite %s v.3"
+static char COMPDB_FILE_HEADER[16];
 struct sqlite3_super {
 	uint8_t			magic[16];
 	uint16_t		pagesize;
@@ -238,7 +263,7 @@ compdbvfs_read(
 	assert(ff->db_type == DB_COMPRESSED);
 	clen = ntohs(bhead->len);
 	if (clen > ff->pagesize - sizeof(*bhead) ||
-	    ntohl(bhead->offset) != iOfst)
+	    ntohl(bhead->offset) * ff->pagesize != iOfst)
 		return SQLITE_CORRUPT;
 
 	/* Decompress and return. */
@@ -246,13 +271,8 @@ compdbvfs_read(
 	if (!buf)
 		return SQLITE_NOMEM;
 
-#ifdef LZ4
-	ret = LZ4_decompress_safe(ptr + sizeof(*bhead), buf, clen,
+	ret = cengine->decompress(ptr + sizeof(*bhead), buf, clen,
 			ff->pagesize);
-#else
-	ret = GZIP_decompress_safe(ptr + sizeof(*bhead), buf, clen,
-			ff->pagesize);
-#endif
 	if (ret < 0) {
 		free(buf);
 		return SQLITE_CORRUPT;
@@ -303,13 +323,8 @@ compdbvfs_write(
 	if (!buf)
 		return SQLITE_NOMEM;
 
-#ifdef LZ4
-	ret = LZ4_compress_default(ptr, buf + sizeof(*bhead), iAmt,
+	ret = cengine->compress(ptr, buf + sizeof(*bhead), iAmt,
 			ff->pagesize - sizeof(*bhead));
-#else
-	ret = GZIP_compress_default(ptr, buf + sizeof(*bhead), iAmt,
-			ff->pagesize - sizeof(*bhead));
-#endif
 	if (ret == 0) {
 		free(buf);
 		goto no_compr;
@@ -320,7 +335,7 @@ compdbvfs_write(
 	bhead = (struct compdbvfs_block_head *)buf;
 	memcpy(bhead->magic, FAKEVFS_BLOCK_MAGIC, sizeof(bhead->magic));
 	bhead->len = htons(ret);
-	bhead->offset = htonl(iOfst);
+	bhead->offset = htonl(iOfst / ff->pagesize);
 
 	/* Write compressed data. */
 	dbg_printf("%s(%d) len=%d off=%llu clen=%d\n", __func__, __LINE__,
@@ -415,10 +430,12 @@ compdbvfs_open(
 /* Create compdbvfs as a compression shim atop some other VFS. */
 int
 compdbvfs_init(
-	const char	*under_vfs)
+	const char		*under_vfs)
 {
-	sqlite3_vfs	*vfs;
-	int		ret;
+	sqlite3_vfs		*vfs;
+	char			*compress;
+	struct compressor_type	*ct;
+	int			ret;
 
 	vfs = sqlite3_vfs_find(under_vfs);
 	if (!vfs) {
@@ -426,7 +443,18 @@ compdbvfs_init(
 		return ENOENT;
 	}
 
+	/* Find our compressor. */
+	compress = getenv("COMPDBVFS_COMPRESSOR");
+	if (compress) {
+		for (ct = compressors; ct->name; ct++)
+			if (strcmp(compress, ct->name) == 0)
+				cengine = ct;
+	}
+	snprintf(COMPDB_FILE_HEADER, sizeof(COMPDB_FILE_HEADER),
+			COMPDB_FILE_TEMPLATE, cengine->name);
+
 	dbg_printf("%s: Found VFS ver %d\n", vfs->zName, vfs->iVersion);
+	dbg_printf("Using %s engine\n", cengine->name);
 	oldvfs = *vfs;
 	compdbvfs = *vfs;
 	compdbvfs.zName = VFS_NAME;
