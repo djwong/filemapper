@@ -15,10 +15,8 @@
 #include <lz4hc.h>
 #include <zlib.h>
 #ifdef PYMOD
-# include <python3.5m/Python.h>
+# include <Python.h>
 #endif
-
-#define VFS_NAME		"compdbvfs"
 
 #define DEBUG
 #ifdef DEBUG
@@ -117,10 +115,10 @@ struct compressor_type {
 };
 
 static struct compressor_type compressors[] = {
-{"GZIP", GZIP_compress,		GZIP_decompress},
-{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
-{"LZ4H", LZ4HC_compress,	LZ4_decompress_safe},
-{NULL, NULL, NULL},
+	{"GZIP", GZIP_compress,		GZIP_decompress},
+	{"LZ4D", LZ4_compress_default,	LZ4_decompress_safe},
+	{"LZ4H", LZ4HC_compress,	LZ4_decompress_safe},
+	{NULL, NULL, NULL},
 };
 
 /* SQLite engine stuff */
@@ -514,6 +512,8 @@ compdbvfs_init(
 
 #ifdef PYMOD
 
+#define MOD_NAME		"compdbvfs"
+
 /* Register a compressed-VFS */
 static PyObject *
 compdbvfs_register(
@@ -573,7 +573,7 @@ static PyMethodDef compdbvfs_methods[] = {
 
 static struct PyModuleDef moduledef = {
         PyModuleDef_HEAD_INIT,
-        VFS_NAME,
+        MOD_NAME,
         NULL,
         0,
         compdbvfs_methods,
@@ -601,7 +601,7 @@ init_compdbvfs(void)
 {
 	PyObject	*m;
 
-	m = Py_InitModule(VFS_NAME, compdbvfs_methods);
+	m = Py_InitModule(MOD_NAME, compdbvfs_methods);
 	if (!m)
 		return;
 

@@ -15,6 +15,7 @@ appdir = ${exec_prefix}/share/applications
 XFSPROGS ?= Please_set_XFSPROGS_to_the_XFS_source_directory
 DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
 DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
+PYINCLUDE ?= -I/usr/include/python3.5m/
 
 ifeq ("$(notdir $(wildcard $(XFSPROGS)/libxfs/.libs/libxfs.a))", "libxfs.a")
 xfsmapper=xfsmapper
@@ -33,7 +34,7 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 	gzip -9 < $< > $@
 
 compdbvfs.so: compdbvfs.c
-	$(CC) $(LIB_CFLAGS) -DPYMOD -o $@ $< -lsqlite3 -llz4 -lz
+	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ $< -lsqlite3 -llz4 -lz
 
 filemapper.c: filemapper.h
 
