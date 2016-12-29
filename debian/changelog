@@ -1,3 +1,9 @@
+filemapper (0.8.2-1) xenial; urgency=medium
+
+  * Allow decompression of databases.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Wed, 28 Dec 2016 18:28:56 -0800
+
 filemapper (0.8.1-1) xenial; urgency=medium
 
   * Support various compression formats.
