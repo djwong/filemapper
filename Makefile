@@ -94,6 +94,7 @@ install: all
 	install filemapper $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(fmlibdir)
 	install -m 0644 fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
+	install -s compdb.so $(DESTDIR)$(fmlibdir)
 	install -m 0644 filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 	install -d $(DESTDIR)$(man1dir)
 	install -m 0644 e2mapper.1.gz filemapper.1.gz ntfsmapper.1.gz shrinkmapper.1.gz $(DESTDIR)$(man1dir)

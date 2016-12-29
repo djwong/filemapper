@@ -1,5 +1,7 @@
 #!/bin/sh
 
-FM_LIB_DIR=%libdir%
+PYTHONPATH="%libdir%:${PYTHONPATH}"
+export PYTHONPATH
+FM_LIB_DIR="%libdir%"
 export FM_LIB_DIR
 exec python3 %libdir%/filemapper.py "$@"
