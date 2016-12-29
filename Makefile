@@ -83,7 +83,7 @@ fatmapper.o: fatmapper.c filemapper.h $(DOSFS_HEADERS) compdb.h
 	$(CC) $(CFLAGS) -o $@ -c $< -I$(DOSFSTOOLS)/src/
 
 clean:;
-	rm -rf $(progs) $(manpages) xfsmapper xfsmapper.1.gz fatmapper fatmapper.1.gz libfat.a fatcheck.c *.pyc __pycache__ filemapper.desktop *.o
+	rm -rf $(progs) $(manpages) $(libs) xfsmapper xfsmapper.1.gz fatmapper fatmapper.1.gz libfat.a fatcheck.c *.pyc __pycache__ filemapper.desktop *.o
 
 filemapper: filemapper.in
 	sed -e "s|%libdir%|${fmlibdir}|g" < $< > $@
