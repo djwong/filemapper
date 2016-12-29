@@ -32,7 +32,7 @@ manpages=$(patsubst %,%.1.gz,$(progs))
 all: $(progs) $(libs) $(manpages) filemapper.desktop
 
 %.1.gz: %.1
-	gzip -9 < $< > $@
+	gzip -9n < $< > $@
 
 compdb.so: compdb.o compress.o pymod.o
 	$(CC) $(LIB_CFLAGS) -o $@ $^ -lsqlite3 $(COMPDB_LIBS)
