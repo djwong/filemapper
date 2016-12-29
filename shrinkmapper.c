@@ -67,6 +67,16 @@ sniff(
 	return 0;
 }
 
+static inline int
+NOOP_compress(
+	const char		*source,
+	char			*dest,
+	int			sourceSize,
+	int			maxDestSize)
+{
+	return 0;
+}
+
 int
 main(
 	int			argc,
@@ -81,6 +91,7 @@ main(
 	struct compdb_block_head	*bhead;
 	struct compressor_type	*inc;
 	struct compressor_type	*outc;
+	struct compressor_type	none_type;
 	int			fdin, fdout;
 	int			try_compress;
 	size_t			outlen;
@@ -89,7 +100,7 @@ main(
 	ssize_t			ret;
 
 	if (argc == 2 && !strcmp(argv[1], "-l")) {
-		printf("Supported: %s\n", compdb_compressors());
+		printf("Supported: NONE,%s\n", compdb_compressors());
 		return 0;
 	}
 
@@ -136,13 +147,22 @@ main(
 	else
 		name = NULL;
 
-	outc = compdb_find_compressor(name);
-	if (!outc) {
-		printf("%s: no such compressor?\n", name);
-		return 2;
+	if (name && !strcmp(name, "NONE")) {
+		none_type.name = "none";
+		none_type.compress = NOOP_compress;
+		none_type.decompress = NULL;
+		outc = &none_type;
+		memcpy(cdb.out_file_header, SQLITE_FILE_HEADER,
+				sizeof(cdb.out_file_header));
+	} else {
+		outc = compdb_find_compressor(name);
+		if (!outc) {
+			printf("%s: no such compressor?\n", name);
+			return 2;
+		}
+		snprintf(cdb.out_file_header, sizeof(cdb.out_file_header),
+				COMPDB_FILE_TEMPLATE, outc->name);
 	}
-	snprintf(cdb.out_file_header, sizeof(cdb.out_file_header),
-			COMPDB_FILE_TEMPLATE, outc->name);
 	dbg_printf("recompress %s(%s) -> %s(%s)\n", argv[1], inc->name,
 			argv[2], outc->name);
 
@@ -221,6 +241,7 @@ main(
 						__LINE__, page * cdb.pagesize,
 						ntohs(bhead->len));
 				swap(bin, bout);
+				outp = bin;
 				try_compress = 1;
 			}
 		} else if ((page + 1) * cdb.pagesize > cdb.datastart) {
