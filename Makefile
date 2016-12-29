@@ -1,6 +1,6 @@
-LTO=
-CFLAGS=-Wall -O3 -g $(LTO) -std=gnu11
-LDFLAGS=-Wall -O3 -g $(LTO) -std=gnu11
+LTO=-flto
+CFLAGS=-Wall -O3 -g $(LTO) -std=gnu11 -fPIC
+LDFLAGS=-Wall -O3 -g $(LTO) -std=gnu11 -fPIC
 LIB_CFLAGS=-Wall -O3 -g -std=gnu11 -shared -fPIC
 VERSION=0.8.1
 
@@ -34,10 +34,13 @@ all: $(progs) $(libs) $(manpages) filemapper.desktop
 %.1.gz: %.1
 	gzip -9 < $< > $@
 
-compdb.so: compdb.c compress.c compdb.h filemapper.h
-	$(CC) $(LIB_CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ compdb.c compress.c -lsqlite3 $(COMPDB_LIBS)
+compdb.so: compdb.o compress.o pymod.o
+	$(CC) $(LIB_CFLAGS) -o $@ $^ -lsqlite3 $(COMPDB_LIBS)
 
-compdb.o: compdb.h filemapper.h
+pymod.o: pymod.c compdb.h compress.h filemapper.h
+	$(CC) $(CFLAGS) -DPYMOD $(PYINCLUDE) -o $@ -c $<
+
+compdb.o: compdb.c compdb.h compress.h filemapper.h
 
 compress.o: compress.h
 
