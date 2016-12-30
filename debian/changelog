@@ -1,3 +1,9 @@
+filemapper (0.8.4-1) xenial; urgency=medium
+
+  * Fix freelist page detection.
+
+ -- Darrick J. Wong <djwong@djwong.org>  Thu, 29 Dec 2016 22:53:29 -0800
+
 filemapper (0.8.3-1) xenial; urgency=medium
 
   * Work around qt5 race condition errors causing segfaults.
