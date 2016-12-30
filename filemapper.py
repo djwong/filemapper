@@ -58,7 +58,17 @@ if __name__ == "__main__":
 
 	if args.g:
 		fmgui = fmgui.fmgui(fmdb)
-		sys.exit(app.exec_())
+		app.exec_()
+		# Qt 5.6 has a race wherein exit() handlers get called
+		# before QApplication is destroyed, so force a gc run
+		# in the hopes of racing with the race to get the
+		# ordering right.  Otherwise we segfault.
+		app = None
+		import gc
+		gc.collect(0)
+		gc.collect(1)
+		gc.collect(2)
+		sys.exit(0)
 	else:
 		fmdb.set_overview_length(args.l)
 		fmcli = fmcli.fmcli(fmdb)
