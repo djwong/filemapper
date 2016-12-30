@@ -37,7 +37,8 @@ struct compdb_file {
 						    int, sqlite3_int64);
 	int				(*old_write)(sqlite3_file*, const void*,
 						    int, sqlite3_int64);
-	unsigned long long		data_start;
+	unsigned int			freestart;
+	unsigned int			freelen;
 	int				pagesize;
 	enum compdb_type		db_type;
 };
@@ -87,11 +88,11 @@ compdb_sniff(
 	ff->pagesize = ntohs(super->pagesize);
 	if (ff->pagesize == 1)
 		ff->pagesize = 65536;
-	ff->data_start = (ntohl(super->freelist_start) + 1 +
-			  ntohl(super->freelist_pages)) * ff->pagesize;
+	ff->freestart = ntohl(super->freelist_start);
+	ff->freelen = ntohl(super->freelist_pages);
 
-	dbg_printf("%s(%d) pagesz %d dataoff %llu\n", __func__, __LINE__,
-			ff->pagesize, ff->data_start);
+	dbg_printf("%s(%d) pagesz %d freepg %u:%u\n", __func__, __LINE__,
+			ff->pagesize, ff->freestart, ff->freelen);
 
 	return SQLITE_OK;
 }
@@ -106,6 +107,7 @@ compdb_read(
 {
 	struct compdb_file		*ff;
 	struct compdb_block_head	*bhead;
+	unsigned int			page;
 	char				*buf;
 	int				clen;
 	int				ret;
@@ -121,7 +123,9 @@ compdb_read(
 
 	/* We don't compress non-btree pages. */
 	bhead = ptr;
-	if (ff->db_type == DB_REGULAR || iOfst + iAmt <= ff->data_start ||
+	page = iOfst / ff->pagesize;
+	if (ff->db_type == DB_REGULAR ||
+	    (page >= ff->freestart && page < ff->freestart + ff->freelen) ||
 	    memcmp(bhead->magic, COMPDB_BLOCK_MAGIC, sizeof(bhead->magic))) {
 		dbg_printf("%s(%d) len=%d off=%llu\n", __func__, __LINE__,
 				iAmt, iOfst);
@@ -174,6 +178,7 @@ compdb_write(
 	struct compdb_block_head	*bhead;
 	char				*buf;
 	sqlite3_int64			isize;
+	unsigned int			page;
 	int				clen;
 	int				ret;
 
@@ -189,7 +194,9 @@ compdb_write(
 	}
 
 	/* We don't compress non-btree pages. */
-	if (ff->db_type == DB_REGULAR || iOfst + iAmt <= ff->data_start)
+	page = iOfst / ff->pagesize;
+	if (ff->db_type == DB_REGULAR ||
+	    (page >= ff->freestart && page < ff->freestart + ff->freelen))
 		goto no_compr;
 
 	/* Try to compress data. */

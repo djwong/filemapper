@@ -27,7 +27,8 @@
 struct compdb_info {
 	enum compdb_type	type;
 	int			pagesize;
-	unsigned long long	datastart;
+	unsigned int		freestart;
+	unsigned int		freelen;
 	char			in_file_header[16];
 	char			out_file_header[16];
 };
@@ -60,10 +61,10 @@ sniff(
 	cdb->pagesize = ntohs(super->pagesize);
 	if (cdb->pagesize == 1)
 		cdb->pagesize = 65536;
-	cdb->datastart = (ntohl(super->freelist_start) + 1 +
-			   ntohl(super->freelist_pages)) * cdb->pagesize;
-	dbg_printf("%s(%d): pagesize=%d datastart=%llu\n", __func__, __LINE__,
-			cdb->pagesize, cdb->datastart);
+	cdb->freestart = ntohl(super->freelist_start);
+	cdb->freelen = ntohl(super->freelist_pages);
+	dbg_printf("%s(%d): pagesize=%d freestart=%llu:%llu\n", __func__, __LINE__,
+			cdb->pagesize, cdb->freestart, cdb->freelen);
 	return 0;
 }
 
@@ -250,7 +251,8 @@ main(
 				outp = bin;
 				try_compress = 1;
 			}
-		} else if ((page + 1) * cdb.pagesize > cdb.datastart) {
+		} else if (page < cdb.freestart ||
+			   page >= cdb.freestart + cdb.freelen) {
 			/* Uncompressed; try to compress. */
 			try_compress = 1;
 		}
