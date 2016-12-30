@@ -481,7 +481,9 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	total_bytes = fs->nr_clusters * fs->cluster_size;
+	err = compdb_register("unix-excl", "comp-unix-excl",
+			total_bytes > 100000000000ULL ? "LZMA" : "GZIP");
 	if (err) {
 		ntfs_log_error("%s while setting up compressed db",
 			sqlite3_errstr(err));

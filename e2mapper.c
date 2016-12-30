@@ -936,7 +936,9 @@ int main(int argc, char *argv[])
 	}
 	fs->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
 
-	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	total_bytes = ext2fs_blocks_count(fs->super) * fs->blocksize;
+	err = compdb_register("unix-excl", "comp-unix-excl",
+			total_bytes > 100000000000ULL ? "LZMA" : "GZIP");
 	if (err) {
 		com_err(dbfile, 0, "%s while setting up compressed db",
 			sqlite3_errstr(err));

@@ -2217,7 +2217,9 @@ _("%s: cannot init perag data (%d). Continuing anyway.\n"),
 		goto out;
 	}
 
-	err = compdb_register("unix-excl", "comp-unix-excl", "LZMA");
+	total_bytes = fs->m_sb.sb_dblocks * fs->m_sb.sb_blocksize;
+	err = compdb_register("unix-excl", "comp-unix-excl",
+			total_bytes > 100000000000ULL ? "LZMA" : "GZIP");
 	if (err) {
 		fprintf(stderr, "%s %s\n", sqlite3_errstr(err),
 			_("while setting up compressed db"));

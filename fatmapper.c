@@ -459,7 +459,9 @@ int main(int argc, char *argv[])
 	read_boot(fs);
 	read_fat(fs);
 
-	err = compdb_register("unix-excl", "comp-unix-excl", NULL);
+	total_bytes = (uint64_t)fs->clusters * fs->cluster_size;
+	err = compdb_register("unix-excl", "comp-unix-excl",
+			total_bytes > 100000000000ULL ? "LZMA" : "GZIP");
 	if (err) {
 		die("%s while setting up compressed db",
 			sqlite3_errstr(err));
