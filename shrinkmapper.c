@@ -222,10 +222,11 @@ main(
 		outp = bin;
 		bhead = bin;
 		try_compress = 0;
-		if ((cdb.type == DB_REGULAR || inc != outc) && page == 0) {
+		if (page == 0) {
 			/* Do we need to change the header? */
-			memcpy(outp, cdb.out_file_header,
-					sizeof(cdb.out_file_header));
+			if (cdb.type == DB_REGULAR || inc != outc)
+				memcpy(outp, cdb.out_file_header,
+						sizeof(cdb.out_file_header));
 		} else if (cdb.type == DB_COMPRESSED &&
 			   !memcmp(bhead->magic, COMPDB_BLOCK_MAGIC,
 					sizeof(COMPDB_BLOCK_MAGIC)) &&

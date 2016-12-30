@@ -124,7 +124,7 @@ compdb_read(
 	/* We don't compress non-btree pages. */
 	bhead = ptr;
 	page = iOfst / ff->pagesize;
-	if (ff->db_type == DB_REGULAR ||
+	if (ff->db_type == DB_REGULAR || page == 0 ||
 	    (page >= ff->freestart && page < ff->freestart + ff->freelen) ||
 	    memcmp(bhead->magic, COMPDB_BLOCK_MAGIC, sizeof(bhead->magic))) {
 		dbg_printf("%s(%d) len=%d off=%llu\n", __func__, __LINE__,
@@ -195,7 +195,7 @@ compdb_write(
 
 	/* We don't compress non-btree pages. */
 	page = iOfst / ff->pagesize;
-	if (ff->db_type == DB_REGULAR ||
+	if (ff->db_type == DB_REGULAR || page == 0 ||
 	    (page >= ff->freestart && page < ff->freestart + ff->freelen))
 		goto no_compr;
 
