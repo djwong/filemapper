@@ -176,9 +176,15 @@ main(
 		return 2;
 	}
 
+	cdb.type = DB_UNKNOWN;
 	ret = sniff(&super, &cdb);
 	if (ret < 0) {
 		perror(argv[1]);
+		return 2;
+	}
+
+	if (cdb.type == DB_UNKNOWN) {
+		printf("%s: Unrecognized file type.\n", argv[1]);
 		return 2;
 	}
 
