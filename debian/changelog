@@ -1,3 +1,10 @@
+filemapper (0.8.5-1) xenial; urgency=medium
+
+  * Default to LZMA for filesystems > 100G.
+  * Don't compress page zero!
+
+ -- Darrick J. Wong <djwong@djwong.org>  Thu, 29 Dec 2016 23:31:29 -0800
+
 filemapper (0.8.4-1) xenial; urgency=medium
 
   * Fix freelist page detection.
