@@ -11,6 +11,7 @@ import array
 import fiemap
 import math
 import compdb
+import vfs
 from collections import namedtuple
 from abc import ABCMeta, abstractmethod
 from dateutil import tz
@@ -1462,7 +1463,7 @@ class fiemap_db(fmdb):
 		self.start_update()
 		self.collect_fs_stats()
 		t2 = datetime.datetime.now()
-		fiemap.walk_fs(self.fspath,
+		vfs.walk_fs(self.fspath,
 			self.insert_dir,
 			self.insert_inode,
 			self.insert_extent)
