@@ -1,5 +1,5 @@
 /*
- * Generate filemapper databases from ntfs filesystems.
+ * Generate filemapper databases from xfs filesystems.
  * Copyright 2016 Darrick J. Wong.
  * Licensed under the GPLv2.
  */
