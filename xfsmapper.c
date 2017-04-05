@@ -1677,6 +1677,7 @@ err:
 			goto out; \
 	} while(0);
 
+/* Walk this AG's unlinked inode hash bucket chains */
 static void
 walk_unlinked_inode_chain(
 	struct xfsmap		*wf,
