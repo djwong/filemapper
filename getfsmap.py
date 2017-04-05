@@ -94,6 +94,40 @@ def getfsmap(fd, getfsmap_keys = None, count = 10000):
 		key0 = rec
 		length = rec.length
 
+XFS_FMR_OWN_TYPE	= ord('X')
+XFS_FMR_OWN_FS		= FMR_OWNER(XFS_FMR_OWN_TYPE, 1)
+XFS_FMR_OWN_LOG		= FMR_OWNER(XFS_FMR_OWN_TYPE, 2)
+XFS_FMR_OWN_AG		= FMR_OWNER(XFS_FMR_OWN_TYPE, 3)
+XFS_FMR_OWN_INOBT	= FMR_OWNER(XFS_FMR_OWN_TYPE, 4)
+XFS_FMR_OWN_INODES	= FMR_OWNER(XFS_FMR_OWN_TYPE, 5)
+XFS_FMR_OWN_REFC	= FMR_OWNER(XFS_FMR_OWN_TYPE, 6)
+XFS_FMR_OWN_COW		= FMR_OWNER(XFS_FMR_OWN_TYPE, 7)
+XFS_FMR_OWN_DEFECTIVE	= FMR_OWNER(XFS_FMR_OWN_TYPE, 8)
+
+special_owner_types = {
+	XFS_FMR_OWN_TYPE:	'XFS',
+}
+
+special_owner_codes = {
+	XFS_FMR_OWN_FS:		'FS data',
+	XFS_FMR_OWN_LOG:	'log',
+	XFS_FMR_OWN_AG:		'AG data',
+	XFS_FMR_OWN_INOBT:	'inode btree',
+	XFS_FMR_OWN_INODES:	'inodes',
+	XFS_FMR_OWN_REFC:	'refcount btree',
+	XFS_FMR_OWN_COW:	'CoW staging',
+	XFS_FMR_OWN_DEFECTIVE:	'defective',
+}
+
+def special_owner_name(owner):
+	'''Formulate a name for a special owner.'''
+	t = FMR_OWNER_TYPE(owner)
+	c = FMR_OWNER_CODE(owner)
+	if owner in special_owner_codes:
+		return '%s:%s' % (special_owner_types[t], \
+				special_owner_codes[owner])
+	return '%d:%d' % (t, c)
+
 if __name__ == '__main__':
 	import sys
 	import pprint

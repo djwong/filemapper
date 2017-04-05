@@ -120,6 +120,8 @@ all_extent_types = set(extent_types.keys())
 
 metadata_dir = '$metadata'
 freespace_file = 'freespace'
+metadata_file = 'metadata'
+unlinked_dir = 'unlinked'
 
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''
@@ -1472,12 +1474,8 @@ class fiemap_db(fmdb):
 		self.start_update()
 		self.collect_fs_stats()
 		t2 = datetime.datetime.now()
-		vfs.walk_fs(self.fspath,
-			self.insert_dir,
-			self.insert_inode,
+		vfs.walk_fs(self.fspath, self.insert_dir, self.insert_inode, \
 			self.insert_extent)
-		vfs.walk_spacemap(self.fspath, self.insert_dir, \
-			self.insert_inode, self.insert_extent)
 		t3 = datetime.datetime.now()
 		self.finish_update()
 		self.finalize_fs_stats()
