@@ -254,8 +254,10 @@ fail:
 #define STR_HIDDEN_DIR		"hidden_files"
 #define INO_FREESP_FILE		(-13)
 #define STR_FREESP_FILE		FREESP_FILE
+#define INO_UNLINKED_DIR	(-14)
+#define STR_UNLINKED_DIR	UNLINKED_DIR
 /* This must come last */
-#define INO_GROUPS_DIR		(-14)
+#define INO_GROUPS_DIR		(-15)
 #define STR_GROUPS_DIR		"groups"
 
 /* Hidden inode paths */
@@ -1675,6 +1677,42 @@ err:
 			goto out; \
 	} while(0);
 
+static void
+walk_unlinked_inode_chain(
+	struct xfsmap		*wf,
+	xfs_agnumber_t		agno,
+	xfs_agino_t		agino)
+{
+	xfs_ino_t		ino;
+	struct xfs_imap		imap;
+	struct xfs_dinode	*dip;
+	struct xfs_buf		*bp;
+	char			name[PATH_MAX];
+
+	wf->wf_dirpath = "/" STR_METADATA_DIR "/" STR_UNLINKED_DIR;
+	while (agino != NULLAGINO && agino != 0) {
+		ino = XFS_AGINO_TO_INO(wf->fs, agno, agino);
+		snprintf(name, PATH_MAX, "%lu", ino);
+
+		/* Walk the unlinked inode */
+		walk_fs_helper(INO_UNLINKED_DIR, name, strlen(name),
+				ino, XFS_DIR3_FT_UNKNOWN, wf);
+		if (wf->err || wf->wf_db_err)
+			break;
+
+		/* Grab the on-disk buffer to read next unlinked */
+		wf->err = xfs_imap(wf->fs, NULL, ino, &imap, 0);
+		if (wf->err)
+			break;
+		wf->err = xfs_imap_to_bp(wf->fs, NULL, &imap, &dip, &bp, 0, 0);
+		if (wf->err)
+			break;
+		libxfs_trans_brelse(NULL, bp);
+
+		agino = be32_to_cpu(dip->di_next_unlinked);
+	}
+}
+
 #define INJECT_ROOT_METADATA(suffix, type) \
 	INJECT_METADATA(INO_METADATA_DIR, "/" STR_METADATA_DIR, INO_##suffix, STR_##suffix, type)
 
@@ -1691,8 +1729,9 @@ walk_metadata(
 				*bmap_cntbt, *bmap_inobt, *bmap_finobt,
 				*bmap_itable, *bmap_rmapbt, *bmap_refcountbt;
 	struct xfs_ag		*ags = NULL;
-	xfs_agf_t		*agf;
-	xfs_agi_t		*agi;
+	struct xfs_agf		*agf;
+	struct xfs_agi		*agi;
+	__be32			*freelist;
 	char			path[PATH_MAX + 1];
 	uint64_t		loff;
 	int64_t			ino, group_ino;
@@ -1701,8 +1740,8 @@ walk_metadata(
 	xfs_agnumber_t		agno;
 	xfs_agblock_t		left_inobt_leaf_agbno = 0;
 	xfs_agblock_t		left_bnobt_leaf_agbno = 0;
-	__be32			*freelist;
 	int			w;
+	bool			added_unlinked = false;
 	int			err;
 
 	/* Create hidden inodes */
@@ -1743,6 +1782,18 @@ walk_metadata(
 	if (xfs_sb_version_hasreflink(&fs->m_sb))
 		INJECT_ROOT_METADATA(REFCOUNTBT_FILE, XFS_DIR3_XT_METADATA);
 	INJECT_ROOT_METADATA(ITABLE_FILE, XFS_DIR3_XT_METADATA);
+
+	/* Do we need an unlinked inode dir? */
+	for (agno = 0; agno < fs->m_sb.sb_agcount && !added_unlinked; agno++) {
+		agi = XFS_BUF_TO_AGI(ags[agno].agi);
+		for (i = 0; i < XFS_AGI_UNLINKED_BUCKETS && !added_unlinked; i++) {
+			if (i) {
+				INJECT_ROOT_METADATA(UNLINKED_DIR,
+						XFS_DIR3_FT_DIR);
+				added_unlinked = true;
+			}
+		}
+	}
 
 	/* Handle the log */
 	if (fs->m_sb.sb_logstart) {
@@ -1792,6 +1843,7 @@ walk_metadata(
 	snprintf(path, PATH_MAX, "%d", fs->m_sb.sb_agcount);
 	w = strlen(path);
 	wf->itype = XFS_DIR3_XT_METADATA;
+	/* Iterate all AG metadata... */
 	for (agno = 0; agno < fs->m_sb.sb_agcount; agno++) {
 		agf = XFS_BUF_TO_AGF(ags[agno].agf);
 		agi = XFS_BUF_TO_AGI(ags[agno].agi);
@@ -1973,7 +2025,14 @@ no_rmapbt:
 		ino--;
 #endif
 no_refcountbt:
-		;
+
+		/* Unlinked inodes. */
+		for (i = 0; i < XFS_AGI_UNLINKED_BUCKETS; i++) {
+			walk_unlinked_inode_chain(wf, agno, \
+					be32_to_cpu(agi->agi_unlinked[i]));
+			if (wf->err || wf->wf_db_err)
+				goto out;
+		}
 	}
 
 	/* Emit extents for the overall files */

@@ -48,7 +48,7 @@ struct overview_t {
 #define METADATA_DIR		"$metadata"
 #define FREESP_FILE		"freespace"
 #define METADATA_FILE		"metadata"
-#define UNLINKED_DIR		"unlinked"
+#define UNLINKED_DIR		"orphaned"
 
 #define EXT_TYPE_FILE		0
 #define EXT_TYPE_DIR		1
