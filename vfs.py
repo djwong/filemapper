@@ -3,15 +3,9 @@
 # Copyright (C) 2017 Darrick J. Wong.  All rights reserved.
 # Licensed under the GPLv2.
 
-import fiemap
-#import array
-#import fcntl
-#import struct
-#import collections
 import os
-#import errno
 import stat
-#import itertools
+import fiemap
 
 def walk_fs(path, dir_fn, ino_fn, extent_fn):
 	'''Iterate the filesystem, looking for extent data.'''
