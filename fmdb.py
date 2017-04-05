@@ -24,7 +24,7 @@ def print_times(label, times):
 
 def print_sql(qstr, qarg = None):
 	'''Print some debug stuff.'''
-	return
+	#return
 	if qarg is None:
 		print(qstr)
 	else:
@@ -118,10 +118,15 @@ extent_type_strings_long = {extent_types_long[i]: i for i in extent_types_long}
 
 all_extent_types = set(extent_types.keys())
 
+metadata_dir = '$metadata'
+freespace_file = 'freespace'
+
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''
 	if is_xattr:
 		return EXT_TYPE_XATTR
+	elif xstat.st_mode < 0:
+		return primary_extent_type_for_inode[-xstat.st_mode]
 	elif stat.S_ISREG(xstat.st_mode):
 		return EXT_TYPE_FILE
 	elif stat.S_ISDIR(xstat.st_mode):
@@ -580,8 +585,12 @@ class fmdb(object):
 		'''Insert an inode record into the database.'''
 		if path == '/' or path == self.fs.pathsep:
 			raise ValueError("'%s' is an invalid path.  Check code." % path)
-		if stat.S_ISDIR(xstat.st_mode):
+		if xstat.st_mode < 0:
+			xtype = -xstat.st_mode
+		elif stat.S_ISDIR(xstat.st_mode):
 			xtype = INO_TYPE_DIR
+		elif stat.S_ISLNK(xstat.st_mode):
+			xtype = INO_TYPE_SYMLINK
 		else:
 			xtype = INO_TYPE_FILE
 		qstr = 'INSERT OR REPLACE INTO inode_t VALUES(?, ?, NULL, NULL, ?, ?, ?, ?, ?)'
@@ -1467,8 +1476,10 @@ class fiemap_db(fmdb):
 			self.insert_dir,
 			self.insert_inode,
 			self.insert_extent)
+		vfs.walk_spacemap(self.fspath, self.insert_dir, \
+			self.insert_inode, self.insert_extent)
 		t3 = datetime.datetime.now()
 		self.finish_update()
 		self.finalize_fs_stats()
 		t4 = datetime.datetime.now()
-		print_times('fiemap_analyze', [t0, t1, t2, t3, t4])
+		print_times('fs_analyze', [t0, t1, t2, t3, t4])
