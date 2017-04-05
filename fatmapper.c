@@ -57,7 +57,7 @@ static DOS_FILE *root;
 
 #define ROOT_DIR_INO	1
 #define INO_METADATA_DIR	(-1)
-#define STR_METADATA_DIR	"$metadata"
+#define STR_METADATA_DIR	METADATA_DIR
 #define INO_SB_FILE		(-2)
 #define STR_SB_FILE		"superblock"
 #define INO_PRIMARY_FAT_FILE	(-3)
@@ -65,7 +65,7 @@ static DOS_FILE *root;
 #define INO_BACKUP_FAT_FILE	(-4)
 #define STR_BACKUP_FAT_FILE	"backup_fat"
 #define INO_FREESP_FILE		(-5)
-#define STR_FREESP_FILE		"freespace"
+#define STR_FREESP_FILE		FREESP_FILE
 
 #define FSTART(p,fs) \
   ((uint32_t)le16toh(p->dir_ent.start) | \

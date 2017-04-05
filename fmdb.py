@@ -118,10 +118,10 @@ extent_type_strings_long = {extent_types_long[i]: i for i in extent_types_long}
 
 all_extent_types = set(extent_types.keys())
 
-metadata_dir = '$metadata'
-freespace_file = 'freespace'
-metadata_file = 'metadata'
-unlinked_dir = 'unlinked'
+METADATA_DIR = '$metadata'
+FREESP_FILE = 'freespace'
+METADATA_FILE = 'metadata'
+UNLINKED_DIR = 'unlinked'
 
 def stmode_to_type(xstat, is_xattr):
 	'''Convert a stat mode to a type code.'''

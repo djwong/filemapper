@@ -43,9 +43,9 @@ struct ntfsmap_t {
 /* Fake inodes for metadata */
 
 #define INO_METADATA_DIR	(-1)
-#define STR_METADATA_DIR	"$metadata"
+#define STR_METADATA_DIR	METADATA_DIR
 #define INO_FREESP_FILE		(-2)
-#define STR_FREESP_FILE		"freespace"
+#define STR_FREESP_FILE		FREESP_FILE
 
 /* These bits are more or less copied from ntfsprogs. */
 

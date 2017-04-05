@@ -45,6 +45,11 @@ struct overview_t {
 #define INO_TYPE_SYMLINK	3
 #define INO_TYPE_FREESP		4
 
+#define METADATA_DIR		"$metadata"
+#define FREESP_FILE		"freespace"
+#define METADATA_FILE		"metadata"
+#define UNLINKED_DIR		"unlinked"
+
 #define EXT_TYPE_FILE		0
 #define EXT_TYPE_DIR		1
 #define EXT_TYPE_EXTENT		2

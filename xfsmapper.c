@@ -229,7 +229,7 @@ fail:
 /* Fake inodes for metadata */
 
 #define INO_METADATA_DIR	(-1)
-#define STR_METADATA_DIR	"$metadata"
+#define STR_METADATA_DIR	METADATA_DIR
 #define INO_SB_FILE		(-2)
 #define STR_SB_FILE		"superblocks"
 #define INO_BNOBT_FILE		(-3)
@@ -253,7 +253,7 @@ fail:
 #define INO_HIDDEN_DIR		(-12)
 #define STR_HIDDEN_DIR		"hidden_files"
 #define INO_FREESP_FILE		(-13)
-#define STR_FREESP_FILE		"freespace"
+#define STR_FREESP_FILE		FREESP_FILE
 /* This must come last */
 #define INO_GROUPS_DIR		(-14)
 #define STR_GROUPS_DIR		"groups"

@@ -61,7 +61,7 @@ static int extent_codes[] = {
 
 /* Fake inodes for FS metadata */
 #define INO_METADATA_DIR	(-1)
-#define STR_METADATA_DIR	"$metadata"
+#define STR_METADATA_DIR	METADATA_DIR
 #define INO_SB_FILE		(-2)
 #define STR_SB_FILE		"superblocks"
 #define INO_GDT_FILE		(-3)
@@ -75,7 +75,7 @@ static int extent_codes[] = {
 #define INO_HIDDEN_DIR		(-7)
 #define STR_HIDDEN_DIR		"hidden_files"
 #define INO_FREESP_FILE		(-8)
-#define STR_FREESP_FILE		"freespace"
+#define STR_FREESP_FILE		FREESP_FILE
 /* This must come last */
 #define INO_GROUPS_DIR		(-8)
 #define STR_GROUPS_DIR		"groups"

@@ -42,13 +42,13 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			os.close(fd)
 
 	def ensure_metadir(stat_dict):
-		if fmdb.metadata_dir in stat_dict:
-			return stat_dict[fmdb.metadata_dir]
+		if fmdb.METADATA_DIR in stat_dict:
+			return stat_dict[fmdb.METADATA_DIR]
 		metadir_stat = fake_stat(-1, -fmdb.INO_TYPE_DIR, None, None, None, None)
-		ino_fn(metadir_stat, '/' + fmdb.metadata_dir)
+		ino_fn(metadir_stat, '/' + fmdb.METADATA_DIR)
 		root_stat = os.lstat(path)
-		dir_fn(root_stat, [(fmdb.metadata_dir, metadir_stat)])
-		stat_dict[fmdb.metadata_dir] = metadir_stat
+		dir_fn(root_stat, [(fmdb.METADATA_DIR, metadir_stat)])
+		stat_dict[fmdb.METADATA_DIR] = metadir_stat
 		return metadir_stat
 
 	def ensure_metadir_file(stat_dict, owner, mode, name):
@@ -56,7 +56,7 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 			return stat_dict[owner]
 		sb = fake_stat(owner, mode, None, None, None, None)
 		metadir_stat = ensure_metadir(stat_dict)
-		ino_fn(sb, '/' + fmdb.metadata_dir + '/' + name)
+		ino_fn(sb, '/' + fmdb.METADATA_DIR + '/' + name)
 		dir_fn(metadir_stat, [(name, sb)])
 		stat_dict[owner] = sb
 		return sb
@@ -65,8 +65,8 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 		if owner in stat_dict:
 			return stat_dict[owner]
 		sb = fake_stat(owner, stat.S_IFREG, None, None, None, None)
-		udir_stat = ensure_metadir_file(stat_dict, -4, stat.S_IFDIR, fmdb.unlinked_dir)
-		ino_fn(sb, '/' + fmdb.metadata_dir + '/' + fmdb.unlinked_dir + '/%d' % owner)
+		udir_stat = ensure_metadir_file(stat_dict, -4, stat.S_IFDIR, fmdb.UNLINKED_DIR)
+		ino_fn(sb, '/' + fmdb.METADATA_DIR + '/' + fmdb.UNLINKED_DIR + '/%d' % owner)
 		dir_fn(udir_stat, [('%d' % owner, sb)])
 		stat_dict[owner] = sb
 		return sb
@@ -149,10 +149,10 @@ def walk_fs(path, dir_fn, ino_fn, extent_fn):
 				sb = ensure_unlinked_file(stat_dict, rmap.owner)
 			elif rmap.owner == getfsmap.FMR_OWN_FREE:
 				# Free space
-				sb = ensure_metadir_file(stat_dict, -2, -fmdb.INO_TYPE_FREESP, fmdb.freespace_file)
+				sb = ensure_metadir_file(stat_dict, -2, -fmdb.INO_TYPE_FREESP, fmdb.FREESP_FILE)
 			elif rmap.owner == getfsmap.FMR_OWN_METADATA:
 				# Generic metadata
-				sb = ensure_metadir_file(stat_dict, -3, -fmdb.INO_TYPE_METADATA, fmdb.metadata_file)
+				sb = ensure_metadir_file(stat_dict, -3, -fmdb.INO_TYPE_METADATA, fmdb.METADATA_FILE)
 			elif getfsmap.FMR_OWNER_TYPE(rmap.owner) != 0:
 				# FS-specific metadata
 				sb = ensure_metadir_file(stat_dict, rmap.owner, -fmdb.INO_TYPE_METADATA, getfsmap.special_owner_name(rmap.owner))
