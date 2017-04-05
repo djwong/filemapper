@@ -24,7 +24,7 @@ def print_times(label, times):
 
 def print_sql(qstr, qarg = None):
 	'''Print some debug stuff.'''
-	#return
+	return
 	if qarg is None:
 		print(qstr)
 	else:
