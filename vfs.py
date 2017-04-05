@@ -139,5 +139,7 @@ def walk_spacemap(path, dir_fn, ino_fn, extent_fn):
 			sb = ensure_metadir_file(stat_dict, ino, mode, name)
 			ext = fiemap.fiemap_rec(rmap.offset, rmap.physical, rmap.length, 0, 0)
 			extent_fn(sb, ext, False)
+	except:
+		pass
 	finally:
 		os.close(fd)
