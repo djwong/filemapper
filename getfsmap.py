@@ -41,7 +41,7 @@ _FS_IOC_GETFSMAP = ioctl._IOWR(ord('X'), 59, _struct_fsmap_head)
 fsmap_key = collections.namedtuple('fsmap_key',
 		'device flags physical owner offset')
 fsmap_rec = collections.namedtuple('fsmap_rec',
-		'device flags physical owner offset hdr_flags')
+		'device flags physical owner offset length hdr_flags')
 
 def getfsmap(fd, getfsmap_keys = None, count = 10000):
 	'''Iterable GETFSMAP generator...'''
@@ -86,7 +86,7 @@ def getfsmap(fd, getfsmap_keys = None, count = 10000):
 		assert len(buf) >= bufsz
 		for offset in range(_struct_fsmap_head.size, bufsz, _struct_fsmap.size):
 			x = _struct_fsmap.unpack_from(buf, offset)
-			rec = fsmap_rec(x[0], x[1], x[2], x[3], x[4], oflags)
+			rec = fsmap_rec(x[0], x[1], x[2], x[3], x[4], x[5], oflags)
 			yield rec
 
 		if rec.flags & FMR_OF_LAST:
