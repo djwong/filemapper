@@ -280,7 +280,7 @@ void insert_extent(struct filemapper_t *wf, int64_t ino, uint64_t physical,
 	int err, err2, col = 1;
 
 	dbg_printf("%s: ino=%"PRId64" phys=%"PRIu64" logical=%"PRIu64" len=%"PRIu64" flags=0x%x type=%d\n", __func__,
-		   ino, physical, *logical, length, flags, type);
+		   ino, physical, logical ? *logical : 0, length, flags, type);
 
 	/* Update the dentry table */
 	err = sqlite3_prepare_v2(wf->db, extent_sql, -1, &stmt, NULL);
