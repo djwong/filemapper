@@ -76,8 +76,10 @@ static int extent_codes[] = {
 #define STR_HIDDEN_DIR		"hidden_files"
 #define INO_FREESP_FILE		(-8)
 #define STR_FREESP_FILE		FREESP_FILE
+#define INO_UNLINKED_DIR	(-9)
+#define STR_UNLINKED_DIR	UNLINKED_DIR
 /* This must come last */
-#define INO_GROUPS_DIR		(-8)
+#define INO_GROUPS_DIR		(-10)
 #define STR_GROUPS_DIR		"groups"
 
 /* Hidden inode paths */
@@ -553,7 +555,7 @@ static int walk_fs_helper(ext2_ino_t dir, int entry,
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
 	if (dir)
-		insert_dentry(&wf->base, dir, name, dirent->inode);
+		insert_dentry(&wf->base, (signed)dir, name, dirent->inode);
 	if (wf->wf_db_err)
 		return DIRENT_ABORT;
 
@@ -592,6 +594,34 @@ static void walk_fs(struct e2map_t *wf)
 	dirent.name[0] = '/';
 	dirent.name[1] = 0;
 	walk_fs_helper(0, 0, &dirent, 0, 0, NULL, wf);
+}
+
+/* Walk the orphaned inode chain. */
+static void
+walk_unlinked_inode_chain(struct e2map_t *wf, ext2_ino_t ino)
+{
+	struct ext2_dir_entry dirent;
+	struct ext2_inode inode;
+
+	wf->wf_dirpath = "/" STR_METADATA_DIR "/" STR_UNLINKED_DIR;
+	while (ino != 0) {
+		snprintf(dirent.name, EXT2_NAME_LEN, "%u", ino);
+
+		/* Walk the unlinked inode */
+		dirent.inode = ino;
+		dirent.rec_len = sizeof(dirent);
+		dirent.name_len = strlen(dirent.name);
+		walk_fs_helper(INO_UNLINKED_DIR, 0, &dirent, 0, 0, NULL, wf);
+		if (wf->err || wf->wf_db_err)
+			break;
+
+		/* Grab the on-disk buffer to read next unlinked */
+		wf->err = ext2fs_read_inode(wf->fs, ino, &inode);
+		if (wf->err)
+			break;
+
+		ino = inode.i_dtime;
+	}
 }
 
 #define INJECT_METADATA(parent_ino, path, ino, name, type) \
@@ -831,6 +861,14 @@ static void walk_metadata(struct e2map_t *wf)
 		if (wf->wf_db_err)
 			goto out;
 		ino--;
+	}
+
+	/* Unlinked inodes. */
+	if (fs->super->s_last_orphan) {
+		INJECT_ROOT_METADATA(UNLINKED_DIR, EXT2_FT_DIR);
+		walk_unlinked_inode_chain(wf, fs->super->s_last_orphan);
+		if (wf->err || wf->wf_db_err)
+			goto out;
 	}
 
 	/* Emit extents for the overall files */
