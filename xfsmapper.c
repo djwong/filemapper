@@ -247,7 +247,7 @@ fail:
 #define INO_FL_FILE		(-9)
 #define STR_FL_FILE		"freelist"
 #define INO_JOURNAL_FILE	(-10)
-#define STR_JOURNAL_FILE	"journal"
+#define STR_JOURNAL_FILE	"log"
 #define INO_ITABLE_FILE		(-11)
 #define STR_ITABLE_FILE		"inodes"
 #define INO_HIDDEN_DIR		(-12)
