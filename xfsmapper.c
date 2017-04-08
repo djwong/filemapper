@@ -256,8 +256,10 @@ fail:
 #define STR_FREESP_FILE		FREESP_FILE
 #define INO_UNLINKED_DIR	(-14)
 #define STR_UNLINKED_DIR	UNLINKED_DIR
+#define INO_COW_FILE		(-15)
+#define STR_COW_FILE		"cow"
 /* This must come last */
-#define INO_GROUPS_DIR		(-15)
+#define INO_GROUPS_DIR		(-16)
 #define STR_GROUPS_DIR		"groups"
 
 /* Hidden inode paths */
@@ -1521,6 +1523,72 @@ walk_ag_refcountbt_nodes(
 	return walk_ag_btree_nodes(fs, ino, agno, rootbno, XFS_REFC_BTREE_REF,
 			&xfs_refcountbt_metadata_ops, fn, priv_data, NULL);
 }
+
+struct walk_ag_cow_data {
+	int64_t			ino;
+	struct xfsmap		*wf;
+	extent_walk_fn		fn;
+};
+
+static int
+mark_cow_extent(
+	struct xfs_btree_cur		*cur,
+	union xfs_btree_rec		*rec,
+	void				*priv)
+{
+	struct walk_ag_cow_data		*d = priv;
+	struct xfs_extent_t		xext = { 0 };
+	struct xfs_refcount_irec	rc;
+	xfs_fsblock_t			fsbno;
+
+	xfs_refcount_btrec_to_irec(rec, &rc);
+	fsbno = XFS_AGB_TO_FSB(cur->bc_mp, cur->bc_private.a.agno,
+			rc.rc_startblock);
+	xext.p_off = XFS_FSBLOCK_TO_BYTES(cur->bc_mp, fsbno);
+	xext.l_off = 0;
+	xext.len = XFS_FSBLOCK_TO_BYTES(cur->bc_mp, rc.rc_blockcount);
+	xext.state = XFS_EXT_NORM;
+	return d->fn(d->ino, &xext, d->wf);
+}
+
+static int
+walk_ag_cow_extents(
+	struct xfsmap		*wf,
+	int64_t			ino,
+	xfs_agnumber_t		agno,
+	extent_walk_fn		fn)
+{
+	struct walk_ag_cow_data	priv;
+	struct xfs_btree_cur	*cur;
+	struct xfs_buf		*agbp;
+	union xfs_btree_irec	low;
+	union xfs_btree_irec	high;
+	int			error;
+
+	error = libxfs_alloc_read_agf(wf->fs, NULL, agno, 0, &agbp);
+	if (error)
+		return error;
+	cur = libxfs_refcountbt_init_cursor(wf->fs, NULL, agbp, agno, NULL);
+
+	/* Find all the leftover CoW staging extents. */
+	memset(&low, 0, sizeof(low));
+	memset(&high, 0, sizeof(high));
+	low.rc.rc_startblock = XFS_REFC_COW_START;
+	high.rc.rc_startblock = -1U;
+	priv.wf = wf;
+	priv.fn = fn;
+	priv.ino = ino;
+	error = xfs_btree_query_range(cur, &low, &high, mark_cow_extent,
+			&priv);
+	if (error)
+		goto out_cursor;
+
+out_cursor:
+	libxfs_btree_del_cursor(cur, XFS_BTREE_ERROR);
+	libxfs_trans_brelse(NULL, agbp);
+
+	return error;
+}
 #endif
 
 /* Walk the bnobt blocks of a AG */
@@ -1728,7 +1796,8 @@ walk_metadata(
 	struct xfs_mount	*fs = wf->fs;
 	struct big_bmap		*bmap_ag, *bmap_agfl, *bmap_freesp, *bmap_bnobt,
 				*bmap_cntbt, *bmap_inobt, *bmap_finobt,
-				*bmap_itable, *bmap_rmapbt, *bmap_refcountbt;
+				*bmap_itable, *bmap_rmapbt, *bmap_refcountbt,
+				*bmap_cow;
 	struct xfs_ag		*ags = NULL;
 	struct xfs_agf		*agf;
 	struct xfs_agi		*agi;
@@ -1780,8 +1849,10 @@ walk_metadata(
 		INJECT_ROOT_METADATA(FINOBT_FILE, XFS_DIR3_XT_METADATA);
 	if (xfs_sb_version_hasrmapbt(&fs->m_sb))
 		INJECT_ROOT_METADATA(RMAPBT_FILE, XFS_DIR3_XT_METADATA);
-	if (xfs_sb_version_hasreflink(&fs->m_sb))
+	if (xfs_sb_version_hasreflink(&fs->m_sb)) {
 		INJECT_ROOT_METADATA(REFCOUNTBT_FILE, XFS_DIR3_XT_METADATA);
+		INJECT_ROOT_METADATA(COW_FILE, XFS_DIR3_XT_METADATA);
+	}
 	INJECT_ROOT_METADATA(ITABLE_FILE, XFS_DIR3_XT_METADATA);
 
 	/* Do we need an unlinked inode dir? */
@@ -1837,6 +1908,9 @@ walk_metadata(
 	if (wf->err)
 		goto out;
 	wf->err = big_block_bmap_init(fs, &bmap_refcountbt);
+	if (wf->err)
+		goto out;
+	wf->err = big_block_bmap_init(fs, &bmap_cow);
 	if (wf->err)
 		goto out;
 
@@ -2024,6 +2098,20 @@ no_rmapbt:
 		if (wf->err || wf->wf_db_err)
 			goto out;
 		ino--;
+
+		/* CoW staging */
+		wf->bbmap = bmap_cow;
+		INJECT_METADATA(group_ino, path, ino, STR_COW_FILE,
+				XFS_DIR3_XT_METADATA);
+		err = walk_ag_cow_extents(wf, ino, agno, insert_meta_extent);
+		if (!wf->err)
+			wf->err = err;
+		if (wf->err)
+			goto out;
+		walk_ag_bitmap(wf, ino, wf->bbmap, agno);
+		if (wf->err || wf->wf_db_err)
+			goto out;
+		ino--;
 #endif
 no_refcountbt:
 
@@ -2072,6 +2160,9 @@ no_refcountbt:
 		walk_bitmap(wf, INO_REFCOUNTBT_FILE, bmap_refcountbt);
 		if (wf->err || wf->wf_db_err)
 			goto out;
+		walk_bitmap(wf, INO_COW_FILE, bmap_cow);
+		if (wf->err || wf->wf_db_err)
+			goto out;
 	}
 
 	/* Now go for the hidden files */
@@ -2085,6 +2176,8 @@ no_refcountbt:
 			goto out;
 	}
 out:
+	if (bmap_cow)
+		big_bmap_destroy(bmap_cow);
 	if (bmap_refcountbt)
 		big_bmap_destroy(bmap_refcountbt);
 	if (bmap_rmapbt)
