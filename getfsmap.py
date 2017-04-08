@@ -104,19 +104,30 @@ XFS_FMR_OWN_REFC	= FMR_OWNER(XFS_FMR_OWN_TYPE, 6)
 XFS_FMR_OWN_COW		= FMR_OWNER(XFS_FMR_OWN_TYPE, 7)
 XFS_FMR_OWN_DEFECTIVE	= FMR_OWNER(XFS_FMR_OWN_TYPE, 8)
 
+EXT4_FMR_OWN_TYPE	= ord('f')
+EXT4_FMR_OWN_GDT	= FMR_OWNER(EXT4_FMR_OWN_TYPE, 1)
+EXT4_FMR_OWN_RESV_GDT	= FMR_OWNER(EXT4_FMR_OWN_TYPE, 2)
+EXT4_FMR_OWN_BLKBM	= FMR_OWNER(EXT4_FMR_OWN_TYPE, 3)
+EXT4_FMR_OWN_INOBM	= FMR_OWNER(EXT4_FMR_OWN_TYPE, 4)
+
 special_owner_types = {
-	XFS_FMR_OWN_TYPE:	'XFS',
+	XFS_FMR_OWN_TYPE:	'xfs',
+	EXT4_FMR_OWN_TYPE:	'ext4',
 }
 
 special_owner_codes = {
-	XFS_FMR_OWN_FS:		'FS data',
+	XFS_FMR_OWN_FS:		'fsdata',
 	XFS_FMR_OWN_LOG:	'log',
-	XFS_FMR_OWN_AG:		'AG data',
-	XFS_FMR_OWN_INOBT:	'inode btree',
+	XFS_FMR_OWN_AG:		'bnobt-cntbt-rmapbt',
+	XFS_FMR_OWN_INOBT:	'inobt',
 	XFS_FMR_OWN_INODES:	'inodes',
-	XFS_FMR_OWN_REFC:	'refcount btree',
-	XFS_FMR_OWN_COW:	'CoW staging',
+	XFS_FMR_OWN_REFC:	'refcountbt',
+	XFS_FMR_OWN_COW:	'cow',
 	XFS_FMR_OWN_DEFECTIVE:	'defective',
+	EXT4_FMR_OWN_GDT:	'group_descriptors',
+	EXT4_FMR_OWN_RESV_GDT:	'reserved_gdt_blocks',
+	EXT4_FMR_OWN_BLKBM:	'block_bitmap',
+	EXT4_FMR_OWN_INOBM:	'inode_bitmap',
 }
 
 def special_owner_name(owner):
