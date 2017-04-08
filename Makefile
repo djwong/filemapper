@@ -17,6 +17,7 @@ DOSFSTOOLS ?= Please_set_DOSFSTOOLS_to_the_DOS_source_directory
 DOSFS_HEADERS=$(DOSFSTOOLS)/src/fsck.fat.h $(DOSFSTOOLS)/src/file.h $(DOSFSTOOLS)/src/fat.h $(DOSFSTOOLS)/src/lfn.h $(DOSFSTOOLS)/src/charconv.h $(DOSFSTOOLS)/src/boot.h $(DOSFSTOOLS)/src/common.h $(DOSFSTOOLS)/src/io.h
 PYINCLUDE ?= -I/usr/include/python3.5m/
 COMPDB_LIBS=-lz -llz4 -llzma -lbz2
+pyfiles=fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py getfsmap.py ioctl.py vfs.py
 
 ifeq ("$(notdir $(wildcard $(XFSPROGS)/libxfs/.libs/libxfs.a))", "libxfs.a")
 xfsmapper=xfsmapper
@@ -29,7 +30,7 @@ progs=filemapper e2mapper ntfsmapper shrinkmapper $(xfsmapper) $(fatmapper)
 libs=compdb.so
 manpages=$(patsubst %,%.1.gz,$(progs))
 
-all: $(progs) $(libs) $(manpages) filemapper.desktop
+all: $(progs) $(libs) $(manpages) $(pyfiles) filemapper.desktop
 
 %.1.gz: %.1
 	gzip -9n < $< > $@
@@ -96,7 +97,7 @@ install: all
 	install -s e2mapper ntfsmapper shrinkmapper $(DESTDIR)$(bindir)
 	install filemapper $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(fmlibdir)
-	install -m 0644 fiemap.py filemapper.py fmcli.py fmdb.py fmgui.py $(DESTDIR)$(fmlibdir)
+	install -m 0644 $(pyfiles) $(DESTDIR)$(fmlibdir)
 	install -s compdb.so $(DESTDIR)$(fmlibdir)
 	install -m 0644 filemapper.png filemapper.ui $(DESTDIR)$(fmlibdir)
 	install -d $(DESTDIR)$(man1dir)
