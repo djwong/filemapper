@@ -2,7 +2,7 @@ LTO=-flto
 CFLAGS=-Wall -O3 -g $(LTO) -std=gnu11 -fPIC
 LDFLAGS=-Wall -O3 -g $(LTO) -std=gnu11 -fPIC
 LIB_CFLAGS=-Wall -O3 -g -std=gnu11 -shared -fPIC
-VERSION=0.9.0
+VERSION=0.9.1
 
 prefix = /usr
 exec_prefix = ${prefix}
