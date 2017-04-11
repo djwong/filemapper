@@ -27,6 +27,7 @@ struct xfs_extent_t
 	int			unaligned:1;
 	int			inlinedata:1;
 	int			extentmap:1;
+	int			attrfork:1;
 };
 
 struct big_bmap;
@@ -51,8 +52,7 @@ struct xfsmap {
 
 #define XFS_DIR3_XT_METADATA	(XFS_DIR3_FT_MAX + 16)
 #define XFS_DIR3_XT_EXTENT	(XFS_DIR3_FT_MAX + 17)
-#define XFS_DIR3_XT_XATTR	(XFS_DIR3_FT_MAX + 18)
-#define XFS_DIR3_XT_FREESP	(XFS_DIR3_FT_MAX + 19)
+#define XFS_DIR3_XT_FREESP	(XFS_DIR3_FT_MAX + 18)
 
 static int type_codes[] = {
 	[XFS_DIR3_FT_REG_FILE]	= INO_TYPE_FILE,
@@ -68,7 +68,6 @@ static int extent_codes[] = {
 	[XFS_DIR3_FT_SYMLINK]	= EXT_TYPE_SYMLINK,
 	[XFS_DIR3_XT_METADATA]	= EXT_TYPE_METADATA,
 	[XFS_DIR3_XT_EXTENT]	= EXT_TYPE_EXTENT,
-	[XFS_DIR3_XT_XATTR]	= EXT_TYPE_XATTR,
 	[XFS_DIR3_XT_FREESP]	= EXT_TYPE_FREESP,
 };
 
@@ -623,9 +622,12 @@ insert_xfs_extent(
 		flags |= EXTENT_DATA_INLINE;
 	if (xext->unaligned)
 		flags |= EXTENT_NOT_ALIGNED;
-	type = extent_codes[wf->itype];
 	if (xext->extentmap)
 		type = EXT_TYPE_EXTENT;
+	else if (xext->attrfork)
+		type = EXT_TYPE_XATTR;
+	else
+		type = extent_codes[wf->itype];
 	if (xext->state == XFS_EXT_UNWRITTEN)
 		flags |= EXTENT_UNWRITTEN;
 	loff = xext->l_off;
@@ -668,7 +670,8 @@ walk_extent_helper(
 		if (last->p_off + last->len == extent->p_off &&
 		    last->l_off + last->len == extent->l_off &&
 		    last->state == extent->state &&
-		    last->len + extent->len <= MAX_EXTENT_LENGTH) {
+		    last->len + extent->len <= MAX_EXTENT_LENGTH &&
+		    last->attrfork == extent->attrfork) {
 			last->len += extent->len;
 			dbg_printf("R: ino=%ld len=%llu\n", ino,
 					last->len);
@@ -711,6 +714,7 @@ iterate_fork_mappings(
 	struct xfs_ifork		*ifp;
 	struct xfs_bmbt_rec_host	*ep;
 	xfs_extnum_t			nextents;
+	int				forkoff;
 	int				idx;
 	int				err;
 
@@ -726,18 +730,24 @@ iterate_fork_mappings(
 		return EFSCORRUPTED;
 	}
 
+	if (fork == XFS_ATTR_FORK)
+		forkoff = XFS_IFORK_BOFF(ip);
+	else
+		forkoff = 0;
+
 	memset(&xext, 0, sizeof(xext));
-	ifp = XFS_IFORK_PTR(ip, XFS_DATA_FORK);
+	ifp = XFS_IFORK_PTR(ip, fork);
 	switch (XFS_IFORK_FORMAT(ip, fork)) {
 	case XFS_DINODE_FMT_LOCAL:
 		xext.p_off = inode_poff(ip) +
-			     xfs_dinode_size(ip->i_d.di_version) +
-			     (fork == XFS_ATTR_FORK ? ip->i_d.di_forkoff << 3 : 0);
+			     xfs_dinode_size(ip->i_d.di_version) + forkoff;
 		if (fork == XFS_DATA_FORK) {
 			xext.len = ip->i_d.di_size;
 			xext.inlinedata = 1;
-		} else
-			xext.len = ip->i_mount->m_sb.sb_inodesize - ip->i_d.di_forkoff;
+		} else {
+			xext.len = XFS_LITINO(ip->i_mount, ip->i_d.di_version) - forkoff;
+			xext.attrfork = 1;
+		}
 		xext.state = XFS_EXT_NORM;
 		xext.unaligned = 1;
 		fn(ip->i_ino, &xext, priv_data);
@@ -764,6 +774,7 @@ iterate_fork_mappings(
 					ext.br_startblock);
 			xext.l_off = XFS_FSB_TO_B(ip->i_mount, ext.br_startoff);
 			xext.len = XFS_FSB_TO_B(ip->i_mount, ext.br_blockcount);
+			xext.attrfork = (forkoff > 0);
 			if (fn(ip->i_ino, &xext, priv_data))
 				break;
 		}
@@ -783,10 +794,7 @@ iterate_fork_mappings(
 		struct xfs_extent_t *last = &(wf)->last_ext; \
 \
 		last->len = 0; \
-		if ((fork) == XFS_ATTR_FORK) \
-			(wf)->itype = XFS_DIR3_XT_XATTR; \
-		else \
-			(wf)->itype = (type); \
+		(wf)->itype = (type); \
 		err = iterate_fork_mappings((inode), (fork), walk_extent_helper, (wf)); \
 		if (!(wf)->err) \
 			(wf)->err = err; \
