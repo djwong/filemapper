@@ -86,6 +86,8 @@ def fibmap2(fd, start = 0, end = None, flags = 0):
 	xstat = os.fstat(fd)
 	if not stat.S_ISREG(xstat.st_mode):
 		return
+	if flags & FIEMAP_FLAG_XATTR:
+		return
 
 	if end is None:
 		end = xstat.st_size
